@@ -1,0 +1,275 @@
+[
+  {
+    "id": "password_reset",
+    "category": "SOFTWARE",
+    "title": "Password reset and account sign-in issues",
+    "keywords": ["password", "reset", "forgot", "signin", "login", "locked", "account", "credentials"],
+    "steps": [
+      "Use the LEC self-service password reset portal and complete identity verification.",
+      "Create a new password with at least 12 characters, uppercase, lowercase, number, and symbol.",
+      "Wait 2-3 minutes for directory sync, then sign out and sign in again.",
+      "If account is locked, wait 15 minutes or ask service desk to unlock the account."
+    ],
+    "escalation": "Escalate if reset fails 3 times, MFA is unavailable, or account remains locked after 15 minutes."
+  },
+  {
+    "id": "mfa_issue",
+    "category": "SOFTWARE",
+    "title": "MFA or authenticator problems",
+    "keywords": ["mfa", "authenticator", "otp", "code", "token", "2fa", "verification"],
+    "steps": [
+      "Check the phone time is set to automatic date/time.",
+      "Open authenticator app and refresh the one-time code.",
+      "Try alternate method (SMS/call) if configured.",
+      "If you changed phone, request MFA re-registration from service desk."
+    ],
+    "escalation": "Escalate immediately if no backup MFA method exists and access is blocked."
+  },
+  {
+    "id": "vpn_connectivity",
+    "category": "NETWORK",
+    "title": "VPN connection failure",
+    "keywords": ["vpn", "remote access", "tunnel", "cannot connect", "disconnect"],
+    "steps": [
+      "Confirm internet is stable by opening public websites.",
+      "Disconnect and reconnect VPN client, then retry login.",
+      "Restart VPN client service or reboot laptop.",
+      "Ensure your password was recently updated in VPN credentials."
+    ],
+    "escalation": "Escalate if error persists for 10+ minutes or multiple users in one team are impacted."
+  },
+  {
+    "id": "wifi_instability",
+    "category": "NETWORK",
+    "title": "Wi-Fi unstable or disconnected",
+    "keywords": ["wifi", "wireless", "disconnect", "no internet", "signal"],
+    "steps": [
+      "Toggle Wi-Fi off/on and reconnect to the approved SSID.",
+      "Forget network and reconnect using current credentials.",
+      "Move closer to access point or use wired ethernet if available.",
+      "Run Windows network troubleshooter and renew IP."
+    ],
+    "escalation": "Escalate if same location has repeated drops or multiple users report the issue."
+  },
+  {
+    "id": "network_slow",
+    "category": "NETWORK",
+    "title": "Slow network performance",
+    "keywords": ["slow network", "latency", "internet slow", "timeout", "packet loss"],
+    "steps": [
+      "Run a speed test and capture screenshot of results.",
+      "Close heavy background apps (cloud sync, updates, streaming).",
+      "Switch from Wi-Fi to ethernet for validation.",
+      "Retry critical business app and compare response time."
+    ],
+    "escalation": "Escalate with speed-test result and affected application names if SLA impact is observed."
+  },
+  {
+    "id": "outlook_mail",
+    "category": "SOFTWARE",
+    "title": "Outlook not sending or receiving email",
+    "keywords": ["outlook", "email", "mailbox", "send", "receive", "exchange"],
+    "steps": [
+      "Check if Outlook is in Offline mode and disable it.",
+      "Restart Outlook and run Send/Receive all folders.",
+      "Verify mailbox quota is not full.",
+      "Create a new Outlook profile if issue is profile-related."
+    ],
+    "escalation": "Escalate if multiple users in same domain are affected or mail flow is delayed for more than 30 minutes."
+  },
+  {
+    "id": "teams_call",
+    "category": "SOFTWARE",
+    "title": "Microsoft Teams call/audio issue",
+    "keywords": ["teams", "call", "audio", "microphone", "speaker", "meeting"],
+    "steps": [
+      "Check Teams device settings and select correct microphone/speaker.",
+      "Close other apps using audio device (Zoom, browser tabs, media players).",
+      "Run Teams test call and confirm permissions for microphone/camera.",
+      "Sign out and sign in to Teams, then retry."
+    ],
+    "escalation": "Escalate if device tests pass but audio still fails in corporate meetings."
+  },
+  {
+    "id": "printer_offline",
+    "category": "HARDWARE",
+    "title": "Printer offline",
+    "keywords": ["printer", "offline", "cannot print", "queue", "print"],
+    "steps": [
+      "Power cycle printer and check network cable or Wi-Fi status.",
+      "On PC, remove stuck print jobs and restart Print Spooler service.",
+      "Set printer as default and print test page.",
+      "Reinstall printer driver if status remains offline."
+    ],
+    "escalation": "Escalate if printer is shared and multiple users cannot print."
+  },
+  {
+    "id": "printer_jam",
+    "category": "HARDWARE",
+    "title": "Printer paper jam",
+    "keywords": ["paper jam", "jammed", "printer jam", "scanner jam"],
+    "steps": [
+      "Open all jam access doors and remove paper carefully in feed direction.",
+      "Check rollers and tray alignment, then reload paper stack properly.",
+      "Clear printer queue and retry one-page test print.",
+      "If sensor still reports jam, clean internal paper path."
+    ],
+    "escalation": "Escalate for onsite hardware check if jam error remains after full clearing."
+  },
+  {
+    "id": "toner_low",
+    "category": "HARDWARE",
+    "title": "Toner/cartridge replacement",
+    "keywords": ["toner", "cartridge", "ink", "faded print", "low toner"],
+    "steps": [
+      "Check toner level from printer panel.",
+      "Remove and reseat cartridge, then print test page.",
+      "Replace cartridge with approved stock item.",
+      "Update consumables inventory after replacement."
+    ],
+    "escalation": "Escalate if print quality remains poor with a new cartridge."
+  },
+  {
+    "id": "laptop_not_booting",
+    "category": "HARDWARE",
+    "title": "Laptop not powering on",
+    "keywords": ["not booting", "won't start", "black screen", "no power", "laptop dead"],
+    "steps": [
+      "Connect charger directly to wall power and confirm charging LED.",
+      "Hold power button for 15 seconds, then restart.",
+      "Disconnect dock/peripherals and boot with only charger attached.",
+      "If available, test with known working charger."
+    ],
+    "escalation": "Escalate immediately for hardware diagnostics if no power indicators appear."
+  },
+  {
+    "id": "blue_screen",
+    "category": "HARDWARE",
+    "title": "Blue screen or frequent crashes",
+    "keywords": ["blue screen", "bsod", "crash", "kernel", "stop code"],
+    "steps": [
+      "Capture stop code and recent changes (driver/app updates).",
+      "Boot in Safe Mode and uninstall latest problematic update.",
+      "Run memory diagnostics and disk check.",
+      "Install latest approved chipset and OS updates."
+    ],
+    "escalation": "Escalate if crash repeats more than twice per day or affects production work."
+  },
+  {
+    "id": "software_install",
+    "category": "SOFTWARE",
+    "title": "Software installation request/failure",
+    "keywords": ["install", "installation", "setup", "application", "software request"],
+    "steps": [
+      "Confirm software is approved by IT policy and license is available.",
+      "Run installer as administrator and disable conflicting apps.",
+      "Check endpoint security blocks or missing prerequisites (.NET/VC++).",
+      "Retry installation after reboot."
+    ],
+    "escalation": "Escalate with installer logs and screenshot of exact error code."
+  },
+  {
+    "id": "shared_drive",
+    "category": "NETWORK",
+    "title": "Shared drive not accessible",
+    "keywords": ["shared drive", "network drive", "mapped drive", "file server", "path not found"],
+    "steps": [
+      "Verify VPN/corporate network is connected.",
+      "Test access via UNC path (example: \\\\server\\share).",
+      "Remap drive and re-enter credentials if prompted.",
+      "Confirm user has correct access rights."
+    ],
+    "escalation": "Escalate if access rights are correct but share is unavailable to multiple users."
+  },
+  {
+    "id": "rdp_issue",
+    "category": "NETWORK",
+    "title": "Remote desktop (RDP) connection issue",
+    "keywords": ["rdp", "remote desktop", "cannot connect remote", "mstsc"],
+    "steps": [
+      "Confirm target machine is powered on and reachable on VPN.",
+      "Use hostname and IP to test both connection methods.",
+      "Check firewall and RDP service status on target machine.",
+      "Clear saved credentials and reconnect."
+    ],
+    "escalation": "Escalate if target host is reachable but RDP port/service remains blocked."
+  },
+  {
+    "id": "browser_issue",
+    "category": "SOFTWARE",
+    "title": "Browser issues in corporate web apps",
+    "keywords": ["browser", "cache", "cookies", "web app", "page not loading", "portal error"],
+    "steps": [
+      "Clear browser cache and cookies for affected site.",
+      "Try private/incognito mode and disable extensions.",
+      "Test on alternate supported browser.",
+      "Confirm date/time is correct and TLS certificate is valid."
+    ],
+    "escalation": "Escalate with URL, timestamp, browser version, and screenshot if issue persists."
+  },
+  {
+    "id": "antivirus_alert",
+    "category": "SOFTWARE",
+    "title": "Antivirus alert or endpoint protection block",
+    "keywords": ["antivirus", "defender", "malware", "threat", "quarantine", "blocked"],
+    "steps": [
+      "Do not bypass or disable antivirus policy.",
+      "Run full endpoint scan and isolate suspicious file.",
+      "Capture threat name, path, and event timestamp.",
+      "If business app is blocked, submit false-positive review request."
+    ],
+    "escalation": "Escalate immediately for suspected malware or repeated endpoint alerts."
+  },
+  {
+    "id": "phishing_email",
+    "category": "SOFTWARE",
+    "title": "Phishing or suspicious email",
+    "keywords": ["phishing", "suspicious email", "fraud", "spoof", "malicious link"],
+    "steps": [
+      "Do not click links or open attachments.",
+      "Report email using phishing-report tool in mail client.",
+      "Forward header details to security team if required.",
+      "Delete the message after reporting."
+    ],
+    "escalation": "Escalate as high priority if credentials were entered or attachment executed."
+  },
+  {
+    "id": "windows_update",
+    "category": "SOFTWARE",
+    "title": "Windows update failure",
+    "keywords": ["windows update", "update failed", "patch", "kb", "upgrade"],
+    "steps": [
+      "Ensure minimum 10GB free disk space.",
+      "Restart device and retry update.",
+      "Run Windows Update troubleshooter.",
+      "Install required cumulative update manually if guided by IT."
+    ],
+    "escalation": "Escalate if security patch remains missing after two retries."
+  },
+  {
+    "id": "disk_space",
+    "category": "HARDWARE",
+    "title": "Low disk space",
+    "keywords": ["disk full", "storage full", "low space", "c drive full"],
+    "steps": [
+      "Delete temp files and empty recycle bin.",
+      "Move large files to approved shared storage.",
+      "Uninstall unused applications.",
+      "Run disk cleanup and restart."
+    ],
+    "escalation": "Escalate if free space remains below 10% after cleanup."
+  },
+  {
+    "id": "dock_display",
+    "category": "HARDWARE",
+    "title": "Docking station or external monitor issue",
+    "keywords": ["dock", "docking station", "monitor", "display", "hdmi", "no signal"],
+    "steps": [
+      "Reconnect dock power and cable connections.",
+      "Press Win+P and select correct display mode.",
+      "Update display/dock drivers.",
+      "Test with a different cable/port."
+    ],
+    "escalation": "Escalate if monitor works on another device but not on assigned laptop."
+  }
+]
