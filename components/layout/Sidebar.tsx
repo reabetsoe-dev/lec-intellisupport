@@ -66,8 +66,8 @@ export function Sidebar({ role }: SidebarProps) {
   const section = menuByRole[role]
 
   return (
-    <aside className="flex h-screen w-20 shrink-0 flex-col border-r border-sky-400 bg-sky-300 text-sky-950 md:w-72">
-      <div className="border-b border-sky-400 px-4 py-5 md:px-6">
+    <aside className="flex h-screen w-20 shrink-0 flex-col border-r border-yellow-500 bg-yellow-300 text-yellow-950 md:w-72">
+      <div className="border-b border-yellow-500 px-4 py-5 md:px-6">
         <div className="mb-3 flex justify-center md:justify-start">
           <Image
             src="/lec-logo.png"
@@ -78,12 +78,12 @@ export function Sidebar({ role }: SidebarProps) {
             priority
           />
         </div>
-        <p className="text-center text-sm font-semibold tracking-wide text-sky-950 md:text-left">LEC INTELLI-SUPPORT</p>
+        <p className="text-center text-sm font-semibold tracking-wide text-yellow-950 md:text-left">LEC INTELLI-SUPPORT</p>
       </div>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 md:px-4">
         <div key={section.label}>
-          <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-sky-900/70 uppercase md:block">
+          <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-yellow-900/70 uppercase md:block">
             {section.label}
           </p>
           <div className="mt-2 space-y-1">
@@ -100,8 +100,8 @@ export function Sidebar({ role }: SidebarProps) {
                   className={cn(
                     "flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:justify-start",
                     isActive
-                      ? "bg-sky-500 text-white"
-                      : "text-sky-900 hover:bg-sky-500 hover:text-white"
+                      ? "bg-yellow-600 text-white"
+                      : "text-yellow-900 hover:bg-yellow-500 hover:text-yellow-950"
                   )}
                 >
                   <Icon className="h-4 w-4" />
