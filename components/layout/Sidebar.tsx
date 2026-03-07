@@ -66,8 +66,8 @@ export function Sidebar({ role }: SidebarProps) {
   const section = menuByRole[role]
 
   return (
-    <aside className="flex h-screen w-20 shrink-0 flex-col border-r border-[#0d066a] bg-[#120A8F] text-slate-100 md:w-72">
-      <div className="border-b border-[#0d066a] px-4 py-5 md:px-6">
+    <aside className="flex h-screen w-20 shrink-0 flex-col border-r border-[#7f1d1d] bg-[#b91c1c] text-slate-100 md:w-72">
+      <div className="border-b border-[#7f1d1d] px-4 py-5 md:px-6">
         <div className="mb-3 flex justify-center md:justify-start">
           <Image
             src="/lec-logo.png"
@@ -83,7 +83,7 @@ export function Sidebar({ role }: SidebarProps) {
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 md:px-4">
         <div key={section.label}>
-          <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-blue-200 uppercase md:block">
+          <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-red-200 uppercase md:block">
             {section.label}
           </p>
           <div className="mt-2 space-y-1">
@@ -100,8 +100,8 @@ export function Sidebar({ role }: SidebarProps) {
                   className={cn(
                     "flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:justify-start",
                     isActive
-                      ? "bg-[#0d066a] text-white"
-                      : "text-blue-100 hover:bg-[#0d066a] hover:text-white"
+                      ? "bg-[#7f1d1d] text-white"
+                      : "text-red-100 hover:bg-[#7f1d1d] hover:text-white"
                   )}
                 >
                   <Icon className="h-4 w-4" />
