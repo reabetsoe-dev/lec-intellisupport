@@ -67,30 +67,26 @@ export function InventoryTable() {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Item Name</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Model Number</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial Number</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Quantity</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Department</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-rose-600">
                   {error}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-slate-500">
                   No consumables found.
                 </TableCell>
               </TableRow>
@@ -98,11 +94,7 @@ export function InventoryTable() {
               items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="px-6 font-medium text-slate-800">{item.item_name}</TableCell>
-                  <TableCell className="text-slate-700">{item.brand || "-"}</TableCell>
-                  <TableCell className="text-slate-700">{item.model_number || "-"}</TableCell>
-                  <TableCell className="text-slate-700">{item.serial_number || "-"}</TableCell>
                   <TableCell className="text-slate-700">{item.quantity}</TableCell>
-                  <TableCell className="text-slate-700">{item.department || "-"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={getStatusClassName(getStatus(item))}>
                       {getStatus(item)}
