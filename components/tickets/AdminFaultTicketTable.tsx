@@ -36,6 +36,8 @@ import {
 import {
   assignTechnician,
   getAllTickets,
+  getTechnicians,
+  type Technician,
   type Ticket,
   updateTicketPriority,
   updateTicketStatus,
@@ -52,14 +54,6 @@ type TicketRecord = {
   technician: string
   technician_id: number | null
 }
-
-const technicianOptions: Array<{ label: string; technicianId: number | null }> = [
-  { label: "Unassigned", technicianId: null },
-  { label: "Technician #1", technicianId: 1 },
-  { label: "Technician #2", technicianId: 2 },
-  { label: "Technician #3", technicianId: 3 },
-  { label: "Technician #4", technicianId: 4 },
-]
 
 const statusOptions = ["Open", "In Progress", "Pending Vendor", "Resolved"]
 const priorityOptions = ["Low", "Medium", "High", "Critical"]
@@ -94,6 +88,7 @@ function toRow(ticket: Ticket): TicketRecord {
 export function AdminFaultTicketTable() {
   const [query, setQuery] = useState("")
   const [rows, setRows] = useState<TicketRecord[]>([])
+  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [statusFilter, setStatusFilter] = useState("All")
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
@@ -102,8 +97,9 @@ export function AdminFaultTicketTable() {
   useEffect(() => {
     const run = async () => {
       try {
-        const data = await getAllTickets()
+        const [data, technicianData] = await Promise.all([getAllTickets(), getTechnicians()])
         setRows(data.map(toRow))
+        setTechnicians(technicianData)
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
       } finally {
@@ -300,9 +296,10 @@ export function AdminFaultTicketTable() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                          {technicianOptions.map((option) => (
-                            <DropdownMenuItem key={option.label} onClick={() => void handleAssign(ticket.id, option.technicianId)}>
-                              {option.label}
+                          <DropdownMenuItem onClick={() => void handleAssign(ticket.id, null)}>Unassigned</DropdownMenuItem>
+                          {technicians.map((option) => (
+                            <DropdownMenuItem key={option.id} onClick={() => void handleAssign(ticket.id, option.id)}>
+                              {option.name}
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuContent>

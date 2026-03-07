@@ -1,12 +1,20 @@
 "use client"
 
 import { Bell, ChevronRight, LogOut, Search } from "lucide-react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { clearUserSession, getRoleLabel, type AuthUser } from "@/lib/auth"
+import { getNotifications, markNotificationsRead, type AppNotification } from "@/lib/api"
 
 const topbarConfig: Array<{
   match: (pathname: string) => boolean
@@ -101,16 +109,63 @@ type TopbarProps = {
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const title = active?.title ?? "IT Service Management"
+  const supportsNotifications = user.role === "technician" || user.role === "admin_fault"
   const initials =
     user.name
       .split(" ")
       .slice(0, 2)
       .map((part) => part.charAt(0).toUpperCase())
       .join("") || "U"
+
+  useEffect(() => {
+    if (!supportsNotifications) {
+      setNotifications([])
+      setUnreadCount(0)
+      return
+    }
+
+    const load = async () => {
+      try {
+        const payload = await getNotifications(user.id)
+        setNotifications(payload.notifications)
+        setUnreadCount(payload.unread_count)
+      } catch {
+        // Keep topbar resilient if notifications API is temporarily unavailable.
+      }
+    }
+
+    void load()
+    const intervalId = window.setInterval(() => {
+      void load()
+    }, 10000)
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [supportsNotifications, user.id])
+
+  const handleOpenNotifications = async () => {
+    if (!supportsNotifications) {
+      return
+    }
+    try {
+      const payload = await getNotifications(user.id)
+      setNotifications(payload.notifications)
+      setUnreadCount(payload.unread_count)
+      if (payload.unread_count > 0) {
+        const markResult = await markNotificationsRead(user.id)
+        setUnreadCount(markResult.unread_count)
+        setNotifications((currentItems) => currentItems.map((item) => ({ ...item, is_read: true })))
+      }
+    } catch {
+      // Ignore transient errors from notifications refresh.
+    }
+  }
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
@@ -133,10 +188,32 @@ export function Topbar({ user }: TopbarProps) {
           />
         </div>
 
-        <Button variant="outline" size="icon" className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10">
-          <Bell className="h-4 w-4" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#D71920]" />
-        </Button>
+        <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10">
+              <Bell className="h-4 w-4" />
+              {supportsNotifications && unreadCount > 0 ? (
+                <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D71920] px-1 text-[10px] font-semibold text-white">
+                  {unreadCount}
+                </span>
+              ) : null}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            {!supportsNotifications ? (
+              <DropdownMenuItem disabled>Notifications enabled for Admin Fault and Technicians only.</DropdownMenuItem>
+            ) : notifications.length === 0 ? (
+              <DropdownMenuItem disabled>No notifications yet.</DropdownMenuItem>
+            ) : (
+              notifications.map((item) => (
+                <DropdownMenuItem key={item.id} className="block cursor-default whitespace-normal">
+                  <p className="text-sm text-slate-800">{item.message}</p>
+                  <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button
           variant="outline"

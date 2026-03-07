@@ -99,6 +99,48 @@ class TicketComment(models.Model):
         return f"Comment #{self.pk} on Ticket #{self.ticket_id}"
 
 
+class Notification(models.Model):
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "notifications"
+
+    def __str__(self) -> str:
+        return f"Notification #{self.pk} for User #{self.recipient_id}"
+
+
+class TicketMaterialRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="material_requests")
+    requested_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="ticket_material_requests")
+    item_name = models.CharField(max_length=120)
+    quantity = models.PositiveIntegerField(default=1)
+    notes = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "ticket_material_requests"
+
+    def __str__(self) -> str:
+        return f"MaterialRequest #{self.pk} Ticket #{self.ticket_id}"
+
+
 class Consumable(models.Model):
     item_name = models.CharField(max_length=100)
     quantity = models.PositiveIntegerField(default=0)

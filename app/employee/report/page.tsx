@@ -40,7 +40,7 @@ export default function EmployeeReportPage() {
         priority,
         employee_id: user.id,
       })
-      setMessage(`Ticket #${ticket.id} created successfully.`)
+      setMessage(ticket.routing_note ?? `Ticket #${ticket.id} created and routed to Admin Fault.`)
       setTitle("")
       setDescription("")
       setCategory("Network")

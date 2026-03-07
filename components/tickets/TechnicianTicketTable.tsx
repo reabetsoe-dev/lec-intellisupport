@@ -2,9 +2,17 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -13,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getAssignedTickets, type Ticket } from "@/lib/api"
+import { escalateTicket, getAssignedTickets, getTechnicians, type Technician, type Ticket } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
@@ -33,21 +41,28 @@ const priorityBadgeStyles: Record<string, string> = {
 
 export function TechnicianTicketTable() {
   const [assignedTickets, setAssignedTickets] = useState<Ticket[]>([])
+  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loading, setLoading] = useState(true)
+  const [escalatingTicketId, setEscalatingTicketId] = useState<number | null>(null)
   const [error, setError] = useState("")
+
+  const loadAssignedTickets = async () => {
+    const user = getStoredUserSession()
+    if (!user) {
+      setError("Session expired. Please login again.")
+      setLoading(false)
+      return
+    }
+
+    const [ticketData, technicianData] = await Promise.all([getAssignedTickets(user.id), getTechnicians()])
+    setAssignedTickets(ticketData)
+    setTechnicians(technicianData)
+  }
 
   useEffect(() => {
     const run = async () => {
-      const user = getStoredUserSession()
-      if (!user) {
-        setError("Session expired. Please login again.")
-        setLoading(false)
-        return
-      }
-
       try {
-        const data = await getAssignedTickets(user.id)
-        setAssignedTickets(data)
+        await loadAssignedTickets()
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned tickets.")
       } finally {
@@ -57,6 +72,34 @@ export function TechnicianTicketTable() {
 
     void run()
   }, [])
+
+  const handleEscalate = async (ticketId: number, targetTechnicianId: number | null, targetLabel: string, targetRole?: "admin_fault") => {
+    const user = getStoredUserSession()
+    if (!user) {
+      setError("Session expired. Please login again.")
+      return
+    }
+
+    const comment = window.prompt(`Add escalation comment for ${targetLabel}:`)
+    if (!comment || !comment.trim()) {
+      setError("Escalation comment is required.")
+      return
+    }
+
+    try {
+      setError("")
+      setEscalatingTicketId(ticketId)
+      await escalateTicket(ticketId, user.id, targetTechnicianId, comment.trim(), targetRole)
+      await loadAssignedTickets()
+    } catch (escalationError) {
+      setError(escalationError instanceof Error ? escalationError.message : "Failed to escalate ticket.")
+    } finally {
+      setEscalatingTicketId(null)
+    }
+  }
+
+  const currentUser = getStoredUserSession()
+  const escalationTargets = technicians.filter((tech) => tech.user_id !== currentUser?.id)
 
   return (
     <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
@@ -72,24 +115,25 @@ export function TechnicianTicketTable() {
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">SLA Timer</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Escalate</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading assigned tickets...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-rose-600">
                   {error}
                 </TableCell>
               </TableRow>
             ) : assignedTickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
                   No assigned tickets found.
                 </TableCell>
               </TableRow>
@@ -126,6 +170,33 @@ export function TechnicianTicketTable() {
                     <Badge className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-700">
                       {ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : "N/A"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="border-slate-200" disabled={escalatingTicketId === ticket.id}>
+                          {escalatingTicketId === ticket.id ? "Escalating..." : "Escalate"}
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        {escalationTargets.length === 0 ? (
+                          <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
+                        ) : (
+                          escalationTargets.map((target) => (
+                            <DropdownMenuItem
+                              key={target.id}
+                              onClick={() => void handleEscalate(ticket.id, target.id, target.name)}
+                            >
+                              {target.name}
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                        <DropdownMenuItem onClick={() => void handleEscalate(ticket.id, null, "Admin Fault", "admin_fault")}>
+                          Back to Admin Fault
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))

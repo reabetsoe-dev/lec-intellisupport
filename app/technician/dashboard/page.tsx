@@ -1,6 +1,14 @@
+ "use client"
+
+import { useState } from "react"
+
+import { TechnicianTicketTable } from "@/components/tickets/TechnicianTicketTable"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function TechnicianDashboardPage() {
+  const [showAssignedTickets, setShowAssignedTickets] = useState(false)
+
   return (
     <div className="space-y-6">
       <div>
@@ -13,7 +21,15 @@ export default function TechnicianDashboardPage() {
           <CardHeader className="px-6 py-5">
             <CardTitle className="text-base font-semibold text-slate-900">Assigned Tickets</CardTitle>
           </CardHeader>
-          <CardContent className="px-6 pb-6 text-sm text-slate-600">12 active tickets in your queue.</CardContent>
+          <CardContent className="space-y-3 px-6 pb-6 text-sm text-slate-600">
+            <p>Open your assigned ticket queue and use all actions (status update, escalate, open detail).</p>
+            <Button
+              className="bg-slate-900 text-white hover:bg-slate-800"
+              onClick={() => setShowAssignedTickets((current) => !current)}
+            >
+              {showAssignedTickets ? "Hide Assigned Tickets" : "Assigned Tickets"}
+            </Button>
+          </CardContent>
         </Card>
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-5">
@@ -28,6 +44,8 @@ export default function TechnicianDashboardPage() {
           <CardContent className="px-6 pb-6 text-sm text-slate-600">1 ticket is close to SLA breach.</CardContent>
         </Card>
       </div>
+
+      {showAssignedTickets ? <TechnicianTicketTable /> : null}
     </div>
   )
 }

@@ -28,7 +28,57 @@ export type Ticket = {
   technician_id?: number | null
   technician_name?: string | null
   employee_name?: string | null
+  routed_to_role?: UserRole
+  routing_note?: string
   created_at?: string
+}
+
+export type TicketComment = {
+  id: number
+  author_id: number
+  author_name: string
+  comment: string
+  created_at: string
+}
+
+export type TicketDetail = Ticket & {
+  comments: TicketComment[]
+}
+
+export type TicketMaterialRequest = {
+  id: number
+  ticket_id: number
+  requested_by_id: number
+  requested_by_name: string
+  item_name: string
+  quantity: number
+  notes: string
+  status: "pending" | "approved" | "rejected"
+  created_at: string
+  updated_at: string
+}
+
+export type Technician = {
+  id: number
+  user_id: number
+  name: string
+  email: string
+  skillset: string
+  is_available: boolean
+}
+
+export type AppNotification = {
+  id: number
+  message: string
+  is_read: boolean
+  ticket_id?: number | null
+  created_at: string
+  read_at?: string | null
+}
+
+export type NotificationsResponse = {
+  unread_count: number
+  notifications: AppNotification[]
 }
 
 export type Consumable = {
@@ -175,6 +225,10 @@ export async function getAllTickets(): Promise<Ticket[]> {
   return requestJson<Ticket[]>(BACKEND_BASE_URL, "/api/tickets")
 }
 
+export async function getTicketById(ticketId: number): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(BACKEND_BASE_URL, `/api/tickets/${ticketId}`)
+}
+
 export async function assignTechnician(ticketId: number, technicianId: number | null): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/assign`, {
     method: "PUT",
@@ -193,6 +247,71 @@ export async function updateTicketStatus(ticketId: number, status: string): Prom
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
     body: { status },
+  })
+}
+
+export async function escalateTicket(
+  ticketId: number,
+  fromTechnicianUserId: number,
+  targetTechnicianId: number | null,
+  comment: string,
+  targetRole?: UserRole
+): Promise<Ticket> {
+  return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/escalate`, {
+    method: "PUT",
+    body: {
+      from_technician_user_id: fromTechnicianUserId,
+      target_technician_id: targetTechnicianId,
+      target_role: targetRole,
+      comment,
+    },
+  })
+}
+
+export async function getTechnicians(): Promise<Technician[]> {
+  return requestJson<Technician[]>(BACKEND_BASE_URL, "/api/technicians")
+}
+
+export async function createTechnician(payload: {
+  name: string
+  email: string
+  password: string
+  skillset?: string
+  is_available?: boolean
+}): Promise<Technician> {
+  return requestJson<Technician>(BACKEND_BASE_URL, "/api/technicians", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function getTicketMaterialRequests(ticketId: number): Promise<TicketMaterialRequest[]> {
+  return requestJson<TicketMaterialRequest[]>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/material-requests`)
+}
+
+export async function createTicketMaterialRequest(
+  ticketId: number,
+  payload: {
+    requested_by_id: number
+    item_name: string
+    quantity: number
+    notes: string
+  }
+): Promise<TicketMaterialRequest> {
+  return requestJson<TicketMaterialRequest>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/material-requests`, {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function getNotifications(userId: number): Promise<NotificationsResponse> {
+  return requestJson<NotificationsResponse>(BACKEND_BASE_URL, `/api/notifications?user_id=${userId}`)
+}
+
+export async function markNotificationsRead(userId: number, notificationIds?: number[]): Promise<{ unread_count: number }> {
+  return requestJson<{ unread_count: number }>(BACKEND_BASE_URL, "/api/notifications/mark-read", {
+    method: "PUT",
+    body: { user_id: userId, notification_ids: notificationIds },
   })
 }
 

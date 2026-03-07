@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TechnicianManagementPanel } from "@/components/admin-fault/TechnicianManagementPanel"
 
 export default function AdminFaultDashboardPage() {
   return (
@@ -34,6 +35,8 @@ export default function AdminFaultDashboardPage() {
           <CardContent className="px-6 pb-6 text-sm text-slate-600">5 active escalations under review.</CardContent>
         </Card>
       </div>
+
+      <TechnicianManagementPanel />
     </div>
   )
 }
