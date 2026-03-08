@@ -17,17 +17,10 @@ import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
-  Open: "bg-slate-100 text-slate-700 border border-slate-200",
-  "In Progress": "bg-blue-50 text-blue-700 border border-blue-100",
-  "Pending Vendor": "bg-amber-50 text-amber-700 border border-amber-100",
-  Resolved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-}
-
-const priorityBadgeStyles: Record<string, string> = {
-  Low: "bg-slate-100 text-slate-700 border border-slate-200",
-  Medium: "bg-indigo-50 text-indigo-700 border border-indigo-100",
-  High: "bg-orange-50 text-orange-700 border border-orange-100",
-  Critical: "bg-rose-50 text-rose-700 border border-rose-100",
+  Open: "bg-[#EAF3FF] text-[#0B1F3A] border border-[#0072CE]/30",
+  "In Progress": "bg-[#D9EBFF] text-[#0B1F3A] border border-[#0072CE]/35",
+  "Pending Vendor": "bg-[#FFECEF] text-[#B1121A] border border-[#D71920]/25",
+  Resolved: "bg-[#EAF8F0] text-[#007A3D] border border-[#007A3D]/25",
 }
 
 export function EmployeeTicketHistoryTable() {
@@ -60,68 +53,51 @@ export function EmployeeTicketHistoryTable() {
   const rows = tickets
 
   return (
-    <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-      <CardHeader className="border-b border-slate-100 px-6 py-5">
-        <CardTitle className="text-base font-semibold text-slate-900">My Submitted Tickets</CardTitle>
+    <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+      <CardHeader className="border-b border-[#0072CE]/15 px-6 py-5">
+        <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Submitted Tickets</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Ticket ID</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Title</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">SLA</TableHead>
+              <TableHead className="px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Ticket ID</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Title</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                   Loading tickets...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-[#D71920]">
                   {error}
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                   No submitted tickets found.
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((ticket) => (
                 <TableRow key={ticket.id}>
-                  <TableCell className="px-6 font-medium text-slate-700">#{ticket.id}</TableCell>
-                  <TableCell className="font-medium text-slate-800">{ticket.title}</TableCell>
+                  <TableCell className="px-6 font-medium text-[#0B1F3A]">#{ticket.id}</TableCell>
+                  <TableCell className="font-medium text-[#0B1F3A]">{ticket.title}</TableCell>
                   <TableCell>
                     <Badge
                       className={cn(
                         "rounded-full px-2 py-0.5",
-                        statusBadgeStyles[ticket.status] ?? "bg-slate-100 text-slate-700 border border-slate-200"
+                        statusBadgeStyles[ticket.status] ?? "bg-[#EAF3FF] text-[#0B1F3A] border border-[#0072CE]/30"
                       )}
                     >
                       {ticket.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "rounded-full px-2 py-0.5",
-                        priorityBadgeStyles[ticket.priority] ?? "bg-slate-100 text-slate-700 border border-slate-200"
-                      )}
-                    >
-                      {ticket.priority}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-700">
-                      {ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : "N/A"}
                     </Badge>
                   </TableCell>
                 </TableRow>

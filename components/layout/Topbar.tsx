@@ -1,10 +1,9 @@
 "use client"
 
-import { Bell, ChevronRight, LogOut, Search } from "lucide-react"
+import { Bell, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,8 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { clearUserSession, getRoleLabel, type AuthUser } from "@/lib/auth"
+import { type AuthUser } from "@/lib/auth"
 import { getNotifications, markNotificationsRead, type AppNotification } from "@/lib/api"
 
 const topbarConfig: Array<{
@@ -26,7 +24,7 @@ const topbarConfig: Array<{
     match: (pathname) => pathname.startsWith("/employee/report"),
     parent: "Employee",
     current: "Report Fault",
-    title: "AI-Assisted Fault Intake",
+    title: "Employee Fault Reporting",
   },
   {
     match: (pathname) => pathname.startsWith("/employee/tickets"),
@@ -35,16 +33,22 @@ const topbarConfig: Array<{
     title: "Employee Ticket History",
   },
   {
+    match: (pathname) => pathname.startsWith("/employee/my-consumables"),
+    parent: "Employee",
+    current: "My Consumables",
+    title: "Assigned Consumables",
+  },
+  {
     match: (pathname) => pathname.startsWith("/employee/consumables"),
     parent: "Employee",
-    current: "Consumables",
-    title: "Consumable Stock Requests",
+    current: "Consumable Request",
+    title: "Consumable Request Form",
   },
   {
     match: (pathname) => pathname === "/employee/dashboard",
     parent: "Employee",
     current: "Dashboard",
-    title: "Employee Service Portal",
+    title: "Employee Dashboard",
   },
   {
     match: (pathname) => pathname.startsWith("/technician/tickets/"),
@@ -108,20 +112,12 @@ type TopbarProps = {
 
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
-  const title = active?.title ?? "IT Service Management"
   const supportsNotifications = user.role === "technician" || user.role === "admin_fault"
-  const initials =
-    user.name
-      .split(" ")
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("") || "U"
 
   useEffect(() => {
     if (!supportsNotifications) {
@@ -169,73 +165,41 @@ export function Topbar({ user }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
-      <div>
-        <div className="flex items-center gap-2 text-sm text-[#1E3A6D]">
-          <span>{parent}</span>
+      <div className="rounded-lg border border-[#0072CE]/25 bg-[#F7FBFF] px-3 py-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-[#0B1F3A]">
+          <span className="tracking-wide">{parent}</span>
           <ChevronRight className="h-3.5 w-3.5" />
-          <span>{current}</span>
+          <span className="tracking-wide">{current}</span>
         </div>
-        <h1 className="text-lg font-semibold text-[#0B1F3A]">{title}</h1>
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden w-72 items-center gap-2 rounded-md border border-[#0072CE]/25 bg-[#0072CE]/5 px-3 md:flex">
-          <Search className="h-4 w-4 text-[#1E3A6D]" />
-          <Input
-            type="search"
-            placeholder="Search tickets, users, assets"
-            className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
-
-        <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10">
-              <Bell className="h-4 w-4" />
-              {supportsNotifications && unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D71920] px-1 text-[10px] font-semibold text-white">
-                  {unreadCount}
-                </span>
-              ) : null}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            {!supportsNotifications ? (
-              <DropdownMenuItem disabled>Notifications enabled for Admin Fault and Technicians only.</DropdownMenuItem>
-            ) : notifications.length === 0 ? (
-              <DropdownMenuItem disabled>No notifications yet.</DropdownMenuItem>
-            ) : (
-              notifications.map((item) => (
-                <DropdownMenuItem key={item.id} className="block cursor-default whitespace-normal">
-                  <p className="text-sm text-slate-800">{item.message}</p>
-                  <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Button
-          variant="outline"
-          className="hidden border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10 sm:inline-flex"
-          onClick={() => {
-            clearUserSession()
-            router.push("/login")
-          }}
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
-
-        <div className="flex items-center gap-2 rounded-lg border border-[#0072CE]/30 bg-white px-2 py-1.5">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-[#0B1F3A] text-xs font-semibold text-white">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="hidden text-left md:block">
-            <p className="text-sm font-medium text-[#0B1F3A]">{user.name}</p>
-            <p className="text-xs text-[#1E3A6D]">{getRoleLabel(user.role)}</p>
-          </div>
-        </div>
+        {supportsNotifications ? (
+          <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10">
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D71920] px-1 text-[10px] font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              {notifications.length === 0 ? (
+                <DropdownMenuItem disabled>No notifications yet.</DropdownMenuItem>
+              ) : (
+                notifications.map((item) => (
+                  <DropdownMenuItem key={item.id} className="block cursor-default whitespace-normal">
+                    <p className="text-sm text-slate-800">{item.message}</p>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
     </header>
   )

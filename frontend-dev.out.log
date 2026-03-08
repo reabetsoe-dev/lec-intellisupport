@@ -1,0 +1,12 @@
+
+> lec-intelli-support-frontend@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.152.32:3000
+
+✓ Starting...
+✓ Ready in 2.7s
+○ Compiling / ...
+ GET / 200 in 4.6s (compile: 4.4s, render: 192ms)

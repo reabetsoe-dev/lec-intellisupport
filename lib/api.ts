@@ -94,6 +94,8 @@ export type Consumable = {
   status?: string | null
   purchase_date?: string | null
   assigned_employee?: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export type ConsumableRequest = {

@@ -15,6 +15,7 @@ type FormValues = {
   category: string
   quantity: string
   department: string
+  assignedEmployee: string
   condition: string
   purchaseDate: string
 }
@@ -26,10 +27,11 @@ const initialValues: FormValues = {
   brand: "",
   modelNumber: "",
   serialNumber: "",
-  category: "Laptop",
-  quantity: "1",
-  department: "Finance",
-  condition: "New",
+  category: "",
+  quantity: "",
+  department: "",
+  assignedEmployee: "",
+  condition: "",
   purchaseDate: "",
 }
 
@@ -54,9 +56,15 @@ export function AddConsumableForm() {
     if (!values.serialNumber.trim()) {
       nextErrors.serialNumber = "Serial Number is required."
     }
+    if (!values.category.trim()) {
+      nextErrors.category = "Category is required."
+    }
     const parsedQuantity = Number(values.quantity)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
       nextErrors.quantity = "Quantity must be at least 1."
+    }
+    if (!values.condition.trim()) {
+      nextErrors.condition = "Condition is required."
     }
 
     setErrors(nextErrors)
@@ -88,6 +96,7 @@ export function AddConsumableForm() {
         category: values.category,
         quantity: Number(values.quantity),
         department: values.department.trim(),
+        assigned_employee: values.assignedEmployee.trim(),
         condition: values.condition,
         status: values.condition,
         purchase_date: values.purchaseDate,
@@ -108,17 +117,19 @@ export function AddConsumableForm() {
         <CardTitle className="text-base font-semibold text-slate-900">Add Consumable</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 px-6 py-6">
-        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+        <form className="mx-auto w-full max-w-4xl space-y-5" onSubmit={handleSubmit} noValidate autoComplete="off">
           <div className="space-y-2">
             <label htmlFor="item-name" className="text-sm font-medium text-slate-700">
               Item Name
             </label>
-            <Input
-              id="item-name"
-              value={values.itemName}
-              onChange={(event) => updateValue("itemName", event.target.value)}
-              placeholder="ThinkPad T14"
-            />
+              <Input
+                id="item-name"
+                value={values.itemName}
+                onChange={(event) => updateValue("itemName", event.target.value)}
+                placeholder="ThinkPad T14"
+                autoComplete="off"
+                className="h-11"
+              />
             {errors.itemName ? <p className="text-xs text-rose-600">{errors.itemName}</p> : null}
           </div>
 
@@ -132,6 +143,8 @@ export function AddConsumableForm() {
                 value={values.brand}
                 onChange={(event) => updateValue("brand", event.target.value)}
                 placeholder="Lenovo"
+                autoComplete="off"
+                className="h-11"
               />
               {errors.brand ? <p className="text-xs text-rose-600">{errors.brand}</p> : null}
             </div>
@@ -145,6 +158,8 @@ export function AddConsumableForm() {
                 value={values.modelNumber}
                 onChange={(event) => updateValue("modelNumber", event.target.value)}
                 placeholder="20W0003AUS"
+                autoComplete="off"
+                className="h-11"
               />
               {errors.modelNumber ? <p className="text-xs text-rose-600">{errors.modelNumber}</p> : null}
             </div>
@@ -160,6 +175,8 @@ export function AddConsumableForm() {
                 value={values.serialNumber}
                 onChange={(event) => updateValue("serialNumber", event.target.value)}
                 placeholder="R9-8X11-PQ2"
+                autoComplete="off"
+                className="h-11"
               />
               {errors.serialNumber ? <p className="text-xs text-rose-600">{errors.serialNumber}</p> : null}
             </div>
@@ -170,10 +187,11 @@ export function AddConsumableForm() {
               </label>
               <select
                 id="category"
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
+                className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800"
                 value={values.category}
                 onChange={(event) => updateValue("category", event.target.value)}
               >
+                <option value="" disabled>Select category</option>
                 <option value="Laptop">Laptop</option>
                 <option value="Cartridge">Cartridge</option>
                 <option value="Paper">Paper</option>
@@ -182,6 +200,7 @@ export function AddConsumableForm() {
                 <option value="Monitor">Monitor</option>
                 <option value="Headset">Headset</option>
               </select>
+              {errors.category ? <p className="text-xs text-rose-600">{errors.category}</p> : null}
             </div>
           </div>
 
@@ -196,6 +215,9 @@ export function AddConsumableForm() {
                 min={1}
                 value={values.quantity}
                 onChange={(event) => updateValue("quantity", event.target.value)}
+                placeholder="Enter quantity"
+                autoComplete="off"
+                className="h-11"
               />
               {errors.quantity ? <p className="text-xs text-rose-600">{errors.quantity}</p> : null}
             </div>
@@ -209,8 +231,24 @@ export function AddConsumableForm() {
                 value={values.department}
                 onChange={(event) => updateValue("department", event.target.value)}
                 placeholder="Finance"
+                autoComplete="off"
+                className="h-11"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="assigned-employee" className="text-sm font-medium text-slate-700">
+              Assigned Employee
+            </label>
+            <Input
+              id="assigned-employee"
+              value={values.assignedEmployee}
+              onChange={(event) => updateValue("assignedEmployee", event.target.value)}
+              placeholder="Employee full name"
+              autoComplete="off"
+              className="h-11"
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -220,14 +258,16 @@ export function AddConsumableForm() {
               </label>
               <select
                 id="condition"
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
+                className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800"
                 value={values.condition}
                 onChange={(event) => updateValue("condition", event.target.value)}
               >
+                <option value="" disabled>Select condition</option>
                 <option value="New">New</option>
                 <option value="Used">Used</option>
                 <option value="Damaged">Damaged</option>
               </select>
+              {errors.condition ? <p className="text-xs text-rose-600">{errors.condition}</p> : null}
             </div>
 
             <div className="space-y-2">
@@ -239,6 +279,7 @@ export function AddConsumableForm() {
                 type="date"
                 value={values.purchaseDate}
                 onChange={(event) => updateValue("purchaseDate", event.target.value)}
+                className="h-11"
               />
             </div>
           </div>
@@ -246,7 +287,11 @@ export function AddConsumableForm() {
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
           {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
 
-          <Button type="submit" disabled={loading} className="w-full bg-[#0072CE] text-white hover:bg-[#005da8]">
+          <Button
+            type="submit"
+            disabled={loading}
+            className="h-12 w-full rounded-lg bg-[#0072CE] text-base font-semibold text-white hover:bg-[#005da8]"
+          >
             {loading ? "Saving..." : "Save Consumable"}
           </Button>
         </form>

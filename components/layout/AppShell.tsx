@@ -5,6 +5,7 @@ import { useState } from "react"
 import { usePathname } from "next/navigation"
 import { useRouter } from "next/navigation"
 
+import { ChatbotFaultAssistant } from "@/components/chatbot/ChatbotFaultAssistant"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Topbar } from "@/components/layout/Topbar"
 import {
@@ -66,12 +67,13 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar role={user.role} />
+      <Sidebar user={user} />
       <div className="lec-shell-bg flex min-h-screen flex-1 flex-col">
         <Topbar user={user} />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto w-full max-w-[1400px]">{children}</div>
         </main>
+        {user.role === "employee" ? <ChatbotFaultAssistant /> : null}
       </div>
     </div>
   )
