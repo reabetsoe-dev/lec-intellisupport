@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "predev": "node scripts/ensure-next-dev-lock.mjs",
+    "dev": "next dev --webpack",
+    "predev:webpack": "node scripts/ensure-next-dev-lock.mjs",
     "dev:webpack": "next dev --webpack",
+    "predev:turbo": "node scripts/ensure-next-dev-lock.mjs",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
