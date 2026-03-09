@@ -16,12 +16,16 @@ type ChatMessage = {
   content: string
 }
 
-function getWelcomeMessage(): ChatMessage {
+function normalizeAccountName(name: string | undefined): string {
+  return name && name.trim() ? name.trim() : "Employee"
+}
+
+function getWelcomeMessage(accountName: string): ChatMessage {
   return {
     id: 1,
     role: "assistant",
     content:
-      "Welcome to LEC IntelliSupport. Please describe your IT issue and I will guide you with practical troubleshooting steps.",
+      `Welcome to LEC IntelliSupport, ${normalizeAccountName(accountName)}. Please describe your IT issue and I will guide you with practical troubleshooting steps.`,
   }
 }
 
@@ -72,11 +76,17 @@ function isPositiveResolution(text: string): boolean {
   return yesPatterns.some((pattern) => value.includes(pattern))
 }
 
-export function ChatbotFaultAssistant() {
+type ChatbotFaultAssistantProps = {
+  accountName: string
+  accountId?: number
+}
+
+export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAssistantProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const resolvedAccountName = normalizeAccountName(accountName)
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([getWelcomeMessage()])
+  const [messages, setMessages] = useState<ChatMessage[]>([getWelcomeMessage(resolvedAccountName)])
   const [draft, setDraft] = useState("")
   const [loading, setLoading] = useState(false)
   const [awaitingResolution, setAwaitingResolution] = useState(false)
@@ -95,7 +105,7 @@ export function ChatbotFaultAssistant() {
   const resetConversation = () => {
     sessionRef.current += 1
     messageIdRef.current = 2
-    setMessages([getWelcomeMessage()])
+    setMessages([getWelcomeMessage(resolvedAccountName)])
     setDraft("")
     setLoading(false)
     setAwaitingResolution(false)
@@ -130,16 +140,6 @@ export function ChatbotFaultAssistant() {
     }
     router.push("/employee/report#manual-fault-form")
   }
-
-  const buildSupportPrompt = (userInput: string) =>
-    [
-      "You are LEC IntelliSupport AI assistant.",
-      "You solve common enterprise IT helpdesk issues for employees.",
-      "Reply in a warm and practical chat style.",
-      "Give step-by-step fixes first, then suggest when to report a fault if unresolved.",
-      "Keep the answer concise and action-oriented.",
-      `Employee issue: ${userInput}`,
-    ].join("\n")
 
   const handleSend = async (input?: string) => {
     const trimmed = (input ?? draft).trim()
@@ -200,7 +200,7 @@ export function ChatbotFaultAssistant() {
 
     try {
       setLoading(true)
-      const response = await sendChatMessage(buildSupportPrompt(trimmed))
+      const response = await sendChatMessage(trimmed)
       if (sessionRef.current !== requestSession) {
         return
       }
@@ -249,6 +249,18 @@ export function ChatbotFaultAssistant() {
     }
   }, [messages, open])
 
+  useEffect(() => {
+    setOpen(false)
+    sessionRef.current += 1
+    messageIdRef.current = 2
+    setMessages([getWelcomeMessage(resolvedAccountName)])
+    setDraft("")
+    setLoading(false)
+    setAwaitingResolution(false)
+    setShowManualReportOption(false)
+    setShowCloseOption(false)
+  }, [resolvedAccountName, accountId])
+
   return (
     <div className="fixed right-5 bottom-5 z-50 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6">
       {open ? (
@@ -262,7 +274,9 @@ export function ChatbotFaultAssistant() {
                   </span>
                   AI Help Chatboard
                 </CardTitle>
-                <p className="mt-1 text-xs text-[#1E3A6D]">Quick IT solutions before manual fault reporting.</p>
+                <p className="mt-1 text-xs text-[#1E3A6D]">
+                  Signed in as {resolvedAccountName}. Quick IT solutions before manual fault reporting.
+                </p>
               </div>
               <Button
                 type="button"

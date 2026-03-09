@@ -41,6 +41,8 @@ STOPWORDS = {
     "my", "me", "it", "this", "that", "i", "you", "we", "our", "can", "cannot", "cant",
     "not", "be", "from", "at", "by", "as", "after", "before", "today", "yesterday",
 }
+GREETING_TOKENS = {"hi", "hello", "hey", "yo", "hola", "morning", "afternoon", "evening", "greetings"}
+COURTESY_TOKENS = {"thanks", "thank", "please", "assist", "help"}
 
 KB_PATH = Path(__file__).resolve().parent / "data" / "helpdesk_kb.json"
 with KB_PATH.open("r", encoding="utf-8") as kb_file:
@@ -77,6 +79,47 @@ class ChatRequest(BaseModel):
 def _tokenize(text: str) -> set[str]:
     tokens = re.findall(r"[a-z0-9]+", text.lower())
     return {token for token in tokens if token not in STOPWORDS and len(token) > 2}
+
+
+def _is_greeting_or_smalltalk(message: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", message.lower()).strip()
+    tokens = [token for token in normalized.split() if token]
+    if not tokens:
+        return True
+
+    if len(tokens) <= 3 and all(token in GREETING_TOKENS.union(COURTESY_TOKENS) for token in tokens):
+        return True
+
+    smalltalk_patterns = (
+        "how are you",
+        "are you there",
+        "can you help",
+        "need help",
+        "anyone there",
+        "test",
+    )
+    return any(pattern in normalized for pattern in smalltalk_patterns) and len(tokens) <= 5
+
+
+def _clarification_reply() -> str:
+    return (
+        "Hello. I can help you troubleshoot this professionally.\n"
+        "Please share these details so I can give accurate steps:\n"
+        "1. What is failing (app, device, printer, internet, email, etc.).\n"
+        "2. Exact error message (if visible).\n"
+        "3. Branch/location and how many users are affected.\n"
+        "4. When the issue started and what changed recently."
+    )
+
+
+def _low_confidence_reply(category_hint: str) -> str:
+    queue_hint = TECHNICIAN_MAPPING.get(category_hint, "Service Desk")
+    return (
+        "I need a bit more detail before I can give precise steps.\n"
+        "Please provide the exact symptom, error text, and affected system.\n"
+        f"Current best category hint: {category_hint.title()} (queue: {queue_hint}).\n"
+        "If business operations are blocked right now, proceed with manual fault reporting immediately."
+    )
 
 
 def _best_kb_article(message: str) -> Optional[dict]:
@@ -126,8 +169,8 @@ def _format_kb_reply(article: dict, category: str) -> str:
 
 def _generic_helpdesk_reply(category: str, recommended_technician: str) -> str:
     return (
-        f"I understand this looks like a {category.lower()} issue.\n"
-        "Please try:\n"
+        f"I understand this appears to be a {category.lower()} issue.\n"
+        "Please try the following:\n"
         "1. Restart the affected app/device.\n"
         "2. Check network/power connection and retry.\n"
         "3. Capture any error message or screenshot.\n"
@@ -229,7 +272,23 @@ def assign_technician(data: AssignRequest) -> Dict[str, Any]:
 def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     message = (data.message or "").strip()
     if not message:
-        return {"reply": "Please describe your IT issue so I can help.", "confidence": 0.0}
+        return {"reply": _clarification_reply(), "confidence": 0.0}
+
+    if _is_greeting_or_smalltalk(message):
+        return {
+            "reply": _clarification_reply(),
+            "category": None,
+            "recommended_technician": "Service Desk",
+            "confidence": 0.0,
+        }
+
+    if len(_tokenize(message)) < 2:
+        return {
+            "reply": _low_confidence_reply("SOFTWARE"),
+            "category": "SOFTWARE",
+            "recommended_technician": TECHNICIAN_MAPPING.get("SOFTWARE", "Service Desk"),
+            "confidence": 0.0,
+        }
 
     vector = vectorizer.transform([message])
     raw_category = category_model.predict(vector)[0]
@@ -246,6 +305,8 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
 
     if article is not None:
         reply = _format_kb_reply(article, article.get("category", category))
+    elif confidence < 0.5:
+        reply = _low_confidence_reply(category)
     else:
         reply = _generic_helpdesk_reply(category, recommended_technician)
 

@@ -260,6 +260,45 @@
     "escalation": "Escalate if free space remains below 10% after cleanup."
   },
   {
+    "id": "keyboard_mouse_unresponsive",
+    "category": "HARDWARE",
+    "title": "Keyboard or mouse not responding",
+    "keywords": ["keyboard", "mouse", "keys not working", "cursor frozen", "input not responding", "usb device not detected"],
+    "steps": [
+      "Reconnect keyboard/mouse and test another USB port.",
+      "Restart the device and check if input works before login.",
+      "In Device Manager, uninstall and re-detect keyboard/mouse drivers.",
+      "If wireless, replace batteries and re-pair the device."
+    ],
+    "escalation": "Escalate if issue persists with known good keyboard/mouse on the same workstation."
+  },
+  {
+    "id": "app_not_responding",
+    "category": "SOFTWARE",
+    "title": "Application freezing or not responding",
+    "keywords": ["application not responding", "app freeze", "app hangs", "stuck", "loading forever", "crash on open"],
+    "steps": [
+      "Close the application from Task Manager and reopen it.",
+      "Restart the workstation and retry the same action.",
+      "Clear app cache/temp files if the app supports it.",
+      "Capture screenshot/error details and test with another user profile if possible."
+    ],
+    "escalation": "Escalate with app name, version, and exact action that causes the freeze."
+  },
+  {
+    "id": "internet_connected_no_access",
+    "category": "NETWORK",
+    "title": "Connected to network but no internet access",
+    "keywords": ["connected no internet", "limited connectivity", "internet not working", "dns problem", "network connected but no access"],
+    "steps": [
+      "Disconnect/reconnect network adapter and confirm valid IP address.",
+      "Flush DNS cache and renew IP configuration.",
+      "Test gateway and DNS reachability with ping/nslookup.",
+      "Try ethernet if on Wi-Fi to isolate access-point issues."
+    ],
+    "escalation": "Escalate if multiple users at same branch are connected but unable to access internet services."
+  },
+  {
     "id": "dock_display",
     "category": "HARDWARE",
     "title": "Docking station or external monitor issue",

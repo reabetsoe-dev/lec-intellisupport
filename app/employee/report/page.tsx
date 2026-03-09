@@ -141,7 +141,6 @@ export default function EmployeeReportPage() {
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [triageSummary, setTriageSummary] = useState<AiTriage | null>(null)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
 
@@ -149,7 +148,6 @@ export default function EmployeeReportPage() {
     event.preventDefault()
     setError("")
     setMessage("")
-    setTriageSummary(null)
 
     const user = getStoredUserSession()
     if (!user) {
@@ -185,7 +183,6 @@ export default function EmployeeReportPage() {
         branch,
         department,
       })
-      setTriageSummary(triage)
 
       const fullDescription = `${description.trim()}\n\nBranch: ${branch.trim()}\nDepartment: ${department.trim()}`
       const ticket = await createTicket({
@@ -282,18 +279,6 @@ export default function EmployeeReportPage() {
                 required
               />
             </div>
-
-            {triageSummary ? (
-              <div className="rounded-lg border border-[#0072CE]/25 bg-[#F5FAFF] p-4 md:col-span-2">
-                <p className="text-sm font-semibold text-[#0B1F3A]">AI Auto-Triage</p>
-                <p className="mt-1 text-sm text-[#1E3A6D]">
-                  Category: <span className="font-semibold text-[#0B1F3A]">{triageSummary.category}</span> | Priority:{" "}
-                  <span className="font-semibold text-[#0B1F3A]">{triageSummary.priority}</span> | Assignment:{" "}
-                  <span className="font-semibold text-[#0B1F3A]">{triageSummary.assignment}</span>
-                </p>
-                <p className="mt-1 text-xs text-[#1E3A6D]">{triageSummary.reasoning}</p>
-              </div>
-            ) : null}
 
             {error ? <p className="md:col-span-2 text-sm text-[#D71920]">{error}</p> : null}
             {message ? <p className="md:col-span-2 text-sm text-[#007A3D]">{message}</p> : null}

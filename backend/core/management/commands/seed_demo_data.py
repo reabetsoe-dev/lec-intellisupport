@@ -10,7 +10,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         demo_users = [
             {
-                "name": "Lebo M.",
+                "name": "Employee1",
                 "email": "employee@lec.com",
                 "password": "Employee@123",
                 "role": User.ROLE_EMPLOYEE,

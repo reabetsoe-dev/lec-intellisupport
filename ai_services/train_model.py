@@ -28,7 +28,13 @@ if missing:
 data.columns = [c.strip().lower() for c in data.columns]
 
 # Normalize labels
-data["text"] = data["text"].astype(str).fillna("").str.strip()
+data["text"] = (
+    data["text"]
+    .astype(str)
+    .fillna("")
+    .str.replace(r"\s+", " ", regex=True)
+    .str.strip()
+)
 
 # Collapse any extra categories into the ONLY allowed 3.
 # If your dataset already has only these 3, it stays unchanged.
@@ -47,10 +53,12 @@ data["category"] = data["category"].astype(str).str.strip().str.lower().map(CATE
 
 # Drop rows with unknown/unmapped categories
 data = data.dropna(subset=["category"]).copy()
+data = data[data["text"].str.len() >= 8].copy()
 
 # (Optional) Keep only these 3 categories strictly
 allowed = {"HARDWARE", "SOFTWARE", "NETWORK"}
 data = data[data["category"].isin(allowed)].copy()
+data = data.drop_duplicates(subset=["text", "category", "severity", "service_type"]).copy()
 
 # Severity + service_type normalization (keep as-is but lower-case for consistency)
 data["severity"] = data["severity"].astype(str).str.strip().str.lower()
@@ -62,22 +70,28 @@ y_severity = data["severity"]
 y_service_type = data["service_type"]
 
 # Convert text to numbers
-vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=2)
+vectorizer = TfidfVectorizer(
+    ngram_range=(1, 2),
+    min_df=2,
+    max_df=0.95,
+    sublinear_tf=True,
+)
 X_vectors = vectorizer.fit_transform(X)
 
 # Train category model (3 classes only)
-category_model = LogisticRegression(max_iter=2000, class_weight="balanced")
+category_model = LogisticRegression(max_iter=3000, class_weight="balanced")
 category_model.fit(X_vectors, y_category)
 
 # Train severity model
-severity_model = LogisticRegression(max_iter=2000, class_weight="balanced")
+severity_model = LogisticRegression(max_iter=3000, class_weight="balanced")
 severity_model.fit(X_vectors, y_severity)
 
 # Train service type model
-service_type_model = LogisticRegression(max_iter=2000, class_weight="balanced")
+service_type_model = LogisticRegression(max_iter=3000, class_weight="balanced")
 service_type_model.fit(X_vectors, y_service_type)
 
 print("Models trained successfully!")
+print("Training rows:", len(data))
 print("Category classes:", list(category_model.classes_))
 
 # Save models and vectorizer

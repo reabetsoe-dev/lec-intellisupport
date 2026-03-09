@@ -1,0 +1,212 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "hello",
+        "hi",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "hey",
+        "hello there",
+        "hi there",
+        "morning support team",
+        "afternoon support",
+        "evening support",
+        "hello support",
+        "good day",
+        "greetings",
+        "support hello",
+        "can you help me",
+        "i need it help",
+        "is anyone available",
+        "i need assistance",
+        "hello lec support",
+        "hi lec intellisupport",
+        "good morning team",
+        "good afternoon team",
+        "good evening team",
+        "may i get support"
+      ],
+      "responses": [
+        "Hello. Welcome to LEC IntelliSupport. Please describe your IT issue and I will guide you through the next steps.",
+        "Good day and welcome to LEC IntelliSupport. I can assist with troubleshooting and support request guidance.",
+        "Hello. I am your IT service desk assistant. Share the issue details, and I will help you resolve it quickly.",
+        "Welcome to LEC IntelliSupport. If you are facing a system, printer, network, or email issue, I can assist immediately.",
+        "Good day. Please tell me what is failing, when it started, and any error message shown on screen.",
+        "Hello and thank you for contacting LEC IntelliSupport. I can provide troubleshooting steps before ticket escalation.",
+        "Hi. I am ready to assist with enterprise IT support. Let me know the device, system, or service affected.",
+        "Welcome. I can help diagnose common IT issues and guide you to submit a proper support request if needed.",
+        "Good day. Please provide a short issue summary and I will recommend the most relevant troubleshooting actions.",
+        "Hello. I can support you with incident guidance, troubleshooting, and manual ticket reporting."
+      ]
+    },
+    {
+      "tag": "it_fault_reporting_guidance",
+      "patterns": [
+        "my computer is not turning on",
+        "pc wont start",
+        "laptop not powering on",
+        "printer is not printing",
+        "printer shows offline",
+        "print queue stuck",
+        "computer is very slow",
+        "system performance is slow",
+        "internet is not working",
+        "wifi connected but no internet",
+        "email is not sending",
+        "outlook not receiving emails",
+        "keyboard is not working",
+        "mouse is not responding",
+        "application keeps crashing",
+        "software installation failed",
+        "cannot install software",
+        "i cannot login to the system",
+        "password reset not working",
+        "vpn not connecting",
+        "shared drive not accessible",
+        "remote desktop not connecting",
+        "scanner not working",
+        "monitor shows no signal",
+        "blue screen error on startup",
+        "teams audio not working",
+        "microphone not detected",
+        "browser page not loading",
+        "windows update failed",
+        "antivirus blocked my app",
+        "suspicious phishing email received",
+        "usb device not recognized",
+        "dock station not detecting monitor",
+        "network is intermittent",
+        "file server is unreachable",
+        "mfa code not working"
+      ],
+      "responses": [
+        "I can help you report this fault correctly. First, let us confirm the impact, affected service, branch, and department, then we can document the issue clearly.",
+        "Please share the exact error message, when the issue started, and whether one user or multiple users are affected. This helps with accurate triage.",
+        "Before escalation, I will provide troubleshooting guidance. If unresolved, I will direct you to submit a manual report with complete details.",
+        "For enterprise incident quality, include device name, application/service affected, branch location, and business impact in your report.",
+        "I recommend a quick diagnostic first, then formal ticket submission if the issue persists. This reduces resolution time and improves assignment accuracy.",
+        "Please confirm whether this affects critical operations. If yes, we should proceed with immediate manual reporting after first-level checks.",
+        "I can guide you step-by-step. Once we validate symptoms and failed attempts, submit the incident with title, description, branch, and department.",
+        "To support faster resolution, record what changed recently (updates, password changes, new hardware, or network changes).",
+        "If this is a recurring issue, mention previous occurrence dates and temporary workarounds used. That information is useful for root-cause analysis.",
+        "I can help you troubleshoot now and, if needed, guide you to create a complete support request for Admin Fault routing."
+      ]
+    },
+    {
+      "tag": "troubleshooting_suggestions",
+      "patterns": [
+        "what should i try first",
+        "can you suggest troubleshooting steps",
+        "how can i fix this issue quickly",
+        "give me first level support steps",
+        "help me troubleshoot before reporting",
+        "what checks can i perform now",
+        "please provide quick diagnostics",
+        "what can i do before creating a ticket",
+        "troubleshooting guide please",
+        "show me standard service desk checks"
+      ],
+      "responses": [
+        "Start with a controlled restart of the affected application or device, then retest the same action and capture any error shown.",
+        "Verify connectivity, power, and physical connections first. Many endpoint and network issues are resolved at this stage.",
+        "Check whether the issue affects one user or multiple users. Multi-user impact usually indicates a shared service incident.",
+        "Confirm credentials and account state, then sign out and sign in again. Authentication sync delays are common after password changes.",
+        "For printer or peripheral issues, clear pending queues, reconnect cables, and test with a known working port.",
+        "For slow performance, close background-heavy apps, check available storage, and retry core business applications.",
+        "For email issues, verify online mode, mailbox quota, and send/receive status before escalation.",
+        "For VPN or remote access issues, validate internet access first, reconnect VPN, and re-enter credentials carefully.",
+        "For software errors, capture screenshot, exact error text, and application version to improve troubleshooting accuracy.",
+        "If two troubleshooting attempts fail and work remains blocked, proceed with manual reporting and include impact details."
+      ]
+    },
+    {
+      "tag": "create_support_request",
+      "patterns": [
+        "how do i create a support request",
+        "help me submit a ticket",
+        "where can i report this issue",
+        "i want to raise an incident",
+        "how to report fault in the system",
+        "create ticket for me",
+        "i need to log a support call",
+        "show me the reporting form",
+        "how do i escalate this issue",
+        "what details are required for ticket",
+        "guide me to report manually",
+        "open report fault process"
+      ],
+      "responses": [
+        "Open Report Fault, then complete: Title, Description, Branch, and Department. Submit once all details are accurate.",
+        "Use a clear title and include exact symptoms, error message, affected service, and business impact in the description.",
+        "If troubleshooting has failed, proceed with manual reporting immediately and include steps already attempted.",
+        "For better triage, mention whether the issue affects only you or multiple employees at the same branch.",
+        "Include the incident start time and any recent system changes. This helps Admin Fault prioritize and assign correctly.",
+        "After submission, monitor progress under My Tickets. Keep the ticket updated if new evidence becomes available.",
+        "If operations are blocked, indicate urgency clearly in the description and submit without delay.",
+        "When reporting access or security incidents, include only relevant facts and avoid sharing sensitive passwords."
+      ]
+    },
+    {
+      "tag": "faq_it_support",
+      "patterns": [
+        "what are support working hours",
+        "how long does ticket resolution take",
+        "how can i check ticket status",
+        "where do i see my submitted tickets",
+        "can i update my ticket after submission",
+        "who handles my reported issue",
+        "how are incidents prioritized",
+        "what if issue is still unresolved",
+        "how do i report phishing email",
+        "what should i include in a good ticket",
+        "can i request software installation",
+        "how do i report internet outage",
+        "how do i report printer problem",
+        "can i attach screenshots in my report",
+        "when should i escalate an issue"
+      ],
+      "responses": [
+        "You can track all submitted incidents in My Tickets, including current status and handling progress.",
+        "Resolution time depends on impact and complexity. Critical business-impact incidents are prioritized first.",
+        "A high-quality ticket includes symptoms, exact error text, affected system, branch, department, and business impact.",
+        "Yes, you should update your ticket when you obtain new evidence such as screenshots or repeated error codes.",
+        "Incidents are routed to the appropriate admin queue and then assigned based on category and workload.",
+        "If unresolved after troubleshooting, escalate through manual reporting with clear urgency and impact details.",
+        "For phishing concerns, do not click links or attachments. Report immediately and include sender and subject details.",
+        "Software installation requests should include application name, business justification, and required timeline.",
+        "For outage incidents, state affected users/teams, branch location, and when the outage started.",
+        "If your issue blocks operations, submit the incident immediately and specify the affected business process."
+      ]
+    },
+    {
+      "tag": "professional_helpdesk_responses",
+      "patterns": [
+        "thanks",
+        "thank you",
+        "okay understood",
+        "that helped",
+        "issue still there",
+        "not solved",
+        "can you summarize",
+        "what next",
+        "please escalate",
+        "close this chat"
+      ],
+      "responses": [
+        "You are welcome. If the issue persists after these steps, please proceed with manual reporting and include all findings.",
+        "Thank you for the update. I will continue supporting you until we reach a clear next action.",
+        "Understood. Let us proceed with the next diagnostic check in a structured manner.",
+        "I am glad that helped. Please monitor for recurrence and report again if the issue returns.",
+        "Thank you for confirming it is not resolved. I recommend creating a manual support request now for formal assignment.",
+        "Acknowledged. Please provide the latest error message so I can refine the troubleshooting guidance.",
+        "Certainly. Current status: issue identified, initial checks attempted, escalation recommended if impact remains active.",
+        "Next step: submit the fault report with title, full description, branch, and department so the admin team can act promptly.",
+        "I understand this needs escalation. Please submit the incident now and include what was already tested.",
+        "Chat can be closed at any time. When you return, start with a fresh summary of the issue for faster assistance."
+      ]
+    }
+  ]
+}

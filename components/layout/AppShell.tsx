@@ -73,7 +73,9 @@ export function AppShell({ children }: AppShellProps) {
         <main className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto w-full max-w-[1400px]">{children}</div>
         </main>
-        {user.role === "employee" ? <ChatbotFaultAssistant /> : null}
+        {user.role === "employee" ? (
+          <ChatbotFaultAssistant key={`employee-chat-${user.id}`} accountName={user.name} accountId={user.id} />
+        ) : null}
       </div>
     </div>
   )
