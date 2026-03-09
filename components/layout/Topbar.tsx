@@ -83,8 +83,8 @@ const topbarConfig: Array<{
   {
     match: (pathname) => pathname.startsWith("/admin-consumables/inventory"),
     parent: "Admin Consumables",
-    current: "Inventory",
-    title: "Consumables Inventory",
+    current: "Assets",
+    title: "Assets Inventory",
   },
   {
     match: (pathname) => pathname === "/admin-consumables/dashboard",
@@ -95,8 +95,8 @@ const topbarConfig: Array<{
   {
     match: (pathname) => pathname === "/admin-consumables",
     parent: "Admin Consumables",
-    current: "Add Consumable",
-    title: "Asset Allocation",
+    current: "+ Asset",
+    title: "Add New Asset",
   },
   {
     match: (pathname) => pathname === "/dashboard",
@@ -121,8 +121,6 @@ export function Topbar({ user }: TopbarProps) {
 
   useEffect(() => {
     if (!supportsNotifications) {
-      setNotifications([])
-      setUnreadCount(0)
       return
     }
 

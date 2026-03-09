@@ -83,12 +83,37 @@ export type NotificationsResponse = {
 
 export type Consumable = {
   id: number
+  asset_tag?: string | null
   item_name: string
+  manufacturer?: string | null
   brand?: string | null
   model_number?: string | null
   serial_number?: string | null
   category?: string | null
+  subcategory?: string | null
+  processor?: string | null
+  ram?: string | null
+  storage_type?: string | null
+  storage_capacity?: string | null
+  graphics_card?: string | null
+  charger_included?: boolean | null
+  monitor_included?: boolean | null
+  keyboard_included?: boolean | null
+  mouse_included?: boolean | null
+  printer_type?: string | null
+  print_speed?: string | null
+  connectivity?: string | null
+  duplex_printing?: boolean | null
+  paper_capacity?: string | null
+  color_printing?: boolean | null
+  device_type?: string | null
+  operating_system?: string | null
+  battery_capacity?: string | null
+  imei_number?: string | null
   quantity: number
+  purchase_cost?: number | null
+  supplier?: string | null
+  warranty_expiry?: string | null
   department?: string | null
   condition?: string | null
   status?: string | null
@@ -116,12 +141,37 @@ export type ConsumableRequest = {
 }
 
 type AddConsumablePayload = {
+  asset_tag?: string
   item_name: string
+  manufacturer?: string
   brand?: string
   model_number?: string
   serial_number?: string
   category?: string
+  subcategory?: string
+  processor?: string
+  ram?: string
+  storage_type?: string
+  storage_capacity?: string
+  graphics_card?: string
+  charger_included?: boolean
+  monitor_included?: boolean
+  keyboard_included?: boolean
+  mouse_included?: boolean
+  printer_type?: string
+  print_speed?: string
+  connectivity?: string
+  duplex_printing?: boolean
+  paper_capacity?: string
+  color_printing?: boolean
+  device_type?: string
+  operating_system?: string
+  battery_capacity?: string
+  imei_number?: string
   quantity: number
+  purchase_cost?: number
+  supplier?: string
+  warranty_expiry?: string
   department?: string
   condition?: string
   status?: string

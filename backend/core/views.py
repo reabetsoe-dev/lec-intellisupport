@@ -1,6 +1,8 @@
 import secrets
 import os
 import json
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 from django.utils import timezone
@@ -22,6 +24,42 @@ from .models import (
     TicketMaterialRequest,
     User,
 )
+
+
+def _to_optional_bool(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "y"):
+        return True
+    if text in ("0", "false", "no", "n"):
+        return False
+    return None
+
+
+def _to_optional_date(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _to_optional_decimal(value):
+    if value in (None, ""):
+        return None
+    text = str(value).replace(",", "").strip()
+    if text.startswith("M"):
+        text = text[1:].strip()
+    try:
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _ticket_to_dict(ticket: Ticket) -> dict:
@@ -502,8 +540,40 @@ def ticket_status_view(request, ticket_id: int):
 def _consumable_to_dict(consumable: Consumable) -> dict:
     return {
         "id": consumable.id,
+        "asset_tag": consumable.asset_tag,
         "item_name": consumable.item_name,
+        "manufacturer": consumable.manufacturer,
+        "brand": consumable.brand,
+        "model_number": consumable.model_number,
+        "serial_number": consumable.serial_number,
+        "category": consumable.category,
+        "subcategory": consumable.subcategory,
+        "processor": consumable.processor,
+        "ram": consumable.ram,
+        "storage_type": consumable.storage_type,
+        "storage_capacity": consumable.storage_capacity,
+        "graphics_card": consumable.graphics_card,
+        "charger_included": consumable.charger_included,
+        "monitor_included": consumable.monitor_included,
+        "keyboard_included": consumable.keyboard_included,
+        "mouse_included": consumable.mouse_included,
+        "printer_type": consumable.printer_type,
+        "print_speed": consumable.print_speed,
+        "connectivity": consumable.connectivity,
+        "duplex_printing": consumable.duplex_printing,
+        "paper_capacity": consumable.paper_capacity,
+        "color_printing": consumable.color_printing,
+        "device_type": consumable.device_type,
+        "operating_system": consumable.operating_system,
+        "battery_capacity": consumable.battery_capacity,
+        "imei_number": consumable.imei_number,
         "quantity": consumable.quantity,
+        "purchase_cost": float(consumable.purchase_cost) if consumable.purchase_cost is not None else None,
+        "supplier": consumable.supplier,
+        "warranty_expiry": consumable.warranty_expiry.isoformat() if consumable.warranty_expiry else None,
+        "purchase_date": consumable.purchase_date.isoformat() if consumable.purchase_date else None,
+        "condition": consumable.condition,
+        "status": consumable.status,
         "department": consumable.department,
         "assigned_employee": consumable.assigned_employee,
         "created_at": consumable.created_at.isoformat(),
@@ -517,8 +587,40 @@ def consumables_collection_view(request):
         queryset = Consumable.objects.all().order_by("item_name")
         return Response([_consumable_to_dict(item) for item in queryset], status=status.HTTP_200_OK)
 
+    asset_tag = str(request.data.get("asset_tag", "")).strip()
     item_name = str(request.data.get("item_name", "")).strip()
+    manufacturer = str(request.data.get("manufacturer", "")).strip()
+    brand = str(request.data.get("brand", "")).strip()
+    model_number = str(request.data.get("model_number", "")).strip()
+    serial_number = str(request.data.get("serial_number", "")).strip()
+    category = str(request.data.get("category", "")).strip()
+    subcategory = str(request.data.get("subcategory", "")).strip()
+    processor = str(request.data.get("processor", "")).strip()
+    ram = str(request.data.get("ram", "")).strip()
+    storage_type = str(request.data.get("storage_type", "")).strip()
+    storage_capacity = str(request.data.get("storage_capacity", "")).strip()
+    graphics_card = str(request.data.get("graphics_card", "")).strip()
+    charger_included = _to_optional_bool(request.data.get("charger_included"))
+    monitor_included = _to_optional_bool(request.data.get("monitor_included"))
+    keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
+    mouse_included = _to_optional_bool(request.data.get("mouse_included"))
+    printer_type = str(request.data.get("printer_type", "")).strip()
+    print_speed = str(request.data.get("print_speed", "")).strip()
+    connectivity = str(request.data.get("connectivity", "")).strip()
+    duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
+    paper_capacity = str(request.data.get("paper_capacity", "")).strip()
+    color_printing = _to_optional_bool(request.data.get("color_printing"))
+    device_type = str(request.data.get("device_type", "")).strip()
+    operating_system = str(request.data.get("operating_system", "")).strip()
+    battery_capacity = str(request.data.get("battery_capacity", "")).strip()
+    imei_number = str(request.data.get("imei_number", "")).strip()
     quantity = request.data.get("quantity", 0)
+    purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
+    supplier = str(request.data.get("supplier", "")).strip()
+    warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
+    purchase_date = _to_optional_date(request.data.get("purchase_date"))
+    condition = str(request.data.get("condition", "")).strip()
+    status_value = str(request.data.get("status", "")).strip()
     department = str(request.data.get("department", "")).strip()
     assigned_employee = str(request.data.get("assigned_employee", "")).strip()
 
@@ -531,8 +633,40 @@ def consumables_collection_view(request):
         return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
 
     consumable = Consumable.objects.create(
+        asset_tag=asset_tag,
         item_name=item_name,
+        manufacturer=manufacturer,
+        brand=brand,
+        model_number=model_number,
+        serial_number=serial_number,
+        category=category,
+        subcategory=subcategory,
+        processor=processor,
+        ram=ram,
+        storage_type=storage_type,
+        storage_capacity=storage_capacity,
+        graphics_card=graphics_card,
+        charger_included=charger_included,
+        monitor_included=monitor_included,
+        keyboard_included=keyboard_included,
+        mouse_included=mouse_included,
+        printer_type=printer_type,
+        print_speed=print_speed,
+        connectivity=connectivity,
+        duplex_printing=duplex_printing,
+        paper_capacity=paper_capacity,
+        color_printing=color_printing,
+        device_type=device_type,
+        operating_system=operating_system,
+        battery_capacity=battery_capacity,
+        imei_number=imei_number,
         quantity=quantity_value,
+        purchase_cost=purchase_cost,
+        supplier=supplier,
+        warranty_expiry=warranty_expiry,
+        purchase_date=purchase_date,
+        condition=condition,
+        status=status_value,
         department=department,
         assigned_employee=assigned_employee,
     )
@@ -545,14 +679,110 @@ def consumable_detail_view(request, consumable_id: int):
     if not consumable:
         return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    if "asset_tag" in request.data:
+        consumable.asset_tag = str(request.data.get("asset_tag", "")).strip()
+
     if "item_name" in request.data:
         consumable.item_name = str(request.data.get("item_name", consumable.item_name)).strip() or consumable.item_name
+
+    if "manufacturer" in request.data:
+        consumable.manufacturer = str(request.data.get("manufacturer", "")).strip()
+
+    if "brand" in request.data:
+        consumable.brand = str(request.data.get("brand", "")).strip()
+
+    if "model_number" in request.data:
+        consumable.model_number = str(request.data.get("model_number", "")).strip()
+
+    if "serial_number" in request.data:
+        consumable.serial_number = str(request.data.get("serial_number", "")).strip()
+
+    if "category" in request.data:
+        consumable.category = str(request.data.get("category", "")).strip()
+
+    if "subcategory" in request.data:
+        consumable.subcategory = str(request.data.get("subcategory", "")).strip()
+
+    if "processor" in request.data:
+        consumable.processor = str(request.data.get("processor", "")).strip()
+
+    if "ram" in request.data:
+        consumable.ram = str(request.data.get("ram", "")).strip()
+
+    if "storage_type" in request.data:
+        consumable.storage_type = str(request.data.get("storage_type", "")).strip()
+
+    if "storage_capacity" in request.data:
+        consumable.storage_capacity = str(request.data.get("storage_capacity", "")).strip()
+
+    if "graphics_card" in request.data:
+        consumable.graphics_card = str(request.data.get("graphics_card", "")).strip()
+
+    if "charger_included" in request.data:
+        consumable.charger_included = _to_optional_bool(request.data.get("charger_included"))
+
+    if "monitor_included" in request.data:
+        consumable.monitor_included = _to_optional_bool(request.data.get("monitor_included"))
+
+    if "keyboard_included" in request.data:
+        consumable.keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
+
+    if "mouse_included" in request.data:
+        consumable.mouse_included = _to_optional_bool(request.data.get("mouse_included"))
+
+    if "printer_type" in request.data:
+        consumable.printer_type = str(request.data.get("printer_type", "")).strip()
+
+    if "print_speed" in request.data:
+        consumable.print_speed = str(request.data.get("print_speed", "")).strip()
+
+    if "connectivity" in request.data:
+        consumable.connectivity = str(request.data.get("connectivity", "")).strip()
+
+    if "duplex_printing" in request.data:
+        consumable.duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
+
+    if "paper_capacity" in request.data:
+        consumable.paper_capacity = str(request.data.get("paper_capacity", "")).strip()
+
+    if "color_printing" in request.data:
+        consumable.color_printing = _to_optional_bool(request.data.get("color_printing"))
+
+    if "device_type" in request.data:
+        consumable.device_type = str(request.data.get("device_type", "")).strip()
+
+    if "operating_system" in request.data:
+        consumable.operating_system = str(request.data.get("operating_system", "")).strip()
+
+    if "battery_capacity" in request.data:
+        consumable.battery_capacity = str(request.data.get("battery_capacity", "")).strip()
+
+    if "imei_number" in request.data:
+        consumable.imei_number = str(request.data.get("imei_number", "")).strip()
 
     if "quantity" in request.data:
         try:
             consumable.quantity = int(request.data.get("quantity"))
         except (TypeError, ValueError):
             return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if "purchase_cost" in request.data:
+        consumable.purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
+
+    if "supplier" in request.data:
+        consumable.supplier = str(request.data.get("supplier", "")).strip()
+
+    if "warranty_expiry" in request.data:
+        consumable.warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
+
+    if "purchase_date" in request.data:
+        consumable.purchase_date = _to_optional_date(request.data.get("purchase_date"))
+
+    if "condition" in request.data:
+        consumable.condition = str(request.data.get("condition", "")).strip()
+
+    if "status" in request.data:
+        consumable.status = str(request.data.get("status", "")).strip()
 
     if "department" in request.data:
         consumable.department = str(request.data.get("department", "")).strip()

@@ -55,8 +55,8 @@ const menuByRole: Record<UserRole, MenuSection> = {
     label: "Admin Consumables",
     items: [
       { href: "/admin-consumables/dashboard", label: "Dashboard", icon: Gauge },
-      { href: "/admin-consumables/inventory", label: "Inventory", icon: Boxes },
-      { href: "/admin-consumables", label: "Add Consumable", icon: PackagePlus },
+      { href: "/admin-consumables/inventory", label: "Assets", icon: Boxes },
+      { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
     ],
   },
 }

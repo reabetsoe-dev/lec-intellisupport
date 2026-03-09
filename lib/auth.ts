@@ -14,7 +14,7 @@ const dashboardByRole: Record<UserRole, string> = {
   employee: "/employee/dashboard",
   technician: "/technician/dashboard",
   admin_fault: "/admin-fault/dashboard",
-  admin_consumables: "/admin-consumables/dashboard",
+  admin_consumables: "/admin-consumables",
 }
 
 export function getDashboardPathByRole(role: UserRole): string {
