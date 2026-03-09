@@ -17,6 +17,7 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
 import re
+import random
 
 app = FastAPI(title="LEC IntelliSupport AI")
 app.add_middleware(
@@ -47,6 +48,9 @@ COURTESY_TOKENS = {"thanks", "thank", "please", "assist", "help"}
 KB_PATH = Path(__file__).resolve().parent / "data" / "helpdesk_kb.json"
 with KB_PATH.open("r", encoding="utf-8") as kb_file:
     HELPDESK_KB = json.load(kb_file)
+INTENTS_PATH = Path(__file__).resolve().parent / "data" / "intents.json"
+with INTENTS_PATH.open("r", encoding="utf-8") as intents_file:
+    INTENTS_DATA = json.load(intents_file).get("intents", [])
 
 # -------------------------------------------------------------------
 # Default technician mapping (fallback ONLY)
@@ -56,6 +60,18 @@ TECHNICIAN_MAPPING = {
     "SOFTWARE": "Thabo Mokoena",
     "NETWORK": "Lerato Ndlovu",
     "HARDWARE": "Kabelo Phiri",
+}
+INTENT_CATEGORY_MAP = {
+    "computer_not_turning_on": "HARDWARE",
+    "slow_computer": "SOFTWARE",
+    "printer_issue": "HARDWARE",
+    "internet_problem": "NETWORK",
+    "email_issue": "SOFTWARE",
+    "keyboard_issue": "HARDWARE",
+    "mouse_issue": "HARDWARE",
+    "software_installation": "SOFTWARE",
+    "password_reset": "SOFTWARE",
+    "create_ticket": "SOFTWARE",
 }
 
 class ClassifyRequest(BaseModel):
@@ -79,6 +95,43 @@ class ChatRequest(BaseModel):
 def _tokenize(text: str) -> set[str]:
     tokens = re.findall(r"[a-z0-9]+", text.lower())
     return {token for token in tokens if token not in STOPWORDS and len(token) > 2}
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
+
+
+def _match_intent(message: str) -> Optional[dict]:
+    normalized_message = _normalize_text(message)
+    if not normalized_message:
+        return None
+
+    message_tokens = set(normalized_message.split())
+    best_intent = None
+    best_score = 0.0
+
+    for intent in INTENTS_DATA:
+        for pattern in intent.get("patterns", []):
+            normalized_pattern = _normalize_text(str(pattern))
+            if not normalized_pattern:
+                continue
+
+            if normalized_pattern in normalized_message:
+                score = 2.0
+            else:
+                pattern_tokens = set(normalized_pattern.split())
+                if not pattern_tokens:
+                    continue
+                overlap = len(message_tokens.intersection(pattern_tokens))
+                score = overlap / max(len(pattern_tokens), 1)
+
+            if score > best_score:
+                best_score = score
+                best_intent = intent
+
+    if best_score < 0.6:
+        return None
+    return best_intent
 
 
 def _is_greeting_or_smalltalk(message: str) -> bool:
@@ -273,6 +326,20 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     message = (data.message or "").strip()
     if not message:
         return {"reply": _clarification_reply(), "confidence": 0.0}
+
+    intent = _match_intent(message)
+    if intent is not None:
+        responses = [str(item) for item in intent.get("responses", []) if str(item).strip()]
+        reply = random.choice(responses) if responses else _clarification_reply()
+        category = INTENT_CATEGORY_MAP.get(str(intent.get("tag", "")).strip(), None)
+        recommended_technician = TECHNICIAN_MAPPING.get(category, "Service Desk") if category else "Service Desk"
+        return {
+            "reply": reply,
+            "intent": intent.get("tag"),
+            "category": category,
+            "recommended_technician": recommended_technician,
+            "confidence": 1.0,
+        }
 
     if _is_greeting_or_smalltalk(message):
         return {

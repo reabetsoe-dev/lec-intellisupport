@@ -97,10 +97,23 @@ function getTechnicianDisplayStatus(ticket: Ticket): string {
   return normalized
 }
 
+function extractEscalationReason(commentText: string): string {
+  const separatorIndex = commentText.indexOf(":")
+  if (separatorIndex < 0) {
+    return ""
+  }
+  return commentText.slice(separatorIndex + 1).trim()
+}
+
 function formatEscalationPreviewText(commentText: string, escalatedBy?: string | null): string {
-  const normalized = commentText.trim().toLowerCase()
+  const trimmed = commentText.trim()
+  const normalized = trimmed.toLowerCase()
   if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
-    return escalatedBy ? `Escalated by ${escalatedBy}` : "Escalated"
+    const reason = extractEscalationReason(trimmed)
+    if (escalatedBy) {
+      return reason ? `Escalated by ${escalatedBy}: ${reason}` : `Escalated by ${escalatedBy}`
+    }
+    return reason ? `Escalated: ${reason}` : "Escalated"
   }
   return commentText
 }
@@ -197,10 +210,6 @@ export function TechnicianTicketTable() {
   }
 
   const handleStatusUpdate = async (ticket: Ticket, nextStatus: string) => {
-    if (!ticket.is_currently_assigned_to_me) {
-      setError("Only the current owner can update the ticket status.")
-      return
-    }
     if (getTechnicianDisplayStatus(ticket) === nextStatus) {
       return
     }
@@ -263,7 +272,6 @@ export function TechnicianTicketTable() {
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reported At</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Owner / Escalated To</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Escalation Comment</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Escalate</TableHead>
             </TableRow>
@@ -272,13 +280,13 @@ export function TechnicianTicketTable() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={10} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading assigned tickets...
                 </TableCell>
               </TableRow>
             ) : filteredTickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
                   No tickets found for this filter.
                 </TableCell>
               </TableRow>
@@ -323,40 +331,30 @@ export function TechnicianTicketTable() {
                         >
                           {displayStatus}
                         </Badge>
-                        {ticket.is_currently_assigned_to_me ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-slate-200"
-                                disabled={statusUpdatingTicketId === ticket.id}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-slate-200"
+                              disabled={statusUpdatingTicketId === ticket.id}
+                            >
+                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Change Status"}
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            {statusUpdateOptions.map((option) => (
+                              <DropdownMenuItem
+                                key={option.value}
+                                disabled={displayStatus === option.value}
+                                onClick={() => void handleStatusUpdate(ticket, option.value)}
                               >
-                                {statusUpdatingTicketId === ticket.id ? "Saving..." : "Change Status"}
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              {statusUpdateOptions.map((option) => (
-                                <DropdownMenuItem
-                                  key={option.value}
-                                  disabled={displayStatus === option.value}
-                                  onClick={() => void handleStatusUpdate(ticket, option.value)}
-                                >
-                                  {option.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-xs">
-                        <p className="font-medium text-slate-700">{ticket.current_owner || "Admin Fault Queue"}</p>
-                        <p className="text-slate-500">
-                          {ticket.is_currently_assigned_to_me ? "Assigned to you" : "Escalated away from your queue"}
-                        </p>
+                                {option.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                     <TableCell>

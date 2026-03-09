@@ -133,10 +133,20 @@ type TopbarProps = {
   user: AuthUser
 }
 
+function extractEscalationReason(commentText: string): string {
+  const separatorIndex = commentText.indexOf(":")
+  if (separatorIndex < 0) {
+    return ""
+  }
+  return commentText.slice(separatorIndex + 1).trim()
+}
+
 function formatTicketCommentText(commentText: string, authorName: string): string {
-  const normalized = commentText.trim().toLowerCase()
+  const trimmed = commentText.trim()
+  const normalized = trimmed.toLowerCase()
   if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
-    return `Escalated by ${authorName}`
+    const reason = extractEscalationReason(trimmed)
+    return reason ? `Escalated by ${authorName}: ${reason}` : `Escalated by ${authorName}`
   }
   return commentText
 }
