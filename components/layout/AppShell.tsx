@@ -40,8 +40,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [])
 
   useEffect(() => {
+    if (!isAuthPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
+      router.replace("/employee/profile")
+      return
+    }
+
     if (isAuthPage && user) {
-      const dashboardPath = getDashboardPathByRole(user.role)
+      const dashboardPath = user.role === "employee" && user.must_change_password ? "/employee/profile" : getDashboardPathByRole(user.role)
       if (pathname !== dashboardPath) {
         router.replace(dashboardPath)
       }

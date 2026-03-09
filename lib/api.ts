@@ -4,6 +4,7 @@ export type LoginResponse = {
   id: number
   name: string
   role: UserRole
+  must_change_password?: boolean
   token: string
 }
 
@@ -63,8 +64,42 @@ export type Technician = {
   user_id: number
   name: string
   email: string
+  branch: string
   skillset: string
   is_available: boolean
+}
+
+export type Employee = {
+  id: number
+  name: string
+  email: string
+  branch: string
+  role: UserRole
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type CountDatum = {
+  name: string
+  count: number
+}
+
+export type PerformanceMetrics = {
+  kpis: {
+    total_tickets: number
+    open_tickets: number
+    resolved_tickets: number
+    critical_tickets: number
+    unassigned_tickets: number
+    resolved_rate: number
+  }
+  by_status: CountDatum[]
+  by_priority: CountDatum[]
+  by_category: CountDatum[]
+  by_month: CountDatum[]
+  by_technician: CountDatum[]
+  generated_at: string
 }
 
 export type AppNotification = {
@@ -185,8 +220,21 @@ type RequestOptions = {
   token?: string
 }
 
-const BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "")
-const AI_BASE_URL = (process.env.NEXT_PUBLIC_AI_SERVICE_URL ?? "http://127.0.0.1:8001").replace(/\/$/, "")
+function resolveServiceBaseUrl(envUrl: string | undefined, fallbackPort: number): string {
+  if (envUrl && envUrl.trim()) {
+    return envUrl.replace(/\/$/, "")
+  }
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:"
+    return `${protocol}//${window.location.hostname}:${fallbackPort}`
+  }
+
+  return `http://127.0.0.1:${fallbackPort}`
+}
+
+const BACKEND_BASE_URL = resolveServiceBaseUrl(process.env.NEXT_PUBLIC_BACKEND_URL, 8000)
+const AI_BASE_URL = resolveServiceBaseUrl(process.env.NEXT_PUBLIC_AI_SERVICE_URL, 8001)
 
 function getStoredToken(): string | null {
   if (typeof window === "undefined") {
@@ -258,6 +306,17 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   })
 }
 
+export async function changeUserPassword(payload: {
+  user_id: number
+  current_password: string
+  new_password: string
+}): Promise<{ message: string }> {
+  return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/change-password", {
+    method: "PUT",
+    body: payload,
+  })
+}
+
 export async function createTicket(payload: CreateTicketPayload): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, "/api/tickets", {
     method: "POST",
@@ -295,6 +354,13 @@ export async function updateTicketPriority(ticketId: number, priority: string): 
   })
 }
 
+export async function updateTicketCategory(ticketId: number, category: string): Promise<Ticket> {
+  return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/category`, {
+    method: "PUT",
+    body: { category },
+  })
+}
+
 export async function updateTicketStatus(ticketId: number, status: string): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
@@ -328,6 +394,7 @@ export async function createTechnician(payload: {
   name: string
   email: string
   password: string
+  branch?: string
   skillset?: string
   is_available?: boolean
 }): Promise<Technician> {
@@ -335,6 +402,39 @@ export async function createTechnician(payload: {
     method: "POST",
     body: payload,
   })
+}
+
+export async function deleteTechnician(technicianId: number): Promise<void> {
+  await requestJson<void>(BACKEND_BASE_URL, `/api/technicians/${technicianId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  return requestJson<Employee[]>(BACKEND_BASE_URL, "/api/employees")
+}
+
+export async function createEmployee(payload: {
+  name: string
+  email: string
+  password: string
+  branch?: string
+  is_active?: boolean
+}): Promise<Employee> {
+  return requestJson<Employee>(BACKEND_BASE_URL, "/api/employees", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function deleteEmployee(employeeId: number): Promise<void> {
+  await requestJson<void>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function getPerformanceMetrics(): Promise<PerformanceMetrics> {
+  return requestJson<PerformanceMetrics>(BACKEND_BASE_URL, "/api/performance")
 }
 
 export async function getTicketMaterialRequests(ticketId: number): Promise<TicketMaterialRequest[]> {

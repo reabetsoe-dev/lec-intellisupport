@@ -5,6 +5,7 @@ export type AuthUser = {
   id: number
   name: string
   role: UserRole
+  must_change_password: boolean
   token: string
 }
 
@@ -74,6 +75,7 @@ export function parseStoredUserSession(raw: string | null): AuthUser | null {
       typeof parsed.id === "number" &&
       typeof parsed.name === "string" &&
       typeof parsed.role === "string" &&
+      typeof parsed.must_change_password === "boolean" &&
       typeof parsed.token === "string" &&
       validRoles.includes(parsed.role as UserRole)
     ) {
@@ -81,6 +83,7 @@ export function parseStoredUserSession(raw: string | null): AuthUser | null {
         id: parsed.id,
         name: parsed.name,
         role: parsed.role as UserRole,
+        must_change_password: parsed.must_change_password,
         token: parsed.token,
       }
     }
@@ -113,6 +116,7 @@ export async function simulateLogin(email: string, password: string): Promise<Au
     id: user.id,
     name: user.name,
     role: user.role,
+    must_change_password: Boolean(user.must_change_password),
     token: user.token,
   }
 }
