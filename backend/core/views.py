@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -17,6 +18,7 @@ from rest_framework.response import Response
 from .models import (
     Consumable,
     ConsumableRequest,
+    InventoryAssignment,
     Notification,
     Technician,
     Ticket,
@@ -123,8 +125,22 @@ def _technician_to_dict(technician: Technician) -> dict:
         "user_id": technician.user_id,
         "name": technician.user.name,
         "email": technician.user.email,
+        "branch": technician.user.branch,
         "skillset": technician.skillset,
         "is_available": technician.is_available,
+    }
+
+
+def _user_to_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "branch": user.branch,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
     }
 
 
@@ -167,6 +183,33 @@ def login_view(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["PUT"])
+def change_password_view(request):
+    user_id = request.data.get("user_id")
+    current_password = str(request.data.get("current_password", ""))
+    new_password = str(request.data.get("new_password", ""))
+
+    if not user_id or not current_password or not new_password:
+        return Response(
+            {"message": "user_id, current_password, and new_password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(id=user_id, is_active=True).first()
+    if not user:
+        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not check_password(current_password, user.password_hash):
+        return Response({"message": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if len(new_password) < 8:
+        return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.password_hash = make_password(new_password)
+    user.save(update_fields=["password_hash", "updated_at"])
+    return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "POST"])
@@ -429,6 +472,7 @@ def technicians_collection_view(request):
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
     password = str(request.data.get("password", "")).strip()
+    branch = str(request.data.get("branch", "")).strip()
     skillset = str(request.data.get("skillset", "")).strip()
     raw_is_available = request.data.get("is_available", True)
     if isinstance(raw_is_available, str):
@@ -450,6 +494,7 @@ def technicians_collection_view(request):
             user = User.objects.create(
                 name=name,
                 email=email,
+                branch=branch,
                 password_hash=make_password(password),
                 role=User.ROLE_TECHNICIAN,
                 is_active=True,
@@ -463,6 +508,80 @@ def technicians_collection_view(request):
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+def technician_detail_view(request, technician_id: int):
+    technician = Technician.objects.select_related("user").filter(id=technician_id).first()
+    if not technician:
+        return Response({"message": "Technician not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    user = technician.user
+    user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET", "POST"])
+def employees_collection_view(request):
+    if request.method == "GET":
+        employees = User.objects.filter(role=User.ROLE_EMPLOYEE).order_by("name")
+        return Response([_user_to_dict(item) for item in employees], status=status.HTTP_200_OK)
+
+    name = str(request.data.get("name", "")).strip()
+    email = str(request.data.get("email", "")).strip().lower()
+    password = str(request.data.get("password", "")).strip()
+    branch = str(request.data.get("branch", "")).strip()
+    raw_is_active = request.data.get("is_active", True)
+    if isinstance(raw_is_active, str):
+        is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
+    else:
+        is_active = bool(raw_is_active)
+
+    if not name or not email or not password:
+        return Response(
+            {"message": "name, email, and password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.create(
+            name=name,
+            email=email,
+            branch=branch,
+            password_hash=make_password(password),
+            role=User.ROLE_EMPLOYEE,
+            is_active=is_active,
+        )
+    except IntegrityError:
+        return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+def employee_detail_view(request, employee_id: int):
+    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
+    if not employee:
+        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        with transaction.atomic():
+            # Hard-delete dependent records so employee deletion is not blocked by PROTECT FKs.
+            TicketComment.objects.filter(author=employee).delete()
+            TicketMaterialRequest.objects.filter(requested_by=employee).delete()
+            InventoryAssignment.objects.filter(employee=employee).delete()
+            ConsumableRequest.objects.filter(employee=employee).delete()
+            Ticket.objects.filter(employee=employee).delete()
+            employee.delete()
+    except ProtectedError:
+        return Response(
+            {"message": "Cannot delete employee because additional protected records still exist."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["GET"])
@@ -523,6 +642,21 @@ def ticket_priority_view(request, ticket_id: int):
 
 
 @api_view(["PUT"])
+def ticket_category_view(request, ticket_id: int):
+    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    if not ticket:
+        return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    category = str(request.data.get("category", "")).strip()
+    if not category:
+        return Response({"message": "category is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    ticket.category = category
+    ticket.save(update_fields=["category", "updated_at"])
+    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+@api_view(["PUT"])
 def ticket_status_view(request, ticket_id: int):
     ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
     if not ticket:
@@ -535,6 +669,50 @@ def ticket_status_view(request, ticket_id: int):
     ticket.status = status_value
     ticket.save(update_fields=["status", "updated_at"])
     return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def performance_metrics_view(request):
+    tickets = list(Ticket.objects.select_related("technician__user").all())
+    total_tickets = len(tickets)
+    resolved_tickets = sum(1 for item in tickets if item.status == Ticket.STATUS_RESOLVED)
+    open_tickets = sum(1 for item in tickets if item.status != Ticket.STATUS_RESOLVED)
+    critical_tickets = sum(1 for item in tickets if item.priority == Ticket.PRIORITY_CRITICAL)
+    unassigned_tickets = sum(1 for item in tickets if item.technician_id is None)
+    resolved_rate = round((resolved_tickets / total_tickets) * 100, 2) if total_tickets else 0.0
+
+    by_status: dict[str, int] = {}
+    by_priority: dict[str, int] = {}
+    by_category: dict[str, int] = {}
+    by_month: dict[str, int] = {}
+    by_technician: dict[str, int] = {}
+
+    for item in tickets:
+        by_status[item.status] = by_status.get(item.status, 0) + 1
+        by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
+        by_category[item.category] = by_category.get(item.category, 0) + 1
+        month_key = item.created_at.strftime("%Y-%m")
+        by_month[month_key] = by_month.get(month_key, 0) + 1
+        technician_label = item.technician.user.name if item.technician_id else "Unassigned"
+        by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+    payload = {
+        "kpis": {
+            "total_tickets": total_tickets,
+            "open_tickets": open_tickets,
+            "resolved_tickets": resolved_tickets,
+            "critical_tickets": critical_tickets,
+            "unassigned_tickets": unassigned_tickets,
+            "resolved_rate": resolved_rate,
+        },
+        "by_status": [{"name": key, "count": value} for key, value in sorted(by_status.items())],
+        "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
+        "by_category": [{"name": key, "count": value} for key, value in sorted(by_category.items())],
+        "by_month": [{"name": key, "count": value} for key, value in sorted(by_month.items())],
+        "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
+        "generated_at": timezone.now().isoformat(),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 def _consumable_to_dict(consumable: Consumable) -> dict:

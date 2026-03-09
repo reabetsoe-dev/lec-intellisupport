@@ -2,7 +2,7 @@
 
 import { Bell, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,12 @@ const topbarConfig: Array<{
   current: string
   title: string
 }> = [
+  {
+    match: (pathname) => pathname.startsWith("/employee/profile"),
+    parent: "Employee",
+    current: "Profile",
+    title: "Employee Profile",
+  },
   {
     match: (pathname) => pathname.startsWith("/employee/report"),
     parent: "Employee",
@@ -112,6 +118,7 @@ type TopbarProps = {
 
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const active = topbarConfig.find((item) => item.match(pathname))
@@ -172,6 +179,15 @@ export function Topbar({ user }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        {user.role === "employee" ? (
+          <Button
+            variant="outline"
+            className="border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10"
+            onClick={() => router.push("/employee/profile")}
+          >
+            {user.name}
+          </Button>
+        ) : null}
         {supportsNotifications ? (
           <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
