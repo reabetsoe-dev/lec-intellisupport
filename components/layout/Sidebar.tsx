@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useRouter } from "next/navigation"
 import {
+  BarChart3,
   Boxes,
   ClipboardList,
   Gauge,
@@ -13,6 +14,7 @@ import {
   Package,
   PackagePlus,
   Ticket,
+  UserRound,
   type LucideIcon,
   Wrench,
 } from "lucide-react"
@@ -31,6 +33,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     label: "Employee",
     items: [
       { href: "/employee/dashboard", label: "Dashboard", icon: Gauge },
+      { href: "/employee/profile", label: "Profile", icon: UserRound },
       { href: "/employee/report", label: "Report Fault", icon: MessageCircleQuestion },
       { href: "/employee/tickets", label: "My Tickets", icon: ClipboardList },
       { href: "/employee/consumables", label: "Consumable Request", icon: PackagePlus },
@@ -49,14 +52,15 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/admin-fault/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/admin-fault/tickets", label: "All Tickets", icon: ClipboardList },
+      { href: "/admin-fault/performance", label: "Performance", icon: BarChart3 },
     ],
   },
   admin_consumables: {
     label: "Admin Consumables",
     items: [
       { href: "/admin-consumables/dashboard", label: "Dashboard", icon: Gauge },
-      { href: "/admin-consumables/inventory", label: "Inventory", icon: Boxes },
-      { href: "/admin-consumables", label: "Add Consumable", icon: PackagePlus },
+      { href: "/admin-consumables/inventory", label: "Assets", icon: Boxes },
+      { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
     ],
   },
 }

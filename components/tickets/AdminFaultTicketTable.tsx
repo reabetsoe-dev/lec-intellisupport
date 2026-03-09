@@ -39,6 +39,7 @@ import {
   getTechnicians,
   type Technician,
   type Ticket,
+  updateTicketCategory,
   updateTicketPriority,
   updateTicketStatus,
 } from "@/lib/api"
@@ -57,6 +58,7 @@ type TicketRecord = {
 
 const statusOptions = ["Open", "In Progress", "Pending Vendor", "Resolved"]
 const priorityOptions = ["Low", "Medium", "High", "Critical"]
+const categoryOptions = ["HARDWARE", "SOFTWARE", "NETWORK"]
 
 const statusBadgeStyles: Record<string, string> = {
   Open: "bg-slate-100 text-slate-700 border border-slate-200",
@@ -148,6 +150,16 @@ export function AdminFaultTicketTable() {
       await refreshRow(ticketId)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to update priority.")
+    }
+  }
+
+  const handleCategory = async (ticketId: number, category: string) => {
+    try {
+      setError("")
+      await updateTicketCategory(ticketId, category)
+      await refreshRow(ticketId)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to update category.")
     }
   }
 
@@ -308,7 +320,23 @@ export function AdminFaultTicketTable() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="sm" variant="outline" className="border-slate-200">
-                            Priority
+                            Category
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          {categoryOptions.map((option) => (
+                            <DropdownMenuItem key={option} onClick={() => void handleCategory(ticket.id, option)}>
+                              {option}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" className="border-slate-200">
+                            Change Priority
                             <ChevronDown className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

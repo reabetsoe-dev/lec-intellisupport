@@ -23,37 +23,48 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const isAuthPage = pathname.startsWith("/login")
+  const [isHydrated, setIsHydrated] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
     const refreshSession = () => setUser(getStoredUserSession())
-    const timeoutId = window.setTimeout(refreshSession, 0)
+    // Keep local state in sync if session changes in this or another tab.
+    refreshSession()
+    setIsHydrated(true)
     window.addEventListener("storage", refreshSession)
     window.addEventListener("lec-auth-session-change", refreshSession)
     return () => {
-      window.clearTimeout(timeoutId)
       window.removeEventListener("storage", refreshSession)
       window.removeEventListener("lec-auth-session-change", refreshSession)
     }
   }, [])
 
   useEffect(() => {
+    if (!isAuthPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
+      router.replace("/employee/profile")
+      return
+    }
+
     if (isAuthPage && user) {
-      router.replace(getDashboardPathByRole(user.role))
+      const dashboardPath = user.role === "employee" && user.must_change_password ? "/employee/profile" : getDashboardPathByRole(user.role)
+      if (pathname !== dashboardPath) {
+        router.replace(dashboardPath)
+      }
       return
     }
 
     if (!isAuthPage && !user) {
-      router.replace("/login")
+      if (pathname !== "/login") {
+        router.replace("/login")
+      }
       return
     }
 
     if (!isAuthPage && user && !isRolePathAllowed(pathname, user.role)) {
-      router.replace(getDashboardPathByRole(user.role))
+      const dashboardPath = getDashboardPathByRole(user.role)
+      if (pathname !== dashboardPath) {
+        router.replace(dashboardPath)
+      }
     }
   }, [isAuthPage, pathname, router, user])
 
@@ -61,16 +72,20 @@ export function AppShell({ children }: AppShellProps) {
     return <div className="min-h-screen bg-slate-950">{children}</div>
   }
 
+  if (!isHydrated) {
+    return null
+  }
+
   if (!user) {
     return null
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar user={user} />
-      <div className="lec-shell-bg flex min-h-screen flex-1 flex-col">
+      <div className="lec-shell-bg flex min-h-0 flex-1 flex-col">
         <Topbar user={user} />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto w-full max-w-[1400px]">{children}</div>
         </main>
         {user.role === "employee" ? (

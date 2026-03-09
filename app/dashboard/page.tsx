@@ -56,7 +56,7 @@ export default function DashboardPage() {
           <CardContent className="px-6 pb-6">
             <p className="text-sm text-slate-500">Manage stock levels and assignment of IT consumables.</p>
             <Link
-              href="/admin-consumables/inventory"
+              href="/admin-consumables"
               className="mt-4 inline-flex text-sm font-medium text-slate-900 hover:underline"
             >
               Open dashboard

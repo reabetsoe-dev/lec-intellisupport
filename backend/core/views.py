@@ -1,12 +1,15 @@
 import secrets
 import os
 import json
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 from django.utils import timezone
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -15,6 +18,7 @@ from rest_framework.response import Response
 from .models import (
     Consumable,
     ConsumableRequest,
+    InventoryAssignment,
     Notification,
     Technician,
     Ticket,
@@ -22,6 +26,42 @@ from .models import (
     TicketMaterialRequest,
     User,
 )
+
+
+def _to_optional_bool(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "y"):
+        return True
+    if text in ("0", "false", "no", "n"):
+        return False
+    return None
+
+
+def _to_optional_date(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _to_optional_decimal(value):
+    if value in (None, ""):
+        return None
+    text = str(value).replace(",", "").strip()
+    if text.startswith("M"):
+        text = text[1:].strip()
+    try:
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _ticket_to_dict(ticket: Ticket) -> dict:
@@ -85,8 +125,23 @@ def _technician_to_dict(technician: Technician) -> dict:
         "user_id": technician.user_id,
         "name": technician.user.name,
         "email": technician.user.email,
+        "branch": technician.user.branch,
         "skillset": technician.skillset,
         "is_available": technician.is_available,
+    }
+
+
+def _user_to_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "branch": user.branch,
+        "role": user.role,
+        "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
     }
 
 
@@ -125,10 +180,39 @@ def login_view(request):
             "id": user.id,
             "name": user.name,
             "role": user.role,
+            "must_change_password": user.must_change_password,
             "token": secrets.token_urlsafe(32),
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["PUT"])
+def change_password_view(request):
+    user_id = request.data.get("user_id")
+    current_password = str(request.data.get("current_password", ""))
+    new_password = str(request.data.get("new_password", ""))
+
+    if not user_id or not current_password or not new_password:
+        return Response(
+            {"message": "user_id, current_password, and new_password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(id=user_id, is_active=True).first()
+    if not user:
+        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not check_password(current_password, user.password_hash):
+        return Response({"message": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if len(new_password) < 8:
+        return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.password_hash = make_password(new_password)
+    user.must_change_password = False
+    user.save(update_fields=["password_hash", "must_change_password", "updated_at"])
+    return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "POST"])
@@ -391,6 +475,7 @@ def technicians_collection_view(request):
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
     password = str(request.data.get("password", "")).strip()
+    branch = str(request.data.get("branch", "")).strip()
     skillset = str(request.data.get("skillset", "")).strip()
     raw_is_available = request.data.get("is_available", True)
     if isinstance(raw_is_available, str):
@@ -412,6 +497,7 @@ def technicians_collection_view(request):
             user = User.objects.create(
                 name=name,
                 email=email,
+                branch=branch,
                 password_hash=make_password(password),
                 role=User.ROLE_TECHNICIAN,
                 is_active=True,
@@ -425,6 +511,81 @@ def technicians_collection_view(request):
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+def technician_detail_view(request, technician_id: int):
+    technician = Technician.objects.select_related("user").filter(id=technician_id).first()
+    if not technician:
+        return Response({"message": "Technician not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    user = technician.user
+    user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET", "POST"])
+def employees_collection_view(request):
+    if request.method == "GET":
+        employees = User.objects.filter(role=User.ROLE_EMPLOYEE).order_by("name")
+        return Response([_user_to_dict(item) for item in employees], status=status.HTTP_200_OK)
+
+    name = str(request.data.get("name", "")).strip()
+    email = str(request.data.get("email", "")).strip().lower()
+    password = str(request.data.get("password", "")).strip()
+    branch = str(request.data.get("branch", "")).strip()
+    raw_is_active = request.data.get("is_active", True)
+    if isinstance(raw_is_active, str):
+        is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
+    else:
+        is_active = bool(raw_is_active)
+
+    if not name or not email or not password:
+        return Response(
+            {"message": "name, email, and password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.create(
+            name=name,
+            email=email,
+            branch=branch,
+            password_hash=make_password(password),
+            must_change_password=True,
+            role=User.ROLE_EMPLOYEE,
+            is_active=is_active,
+        )
+    except IntegrityError:
+        return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+def employee_detail_view(request, employee_id: int):
+    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
+    if not employee:
+        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        with transaction.atomic():
+            # Hard-delete dependent records so employee deletion is not blocked by PROTECT FKs.
+            TicketComment.objects.filter(author=employee).delete()
+            TicketMaterialRequest.objects.filter(requested_by=employee).delete()
+            InventoryAssignment.objects.filter(employee=employee).delete()
+            ConsumableRequest.objects.filter(employee=employee).delete()
+            Ticket.objects.filter(employee=employee).delete()
+            employee.delete()
+    except ProtectedError:
+        return Response(
+            {"message": "Cannot delete employee because additional protected records still exist."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["GET"])
@@ -485,6 +646,21 @@ def ticket_priority_view(request, ticket_id: int):
 
 
 @api_view(["PUT"])
+def ticket_category_view(request, ticket_id: int):
+    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    if not ticket:
+        return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    category = str(request.data.get("category", "")).strip()
+    if not category:
+        return Response({"message": "category is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    ticket.category = category
+    ticket.save(update_fields=["category", "updated_at"])
+    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+@api_view(["PUT"])
 def ticket_status_view(request, ticket_id: int):
     ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
     if not ticket:
@@ -499,11 +675,87 @@ def ticket_status_view(request, ticket_id: int):
     return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
 
+@api_view(["GET"])
+def performance_metrics_view(request):
+    tickets = list(Ticket.objects.select_related("technician__user").all())
+    total_tickets = len(tickets)
+    resolved_tickets = sum(1 for item in tickets if item.status == Ticket.STATUS_RESOLVED)
+    open_tickets = sum(1 for item in tickets if item.status != Ticket.STATUS_RESOLVED)
+    critical_tickets = sum(1 for item in tickets if item.priority == Ticket.PRIORITY_CRITICAL)
+    unassigned_tickets = sum(1 for item in tickets if item.technician_id is None)
+    resolved_rate = round((resolved_tickets / total_tickets) * 100, 2) if total_tickets else 0.0
+
+    by_status: dict[str, int] = {}
+    by_priority: dict[str, int] = {}
+    by_category: dict[str, int] = {}
+    by_month: dict[str, int] = {}
+    by_technician: dict[str, int] = {}
+
+    for item in tickets:
+        by_status[item.status] = by_status.get(item.status, 0) + 1
+        by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
+        by_category[item.category] = by_category.get(item.category, 0) + 1
+        month_key = item.created_at.strftime("%Y-%m")
+        by_month[month_key] = by_month.get(month_key, 0) + 1
+        technician_label = item.technician.user.name if item.technician_id else "Unassigned"
+        by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+    payload = {
+        "kpis": {
+            "total_tickets": total_tickets,
+            "open_tickets": open_tickets,
+            "resolved_tickets": resolved_tickets,
+            "critical_tickets": critical_tickets,
+            "unassigned_tickets": unassigned_tickets,
+            "resolved_rate": resolved_rate,
+        },
+        "by_status": [{"name": key, "count": value} for key, value in sorted(by_status.items())],
+        "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
+        "by_category": [{"name": key, "count": value} for key, value in sorted(by_category.items())],
+        "by_month": [{"name": key, "count": value} for key, value in sorted(by_month.items())],
+        "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
+        "generated_at": timezone.now().isoformat(),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
+
+
 def _consumable_to_dict(consumable: Consumable) -> dict:
     return {
         "id": consumable.id,
+        "asset_tag": consumable.asset_tag,
         "item_name": consumable.item_name,
+        "manufacturer": consumable.manufacturer,
+        "brand": consumable.brand,
+        "model_number": consumable.model_number,
+        "serial_number": consumable.serial_number,
+        "category": consumable.category,
+        "subcategory": consumable.subcategory,
+        "processor": consumable.processor,
+        "ram": consumable.ram,
+        "storage_type": consumable.storage_type,
+        "storage_capacity": consumable.storage_capacity,
+        "graphics_card": consumable.graphics_card,
+        "charger_included": consumable.charger_included,
+        "monitor_included": consumable.monitor_included,
+        "keyboard_included": consumable.keyboard_included,
+        "mouse_included": consumable.mouse_included,
+        "printer_type": consumable.printer_type,
+        "print_speed": consumable.print_speed,
+        "connectivity": consumable.connectivity,
+        "duplex_printing": consumable.duplex_printing,
+        "paper_capacity": consumable.paper_capacity,
+        "color_printing": consumable.color_printing,
+        "device_type": consumable.device_type,
+        "operating_system": consumable.operating_system,
+        "battery_capacity": consumable.battery_capacity,
+        "imei_number": consumable.imei_number,
         "quantity": consumable.quantity,
+        "purchase_cost": float(consumable.purchase_cost) if consumable.purchase_cost is not None else None,
+        "supplier": consumable.supplier,
+        "warranty_expiry": consumable.warranty_expiry.isoformat() if consumable.warranty_expiry else None,
+        "purchase_date": consumable.purchase_date.isoformat() if consumable.purchase_date else None,
+        "condition": consumable.condition,
+        "status": consumable.status,
         "department": consumable.department,
         "assigned_employee": consumable.assigned_employee,
         "created_at": consumable.created_at.isoformat(),
@@ -517,8 +769,40 @@ def consumables_collection_view(request):
         queryset = Consumable.objects.all().order_by("item_name")
         return Response([_consumable_to_dict(item) for item in queryset], status=status.HTTP_200_OK)
 
+    asset_tag = str(request.data.get("asset_tag", "")).strip()
     item_name = str(request.data.get("item_name", "")).strip()
+    manufacturer = str(request.data.get("manufacturer", "")).strip()
+    brand = str(request.data.get("brand", "")).strip()
+    model_number = str(request.data.get("model_number", "")).strip()
+    serial_number = str(request.data.get("serial_number", "")).strip()
+    category = str(request.data.get("category", "")).strip()
+    subcategory = str(request.data.get("subcategory", "")).strip()
+    processor = str(request.data.get("processor", "")).strip()
+    ram = str(request.data.get("ram", "")).strip()
+    storage_type = str(request.data.get("storage_type", "")).strip()
+    storage_capacity = str(request.data.get("storage_capacity", "")).strip()
+    graphics_card = str(request.data.get("graphics_card", "")).strip()
+    charger_included = _to_optional_bool(request.data.get("charger_included"))
+    monitor_included = _to_optional_bool(request.data.get("monitor_included"))
+    keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
+    mouse_included = _to_optional_bool(request.data.get("mouse_included"))
+    printer_type = str(request.data.get("printer_type", "")).strip()
+    print_speed = str(request.data.get("print_speed", "")).strip()
+    connectivity = str(request.data.get("connectivity", "")).strip()
+    duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
+    paper_capacity = str(request.data.get("paper_capacity", "")).strip()
+    color_printing = _to_optional_bool(request.data.get("color_printing"))
+    device_type = str(request.data.get("device_type", "")).strip()
+    operating_system = str(request.data.get("operating_system", "")).strip()
+    battery_capacity = str(request.data.get("battery_capacity", "")).strip()
+    imei_number = str(request.data.get("imei_number", "")).strip()
     quantity = request.data.get("quantity", 0)
+    purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
+    supplier = str(request.data.get("supplier", "")).strip()
+    warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
+    purchase_date = _to_optional_date(request.data.get("purchase_date"))
+    condition = str(request.data.get("condition", "")).strip()
+    status_value = str(request.data.get("status", "")).strip()
     department = str(request.data.get("department", "")).strip()
     assigned_employee = str(request.data.get("assigned_employee", "")).strip()
 
@@ -531,8 +815,40 @@ def consumables_collection_view(request):
         return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
 
     consumable = Consumable.objects.create(
+        asset_tag=asset_tag,
         item_name=item_name,
+        manufacturer=manufacturer,
+        brand=brand,
+        model_number=model_number,
+        serial_number=serial_number,
+        category=category,
+        subcategory=subcategory,
+        processor=processor,
+        ram=ram,
+        storage_type=storage_type,
+        storage_capacity=storage_capacity,
+        graphics_card=graphics_card,
+        charger_included=charger_included,
+        monitor_included=monitor_included,
+        keyboard_included=keyboard_included,
+        mouse_included=mouse_included,
+        printer_type=printer_type,
+        print_speed=print_speed,
+        connectivity=connectivity,
+        duplex_printing=duplex_printing,
+        paper_capacity=paper_capacity,
+        color_printing=color_printing,
+        device_type=device_type,
+        operating_system=operating_system,
+        battery_capacity=battery_capacity,
+        imei_number=imei_number,
         quantity=quantity_value,
+        purchase_cost=purchase_cost,
+        supplier=supplier,
+        warranty_expiry=warranty_expiry,
+        purchase_date=purchase_date,
+        condition=condition,
+        status=status_value,
         department=department,
         assigned_employee=assigned_employee,
     )
@@ -545,14 +861,110 @@ def consumable_detail_view(request, consumable_id: int):
     if not consumable:
         return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    if "asset_tag" in request.data:
+        consumable.asset_tag = str(request.data.get("asset_tag", "")).strip()
+
     if "item_name" in request.data:
         consumable.item_name = str(request.data.get("item_name", consumable.item_name)).strip() or consumable.item_name
+
+    if "manufacturer" in request.data:
+        consumable.manufacturer = str(request.data.get("manufacturer", "")).strip()
+
+    if "brand" in request.data:
+        consumable.brand = str(request.data.get("brand", "")).strip()
+
+    if "model_number" in request.data:
+        consumable.model_number = str(request.data.get("model_number", "")).strip()
+
+    if "serial_number" in request.data:
+        consumable.serial_number = str(request.data.get("serial_number", "")).strip()
+
+    if "category" in request.data:
+        consumable.category = str(request.data.get("category", "")).strip()
+
+    if "subcategory" in request.data:
+        consumable.subcategory = str(request.data.get("subcategory", "")).strip()
+
+    if "processor" in request.data:
+        consumable.processor = str(request.data.get("processor", "")).strip()
+
+    if "ram" in request.data:
+        consumable.ram = str(request.data.get("ram", "")).strip()
+
+    if "storage_type" in request.data:
+        consumable.storage_type = str(request.data.get("storage_type", "")).strip()
+
+    if "storage_capacity" in request.data:
+        consumable.storage_capacity = str(request.data.get("storage_capacity", "")).strip()
+
+    if "graphics_card" in request.data:
+        consumable.graphics_card = str(request.data.get("graphics_card", "")).strip()
+
+    if "charger_included" in request.data:
+        consumable.charger_included = _to_optional_bool(request.data.get("charger_included"))
+
+    if "monitor_included" in request.data:
+        consumable.monitor_included = _to_optional_bool(request.data.get("monitor_included"))
+
+    if "keyboard_included" in request.data:
+        consumable.keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
+
+    if "mouse_included" in request.data:
+        consumable.mouse_included = _to_optional_bool(request.data.get("mouse_included"))
+
+    if "printer_type" in request.data:
+        consumable.printer_type = str(request.data.get("printer_type", "")).strip()
+
+    if "print_speed" in request.data:
+        consumable.print_speed = str(request.data.get("print_speed", "")).strip()
+
+    if "connectivity" in request.data:
+        consumable.connectivity = str(request.data.get("connectivity", "")).strip()
+
+    if "duplex_printing" in request.data:
+        consumable.duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
+
+    if "paper_capacity" in request.data:
+        consumable.paper_capacity = str(request.data.get("paper_capacity", "")).strip()
+
+    if "color_printing" in request.data:
+        consumable.color_printing = _to_optional_bool(request.data.get("color_printing"))
+
+    if "device_type" in request.data:
+        consumable.device_type = str(request.data.get("device_type", "")).strip()
+
+    if "operating_system" in request.data:
+        consumable.operating_system = str(request.data.get("operating_system", "")).strip()
+
+    if "battery_capacity" in request.data:
+        consumable.battery_capacity = str(request.data.get("battery_capacity", "")).strip()
+
+    if "imei_number" in request.data:
+        consumable.imei_number = str(request.data.get("imei_number", "")).strip()
 
     if "quantity" in request.data:
         try:
             consumable.quantity = int(request.data.get("quantity"))
         except (TypeError, ValueError):
             return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if "purchase_cost" in request.data:
+        consumable.purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
+
+    if "supplier" in request.data:
+        consumable.supplier = str(request.data.get("supplier", "")).strip()
+
+    if "warranty_expiry" in request.data:
+        consumable.warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
+
+    if "purchase_date" in request.data:
+        consumable.purchase_date = _to_optional_date(request.data.get("purchase_date"))
+
+    if "condition" in request.data:
+        consumable.condition = str(request.data.get("condition", "")).strip()
+
+    if "status" in request.data:
+        consumable.status = str(request.data.get("status", "")).strip()
 
     if "department" in request.data:
         consumable.department = str(request.data.get("department", "")).strip()

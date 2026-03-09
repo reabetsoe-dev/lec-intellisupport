@@ -35,24 +35,13 @@ export function InventoryTable() {
     void loadItems()
   }, [])
 
-  const getStatus = (item: Consumable): string => {
-    const explicitStatus = item.status ?? item.condition
-    if (explicitStatus) {
-      return explicitStatus
-    }
-    return item.quantity > 0 ? "In Stock" : "Out of Stock"
-  }
-
-  const getStatusClassName = (status: string): string => {
-    const normalizedStatus = status.toLowerCase()
-    if (normalizedStatus === "new" || normalizedStatus === "in stock") {
+  const getConditionClassName = (condition: string): string => {
+    const normalized = condition.toLowerCase()
+    if (normalized.includes("new")) {
       return "border-emerald-200 bg-emerald-50 text-emerald-700"
     }
-    if (normalizedStatus === "used") {
+    if (normalized.includes("refurb")) {
       return "border-amber-200 bg-amber-50 text-amber-700"
-    }
-    if (normalizedStatus === "damaged" || normalizedStatus === "out of stock") {
-      return "border-rose-200 bg-rose-50 text-rose-700"
     }
     return "border-slate-200 bg-slate-50 text-slate-700"
   }
@@ -60,46 +49,54 @@ export function InventoryTable() {
   return (
     <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
       <CardHeader className="border-b border-slate-100 px-6 py-5">
-        <CardTitle className="text-base font-semibold text-slate-900">Consumables Inventory</CardTitle>
+        <CardTitle className="text-base font-semibold text-slate-900">Assets Inventory</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Item Name</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Quantity</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
+              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Asset Tag</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Category</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand / Model</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Condition</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cost</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-rose-600">
                   {error}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="px-6 py-6 text-center text-sm text-slate-500">
-                  No consumables found.
+                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
+                  No assets found.
                 </TableCell>
               </TableRow>
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="px-6 font-medium text-slate-800">{item.item_name}</TableCell>
-                  <TableCell className="text-slate-700">{item.quantity}</TableCell>
+                  <TableCell className="px-6 font-medium text-slate-800">{item.asset_tag || "N/A"}</TableCell>
+                  <TableCell className="text-slate-700">{item.category || "N/A"}</TableCell>
+                  <TableCell className="text-slate-700">{item.subcategory || item.device_type || item.printer_type || "N/A"}</TableCell>
+                  <TableCell className="text-slate-700">{item.brand || "N/A"} {item.model_number || ""}</TableCell>
+                  <TableCell className="text-slate-700">{item.serial_number || "N/A"}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={getStatusClassName(getStatus(item))}>
-                      {getStatus(item)}
+                    <Badge variant="outline" className={getConditionClassName(item.condition || "N/A")}>
+                      {item.condition || "N/A"}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-slate-700">{item.purchase_cost !== undefined && item.purchase_cost !== null ? `M ${item.purchase_cost}` : "N/A"}</TableCell>
                 </TableRow>
               ))
             )}
