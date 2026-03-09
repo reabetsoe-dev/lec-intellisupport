@@ -45,6 +45,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/technician/dashboard", label: "Dashboard", icon: Wrench },
       { href: "/technician/tickets", label: "Assigned Tickets", icon: Ticket },
+      { href: "/technician/hardware-request", label: "Office Asset Request", icon: PackagePlus },
     ],
   },
   admin_fault: {

@@ -56,15 +56,14 @@ type TicketRecord = {
   technician_id: number | null
 }
 
-const statusOptions = ["Open", "In Progress", "Pending Vendor", "Resolved"]
+const statusOptions = ["Pending", "In Process", "Solved"]
 const priorityOptions = ["Low", "Medium", "High", "Critical"]
 const categoryOptions = ["HARDWARE", "SOFTWARE", "NETWORK"]
 
 const statusBadgeStyles: Record<string, string> = {
-  Open: "bg-slate-100 text-slate-700 border border-slate-200",
-  "In Progress": "bg-blue-50 text-blue-700 border border-blue-100",
-  "Pending Vendor": "bg-amber-50 text-amber-700 border border-amber-100",
-  Resolved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
+  Pending: "bg-amber-50 text-amber-700 border border-amber-100",
+  "In Process": "bg-blue-50 text-blue-700 border border-blue-100",
+  Solved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
 }
 
 const priorityBadgeStyles: Record<string, string> = {
@@ -74,6 +73,23 @@ const priorityBadgeStyles: Record<string, string> = {
   Critical: "bg-rose-50 text-rose-700 border border-rose-100",
 }
 
+function normalizeTicketStatus(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
+    return "Pending"
+  }
+  if (normalized === "escalated") {
+    return "In Process"
+  }
+  if (normalized === "in progress" || normalized === "in process") {
+    return "In Process"
+  }
+  if (normalized === "resolved" || normalized === "solved") {
+    return "Solved"
+  }
+  return status
+}
+
 function toRow(ticket: Ticket): TicketRecord {
   return {
     id: ticket.id,
@@ -81,7 +97,7 @@ function toRow(ticket: Ticket): TicketRecord {
     title: ticket.title,
     category: ticket.category,
     priority: ticket.priority,
-    status: ticket.status,
+    status: normalizeTicketStatus(ticket.status),
     technician: ticket.technician_name ?? (ticket.technician_id ? `Technician #${ticket.technician_id}` : "Unassigned"),
     technician_id: ticket.technician_id ?? null,
   }
@@ -177,7 +193,7 @@ export function AdminFaultTicketTable() {
     try {
       setError("")
       await updateTicketPriority(ticketId, "Critical")
-      await updateTicketStatus(ticketId, "In Progress")
+      await updateTicketStatus(ticketId, "In Process")
       await refreshRow(ticketId)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
@@ -376,7 +392,7 @@ export function AdminFaultTicketTable() {
                           <DialogHeader>
                             <DialogTitle>Escalate Ticket #{ticket.id}</DialogTitle>
                             <DialogDescription>
-                              This sets the ticket to Critical priority and In Progress status.
+                              This sets the ticket to Critical priority and In Process status.
                             </DialogDescription>
                           </DialogHeader>
                           <DialogFooter>

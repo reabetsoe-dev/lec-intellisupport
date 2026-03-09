@@ -31,7 +31,15 @@ export type Ticket = {
   employee_name?: string | null
   routed_to_role?: UserRole
   routing_note?: string
+  latest_escalation_comment?: string | null
+  latest_escalation_by?: string | null
+  latest_escalation_at?: string | null
+  latest_escalation_target?: string | null
+  is_currently_assigned_to_me?: boolean
+  escalated_by_me?: boolean
+  current_owner?: string | null
   created_at?: string
+  updated_at?: string
 }
 
 export type TicketComment = {

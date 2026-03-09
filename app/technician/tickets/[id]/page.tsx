@@ -1,7 +1,10 @@
+import Link from "next/link"
+
+import { Button } from "@/components/ui/button"
 import { TechnicianTicketDetailWorkspace } from "@/components/tickets/TechnicianTicketDetailWorkspace"
 
 type TechnicianTicketDetailPageProps = {
-  params: { id: string } | Promise<{ id: string }>
+  params: Promise<{ id: string }>
 }
 
 export default async function TechnicianTicketDetailPage({ params }: TechnicianTicketDetailPageProps) {
@@ -12,6 +15,11 @@ export default async function TechnicianTicketDetailPage({ params }: TechnicianT
   }
 
   return (
-    <TechnicianTicketDetailWorkspace ticketId={ticketId} />
+    <div className="space-y-4">
+      <Button asChild variant="outline" className="border-slate-200">
+        <Link href="/technician/tickets">Back</Link>
+      </Button>
+      <TechnicianTicketDetailWorkspace ticketId={ticketId} />
+    </div>
   )
 }

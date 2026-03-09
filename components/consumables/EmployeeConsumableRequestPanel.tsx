@@ -152,8 +152,9 @@ export function EmployeeConsumableRequestPanel() {
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
       setSuccess("Request submitted successfully. Redirecting to dashboard...")
+      const dashboardPath = user.role === "technician" ? "/technician/dashboard" : "/employee/dashboard"
       window.setTimeout(() => {
-        router.push("/employee/dashboard")
+        router.push(dashboardPath)
       }, 350)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to submit request.")

@@ -44,10 +44,15 @@ class Technician(models.Model):
 
 
 class Ticket(models.Model):
-    STATUS_OPEN = "Open"
-    STATUS_IN_PROGRESS = "In Progress"
-    STATUS_PENDING_VENDOR = "Pending Vendor"
-    STATUS_RESOLVED = "Resolved"
+    STATUS_PENDING = "Pending"
+    STATUS_IN_PROCESS = "In Process"
+    STATUS_SOLVED = "Solved"
+
+    # Legacy values kept for backward compatibility with existing records.
+    LEGACY_STATUS_OPEN = "Open"
+    LEGACY_STATUS_IN_PROGRESS = "In Progress"
+    LEGACY_STATUS_PENDING_VENDOR = "Pending Vendor"
+    LEGACY_STATUS_RESOLVED = "Resolved"
 
     PRIORITY_LOW = "Low"
     PRIORITY_MEDIUM = "Medium"
@@ -55,10 +60,9 @@ class Ticket(models.Model):
     PRIORITY_CRITICAL = "Critical"
 
     STATUS_CHOICES = [
-        (STATUS_OPEN, "Open"),
-        (STATUS_IN_PROGRESS, "In Progress"),
-        (STATUS_PENDING_VENDOR, "Pending Vendor"),
-        (STATUS_RESOLVED, "Resolved"),
+        (STATUS_PENDING, "Pending"),
+        (STATUS_IN_PROCESS, "In Process"),
+        (STATUS_SOLVED, "Solved"),
     ]
 
     PRIORITY_CHOICES = [
@@ -73,7 +77,7 @@ class Ticket(models.Model):
     category = models.CharField(max_length=100)
     location = models.CharField(max_length=255, blank=True)
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_LOW)
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
     employee = models.ForeignKey(User, on_delete=models.PROTECT, related_name="submitted_tickets")
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"

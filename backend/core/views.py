@@ -64,15 +64,43 @@ def _to_optional_decimal(value):
         return None
 
 
-def _ticket_to_dict(ticket: Ticket) -> dict:
-    return {
+def _normalize_ticket_status(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return Ticket.STATUS_PENDING
+    normalized = raw.lower()
+    status_aliases = {
+        "open": Ticket.STATUS_PENDING,
+        "pending vendor": Ticket.STATUS_PENDING,
+        "pending": Ticket.STATUS_PENDING,
+        "escalated": Ticket.STATUS_IN_PROCESS,
+        "in progress": Ticket.STATUS_IN_PROCESS,
+        "in process": Ticket.STATUS_IN_PROCESS,
+        "resolved": Ticket.STATUS_SOLVED,
+        "solved": Ticket.STATUS_SOLVED,
+    }
+    return status_aliases.get(normalized, raw)
+
+
+def _extract_escalation_target(comment_text: str) -> str | None:
+    if comment_text.startswith("Escalated to Admin Fault"):
+        return "Admin Fault Queue"
+    prefix = "Escalated to technician "
+    if comment_text.startswith(prefix):
+        target = comment_text[len(prefix):].split(":", 1)[0].strip()
+        return target or None
+    return None
+
+
+def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) -> dict:
+    payload = {
         "id": ticket.id,
         "title": ticket.title,
         "description": ticket.description,
         "category": ticket.category,
         "location": ticket.location,
         "priority": ticket.priority,
-        "status": ticket.status,
+        "status": _normalize_ticket_status(ticket.status),
         "employee_id": ticket.employee_id,
         "employee_name": ticket.employee.name,
         "technician_id": ticket.technician_id,
@@ -81,6 +109,20 @@ def _ticket_to_dict(ticket: Ticket) -> dict:
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
+    if include_escalation_context:
+        latest_escalation = (
+            TicketComment.objects.select_related("author")
+            .filter(ticket=ticket, comment__startswith="Escalated")
+            .order_by("-created_at")
+            .first()
+        )
+        payload["latest_escalation_comment"] = latest_escalation.comment if latest_escalation else None
+        payload["latest_escalation_by"] = latest_escalation.author.name if latest_escalation else None
+        payload["latest_escalation_at"] = latest_escalation.created_at.isoformat() if latest_escalation else None
+        payload["latest_escalation_target"] = (
+            _extract_escalation_target(latest_escalation.comment) if latest_escalation else None
+        )
+    return payload
 
 
 def _ticket_comment_to_dict(item: TicketComment) -> dict:
@@ -258,12 +300,43 @@ def tickets_collection_view(request):
 
 @api_view(["GET"])
 def assigned_tickets_view(request, technician_id: int):
+    technician = (
+        Technician.objects.select_related("user")
+        .filter(Q(user_id=technician_id) | Q(id=technician_id))
+        .first()
+    )
+    technician_user_id = technician.user_id if technician else technician_id
+    technician_profile_id = technician.id if technician else None
+
+    escalated_ticket_ids = set(
+        TicketComment.objects.filter(
+            author_id=technician_user_id,
+            comment__startswith="Escalated",
+        ).values_list("ticket_id", flat=True)
+    )
+
+    base_filter = Q(technician__user_id=technician_user_id) | Q(technician_id=technician_profile_id)
+    if escalated_ticket_ids:
+        base_filter = base_filter | Q(id__in=escalated_ticket_ids)
+
     queryset = (
         Ticket.objects.select_related("employee", "technician__user")
-        .filter(Q(technician__user_id=technician_id) | Q(technician_id=technician_id))
-        .order_by("-created_at")
+        .filter(base_filter)
+        .distinct()
+        .order_by("-updated_at", "-created_at")
     )
-    return Response([_ticket_to_dict(ticket) for ticket in queryset], status=status.HTTP_200_OK)
+    payload = []
+    for ticket in queryset:
+        item = _ticket_to_dict(ticket, include_escalation_context=True)
+        is_assigned_to_me = bool(ticket.technician_id) and (
+            (technician_profile_id is not None and ticket.technician_id == technician_profile_id)
+            or (ticket.technician is not None and ticket.technician.user_id == technician_user_id)
+        )
+        item["is_currently_assigned_to_me"] = is_assigned_to_me
+        item["escalated_by_me"] = ticket.id in escalated_ticket_ids
+        item["current_owner"] = ticket.technician.user.name if ticket.technician_id else "Admin Fault Queue"
+        payload.append(item)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
@@ -345,7 +418,8 @@ def assign_technician_view(request, ticket_id: int):
     if technician_id in (None, "", "null"):
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
         ticket.technician = None
-        ticket.save(update_fields=["technician", "updated_at"])
+        ticket.status = Ticket.STATUS_PENDING
+        ticket.save(update_fields=["technician", "status", "updated_at"])
         if previous_technician_user:
             _notify_user(previous_technician_user, f"Ticket #{ticket.id} was unassigned by Admin Fault.", ticket=ticket)
         for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
@@ -360,7 +434,8 @@ def assign_technician_view(request, ticket_id: int):
 
     previous_technician_user = ticket.technician.user if ticket.technician_id else None
     ticket.technician = technician
-    ticket.save(update_fields=["technician", "updated_at"])
+    ticket.status = Ticket.STATUS_IN_PROCESS
+    ticket.save(update_fields=["technician", "status", "updated_at"])
     if previous_technician_user and previous_technician_user.id != technician.user_id:
         _notify_user(previous_technician_user, f"Ticket #{ticket.id} was reassigned to {technician.user.name}.", ticket=ticket)
     _notify_user(technician.user, f"Ticket #{ticket.id} assigned to you by Admin Fault.", ticket=ticket)
@@ -405,7 +480,7 @@ def escalate_ticket_view(request, ticket_id: int):
 
     if target_role == User.ROLE_ADMIN_FAULT:
         ticket.technician = None
-        ticket.status = Ticket.STATUS_OPEN
+        ticket.status = Ticket.STATUS_PENDING
         ticket.save(update_fields=["technician", "status", "updated_at"])
 
         TicketComment.objects.create(
@@ -435,11 +510,8 @@ def escalate_ticket_view(request, ticket_id: int):
 
     previous_technician_user = ticket.technician.user
     ticket.technician = target_technician
-    if ticket.status == Ticket.STATUS_OPEN:
-        ticket.status = Ticket.STATUS_IN_PROGRESS
-        ticket.save(update_fields=["technician", "status", "updated_at"])
-    else:
-        ticket.save(update_fields=["technician", "updated_at"])
+    ticket.status = Ticket.STATUS_IN_PROCESS
+    ticket.save(update_fields=["technician", "status", "updated_at"])
 
     TicketComment.objects.create(
         ticket=ticket,
@@ -567,9 +639,12 @@ def employees_collection_view(request):
 
 @api_view(["DELETE"])
 def employee_detail_view(request, employee_id: int):
-    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
+    employee = User.objects.filter(
+        id=employee_id,
+        role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
+    ).first()
     if not employee:
-        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"message": "Requester not found."}, status=status.HTTP_404_NOT_FOUND)
 
     try:
         with transaction.atomic():
@@ -666,7 +741,11 @@ def ticket_status_view(request, ticket_id: int):
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    status_value = str(request.data.get("status", "")).strip()
+    input_status = request.data.get("status")
+    if input_status in (None, ""):
+        return Response({"message": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    status_value = _normalize_ticket_status(str(input_status))
     if status_value not in dict(Ticket.STATUS_CHOICES):
         return Response({"message": "Invalid status value."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -679,8 +758,8 @@ def ticket_status_view(request, ticket_id: int):
 def performance_metrics_view(request):
     tickets = list(Ticket.objects.select_related("technician__user").all())
     total_tickets = len(tickets)
-    resolved_tickets = sum(1 for item in tickets if item.status == Ticket.STATUS_RESOLVED)
-    open_tickets = sum(1 for item in tickets if item.status != Ticket.STATUS_RESOLVED)
+    resolved_tickets = sum(1 for item in tickets if _normalize_ticket_status(item.status) == Ticket.STATUS_SOLVED)
+    open_tickets = sum(1 for item in tickets if _normalize_ticket_status(item.status) != Ticket.STATUS_SOLVED)
     critical_tickets = sum(1 for item in tickets if item.priority == Ticket.PRIORITY_CRITICAL)
     unassigned_tickets = sum(1 for item in tickets if item.technician_id is None)
     resolved_rate = round((resolved_tickets / total_tickets) * 100, 2) if total_tickets else 0.0
@@ -692,7 +771,8 @@ def performance_metrics_view(request):
     by_technician: dict[str, int] = {}
 
     for item in tickets:
-        by_status[item.status] = by_status.get(item.status, 0) + 1
+        normalized_status = _normalize_ticket_status(item.status)
+        by_status[normalized_status] = by_status.get(normalized_status, 0) + 1
         by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
         by_category[item.category] = by_category.get(item.category, 0) + 1
         month_key = item.created_at.strftime("%Y-%m")

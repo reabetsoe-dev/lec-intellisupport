@@ -4,7 +4,9 @@ import { Bell, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +14,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { type AuthUser } from "@/lib/auth"
-import { getNotifications, markNotificationsRead, type AppNotification } from "@/lib/api"
+import {
+  escalateTicket,
+  getNotifications,
+  getTechnicians,
+  getTicketById,
+  markNotificationsRead,
+  type AppNotification,
+  type Technician,
+  type TicketDetail,
+} from "@/lib/api"
 
 const topbarConfig: Array<{
   match: (pathname: string) => boolean
@@ -61,6 +72,12 @@ const topbarConfig: Array<{
     parent: "Technician",
     current: "Ticket Detail",
     title: "Technician Workbench",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/technician/hardware-request"),
+    parent: "Technician",
+    current: "Office Asset Request",
+    title: "Consumable Request Form",
   },
   {
     match: (pathname) => pathname.startsWith("/technician/tickets"),
@@ -116,11 +133,29 @@ type TopbarProps = {
   user: AuthUser
 }
 
+function formatTicketCommentText(commentText: string, authorName: string): string {
+  const normalized = commentText.trim().toLowerCase()
+  if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
+    return `Escalated by ${authorName}`
+  }
+  return commentText
+}
+
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [ticketDetailOpen, setTicketDetailOpen] = useState(false)
+  const [ticketDetailLoading, setTicketDetailLoading] = useState(false)
+  const [ticketDetailError, setTicketDetailError] = useState("")
+  const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null)
+  const [technicians, setTechnicians] = useState<Technician[]>([])
+  const [escalationTarget, setEscalationTarget] = useState("")
+  const [escalationComment, setEscalationComment] = useState("")
+  const [escalationLoading, setEscalationLoading] = useState(false)
+  const [escalationError, setEscalationError] = useState("")
+  const [escalationSuccess, setEscalationSuccess] = useState("")
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
@@ -168,6 +203,85 @@ export function Topbar({ user }: TopbarProps) {
     }
   }
 
+  const openTicketDetailsFromNotification = async (ticketId: number) => {
+    setTicketDetailOpen(true)
+    setTicketDetailLoading(true)
+    setTicketDetailError("")
+    setEscalationError("")
+    setEscalationSuccess("")
+    setEscalationTarget("")
+    setEscalationComment("")
+    setSelectedTicket(null)
+    try {
+      if (user.role === "technician") {
+        const [ticketPayload, technicianPayload] = await Promise.all([getTicketById(ticketId), getTechnicians()])
+        setSelectedTicket(ticketPayload)
+        setTechnicians(technicianPayload)
+      } else {
+        const payload = await getTicketById(ticketId)
+        setSelectedTicket(payload)
+      }
+    } catch (loadError) {
+      setTicketDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+    } finally {
+      setTicketDetailLoading(false)
+    }
+  }
+
+  const handleEscalateFromNotification = async () => {
+    if (user.role !== "technician" || !selectedTicket) {
+      return
+    }
+
+    const currentTechnician = technicians.find((item) => item.user_id === user.id)
+    if (!currentTechnician || selectedTicket.technician_id !== currentTechnician.id) {
+      setEscalationError("Only the current owner can escalate this ticket.")
+      return
+    }
+
+    if (!escalationTarget) {
+      setEscalationError("Select where you want to escalate this ticket.")
+      return
+    }
+
+    if (!escalationComment.trim()) {
+      setEscalationError("Escalation comment is required.")
+      return
+    }
+
+    let targetTechnicianId: number | null = null
+    let targetRole: "admin_fault" | undefined
+
+    if (escalationTarget === "admin_fault") {
+      targetRole = "admin_fault"
+    } else {
+      const parsed = Number(escalationTarget)
+      if (!Number.isFinite(parsed)) {
+        setEscalationError("Invalid escalation target.")
+        return
+      }
+      targetTechnicianId = parsed
+    }
+
+    try {
+      setEscalationLoading(true)
+      setEscalationError("")
+      setEscalationSuccess("")
+      await escalateTicket(selectedTicket.id, user.id, targetTechnicianId, escalationComment.trim(), targetRole)
+      const [refreshedTicket, notificationPayload] = await Promise.all([getTicketById(selectedTicket.id), getNotifications(user.id)])
+      setSelectedTicket(refreshedTicket)
+      setNotifications(notificationPayload.notifications)
+      setUnreadCount(notificationPayload.unread_count)
+      setEscalationTarget("")
+      setEscalationComment("")
+      setEscalationSuccess("Ticket escalated successfully.")
+    } catch (escalateError) {
+      setEscalationError(escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
+    } finally {
+      setEscalationLoading(false)
+    }
+  }
+
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
       <div className="rounded-lg border border-[#0072CE]/25 bg-[#F7FBFF] px-3 py-2">
@@ -205,9 +319,18 @@ export function Topbar({ user }: TopbarProps) {
                 <DropdownMenuItem disabled>No notifications yet.</DropdownMenuItem>
               ) : (
                 notifications.map((item) => (
-                  <DropdownMenuItem key={item.id} className="block cursor-default whitespace-normal">
+                  <DropdownMenuItem
+                    key={item.id}
+                    className={`block whitespace-normal ${item.ticket_id ? "cursor-pointer" : "cursor-default"}`}
+                    onClick={() => {
+                      if (item.ticket_id) {
+                        void openTicketDetailsFromNotification(item.ticket_id)
+                      }
+                    }}
+                  >
                     <p className="text-sm text-slate-800">{item.message}</p>
                     <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+                    {item.ticket_id ? <p className="mt-1 text-xs text-[#005DA8]">Click to view full ticket details</p> : null}
                   </DropdownMenuItem>
                 ))
               )}
@@ -215,6 +338,104 @@ export function Topbar({ user }: TopbarProps) {
           </DropdownMenu>
         ) : null}
       </div>
+
+      <Dialog open={ticketDetailOpen} onOpenChange={setTicketDetailOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedTicket ? `Ticket #${selectedTicket.id} Details` : "Ticket Details"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {ticketDetailLoading ? (
+            <p className="text-sm text-slate-500">Loading ticket details...</p>
+          ) : ticketDetailError ? (
+            <p className="text-sm text-rose-600">{ticketDetailError}</p>
+          ) : selectedTicket ? (
+            <div className="space-y-4 text-sm">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">{selectedTicket.title}</h3>
+                <p className="mt-1 text-slate-700">{selectedTicket.description}</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">Category: {selectedTicket.category}</Badge>
+                <Badge variant="outline">Priority: {selectedTicket.priority}</Badge>
+                <Badge variant="outline">Status: {selectedTicket.status}</Badge>
+                <Badge variant="outline">Reporter: {selectedTicket.employee_name ?? selectedTicket.employee_id}</Badge>
+                <Badge variant="outline">Assigned: {selectedTicket.technician_name ?? "Admin Fault Queue"}</Badge>
+                <Badge variant="outline">Branch: {selectedTicket.location || "N/A"}</Badge>
+                <Badge variant="outline">Reported: {selectedTicket.created_at ? new Date(selectedTicket.created_at).toLocaleString() : "N/A"}</Badge>
+                <Badge variant="outline">Updated: {selectedTicket.updated_at ? new Date(selectedTicket.updated_at).toLocaleString() : "N/A"}</Badge>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-800">Comments</p>
+                {selectedTicket.comments.length === 0 ? (
+                  <p className="text-xs text-slate-500">No comments yet.</p>
+                ) : (
+                  selectedTicket.comments.map((comment) => (
+                    <div key={comment.id} className="rounded-md border border-slate-200 bg-white p-2">
+                      <p className="text-xs font-semibold text-slate-800">{comment.author_name}</p>
+                      <p className="text-xs text-slate-700">{formatTicketCommentText(comment.comment, comment.author_name)}</p>
+                      <p className="text-[11px] text-slate-500">{new Date(comment.created_at).toLocaleString()}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {user.role === "technician" ? (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-800">Escalate Ticket</p>
+                  <select
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
+                    value={escalationTarget}
+                    onChange={(event) => setEscalationTarget(event.target.value)}
+                    disabled={escalationLoading}
+                  >
+                    <option value="">Select escalation target</option>
+                    {technicians
+                      .filter((item) => item.user_id !== user.id)
+                      .map((item) => (
+                        <option key={item.id} value={String(item.id)}>
+                          {item.name}
+                        </option>
+                      ))}
+                    <option value="admin_fault">Back to Admin Fault</option>
+                  </select>
+                  <textarea
+                    className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
+                    placeholder="Explain why this ticket is being escalated."
+                    value={escalationComment}
+                    onChange={(event) => setEscalationComment(event.target.value)}
+                    disabled={escalationLoading}
+                  />
+                  {escalationError ? <p className="text-xs text-rose-600">{escalationError}</p> : null}
+                  {escalationSuccess ? <p className="text-xs text-emerald-700">{escalationSuccess}</p> : null}
+                  <Button type="button" onClick={() => void handleEscalateFromNotification()} disabled={escalationLoading}>
+                    {escalationLoading ? "Escalating..." : "Escalate Now"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Select a ticket notification to view details.</p>
+          )}
+
+          <DialogFooter>
+            {selectedTicket && user.role === "technician" ? (
+              <Button onClick={() => router.push(`/technician/tickets/${selectedTicket.id}`)}>
+                Open Technician Workbench
+              </Button>
+            ) : null}
+            {selectedTicket && user.role === "admin_fault" ? (
+              <Button variant="outline" onClick={() => router.push("/admin-fault/tickets")}>
+                Open Admin Ticket Queue
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   )
 }
