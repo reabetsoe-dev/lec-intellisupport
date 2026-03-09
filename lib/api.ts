@@ -4,6 +4,7 @@ export type LoginResponse = {
   id: number
   name: string
   role: UserRole
+  must_change_password?: boolean
   token: string
 }
 

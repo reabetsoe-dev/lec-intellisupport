@@ -26,7 +26,11 @@ export default function LoginPage() {
     try {
       const user = await simulateLogin(email, password)
       persistUserSession(user)
-      router.push(getDashboardPathByRole(user.role))
+      if (user.role === "employee" && user.must_change_password) {
+        router.push("/employee/profile")
+      } else {
+        router.push(getDashboardPathByRole(user.role))
+      }
     } catch (loginError) {
       const message = loginError instanceof Error ? loginError.message : "Login failed."
       setError(message)

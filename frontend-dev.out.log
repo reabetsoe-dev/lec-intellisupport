@@ -294,3 +294,21 @@ Creating turbopack project { dir: 'C:\\Users\\motel\\lec-intellisupport', testMo
  GET /admin-fault/dashboard 200 in 61ms (compile: 21ms, render: 40ms)
 ✓ Compiled in 1024ms
 ✓ Compiled in 63ms
+ GET /admin-fault/performance 200 in 467ms (compile: 417ms, render: 50ms)
+ GET /admin-fault/tickets 200 in 136ms (compile: 107ms, render: 29ms)
+ GET /admin-fault/performance 200 in 57ms (compile: 6ms, render: 51ms)
+ GET /admin-fault/tickets 200 in 43ms (compile: 5ms, render: 38ms)
+ GET /admin-fault/dashboard 200 in 152ms (compile: 82ms, render: 70ms)
+ GET /login 200 in 120ms (compile: 54ms, render: 66ms)
+ GET /login 200 in 50ms (compile: 8ms, render: 43ms)
+ GET /admin-fault/dashboard 200 in 76ms (compile: 9ms, render: 66ms)
+ GET /admin-fault/dashboard 200 in 39ms (compile: 4ms, render: 35ms)
+✓ Compiled in 327ms
+✓ Compiled in 501ms
+✓ Compiled in 816ms
+ GET /login 200 in 126ms (compile: 52ms, render: 73ms)
+ GET /login 200 in 41ms (compile: 6ms, render: 35ms)
+ GET /login 200 in 607ms (compile: 6ms, render: 602ms)
+ GET /employee/profile 200 in 2.1s (compile: 1975ms, render: 85ms)
+ GET /employee/profile 200 in 89ms (compile: 5ms, render: 84ms)
+ GET /employee/profile 200 in 48ms (compile: 8ms, render: 41ms)

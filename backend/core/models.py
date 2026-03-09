@@ -18,6 +18,7 @@ class User(models.Model):
     email = models.EmailField(unique=True)
     branch = models.CharField(max_length=120, blank=True, default="")
     password_hash = models.CharField(max_length=255)
+    must_change_password = models.BooleanField(default=False)
     role = models.CharField(max_length=32, choices=ROLE_CHOICES, default=ROLE_EMPLOYEE)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

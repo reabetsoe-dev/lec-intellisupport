@@ -139,6 +139,7 @@ def _user_to_dict(user: User) -> dict:
         "branch": user.branch,
         "role": user.role,
         "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
         "created_at": user.created_at.isoformat(),
         "updated_at": user.updated_at.isoformat(),
     }
@@ -179,6 +180,7 @@ def login_view(request):
             "id": user.id,
             "name": user.name,
             "role": user.role,
+            "must_change_password": user.must_change_password,
             "token": secrets.token_urlsafe(32),
         },
         status=status.HTTP_200_OK,
@@ -208,7 +210,8 @@ def change_password_view(request):
         return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
 
     user.password_hash = make_password(new_password)
-    user.save(update_fields=["password_hash", "updated_at"])
+    user.must_change_password = False
+    user.save(update_fields=["password_hash", "must_change_password", "updated_at"])
     return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
@@ -552,6 +555,7 @@ def employees_collection_view(request):
             email=email,
             branch=branch,
             password_hash=make_password(password),
+            must_change_password=True,
             role=User.ROLE_EMPLOYEE,
             is_active=is_active,
         )

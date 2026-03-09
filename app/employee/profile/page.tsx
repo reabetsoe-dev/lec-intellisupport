@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { changeUserPassword } from "@/lib/api"
-import { getStoredUserSession } from "@/lib/auth"
+import { getStoredUserSession, persistUserSession } from "@/lib/auth"
 
 export default function EmployeeProfilePage() {
   const [currentPassword, setCurrentPassword] = useState("")
@@ -44,6 +44,10 @@ export default function EmployeeProfilePage() {
         user_id: user.id,
         current_password: currentPassword,
         new_password: newPassword,
+      })
+      persistUserSession({
+        ...user,
+        must_change_password: false,
       })
       setCurrentPassword("")
       setNewPassword("")
