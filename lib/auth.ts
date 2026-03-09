@@ -79,9 +79,13 @@ export function parseStoredUserSession(raw: string | null): AuthUser | null {
       typeof parsed.token === "string" &&
       validRoles.includes(parsed.role as UserRole)
     ) {
+      // Session migration for renamed seeded employee account.
+      const isLegacySeedEmployeeName = /^lebo\s*m\.?$/i.test(parsed.name.trim())
+      const normalizedName =
+        parsed.id === 1 && parsed.role === "employee" && isLegacySeedEmployeeName ? "Employee1" : parsed.name
       return {
         id: parsed.id,
-        name: parsed.name,
+        name: normalizedName,
         role: parsed.role as UserRole,
         must_change_password: parsed.must_change_password,
         token: parsed.token,
@@ -101,6 +105,12 @@ export function getStoredUserSession(): AuthUser | null {
   try {
     const raw = window.localStorage.getItem(AUTH_SESSION_KEY)
     const parsed = parseStoredUserSession(raw)
+    if (raw && parsed) {
+      const current = JSON.parse(raw) as Partial<AuthUser>
+      if (current.name !== parsed.name) {
+        window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(parsed))
+      }
+    }
     if (!parsed && raw) {
       window.localStorage.removeItem(AUTH_SESSION_KEY)
     }
