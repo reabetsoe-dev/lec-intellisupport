@@ -23,14 +23,12 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const isAuthPage = pathname.startsWith("/login")
-  const [isHydrated, setIsHydrated] = useState(false)
-  const [user, setUser] = useState<AuthUser | null>(null)
+  const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {
     const refreshSession = () => setUser(getStoredUserSession())
     // Keep local state in sync if session changes in this or another tab.
     refreshSession()
-    setIsHydrated(true)
     window.addEventListener("storage", refreshSession)
     window.addEventListener("lec-auth-session-change", refreshSession)
     return () => {
@@ -72,7 +70,7 @@ export function AppShell({ children }: AppShellProps) {
     return <div className="min-h-screen bg-slate-950">{children}</div>
   }
 
-  if (!isHydrated) {
+  if (user === undefined) {
     return null
   }
 

@@ -12,8 +12,8 @@ export default function TechnicianDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Technician Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Your queue overview and operational SLA focus.</p>
+        <h2 className="lec-page-title">Technician Dashboard</h2>
+        <p className="lec-page-subtitle">Your queue overview and operational SLA focus.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -37,3 +37,4 @@ export default function TechnicianDashboardPage() {
     </div>
   )
 }
+

@@ -110,6 +110,12 @@ const topbarConfig: Array<{
     title: "Assets Inventory",
   },
   {
+    match: (pathname) => pathname.startsWith("/admin-consumables/returns"),
+    parent: "Admin Consumables",
+    current: "Returns",
+    title: "Consumable Return History",
+  },
+  {
     match: (pathname) => pathname === "/admin-consumables/dashboard",
     parent: "Admin Consumables",
     current: "Dashboard",

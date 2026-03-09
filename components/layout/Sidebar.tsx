@@ -9,6 +9,7 @@ import {
   Boxes,
   ClipboardList,
   Gauge,
+  History,
   LogOut,
   MessageCircleQuestion,
   Package,
@@ -61,6 +62,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/admin-consumables/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/admin-consumables/inventory", label: "Assets", icon: Boxes },
+      { href: "/admin-consumables/returns", label: "Returns", icon: History },
       { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
     ],
   },
