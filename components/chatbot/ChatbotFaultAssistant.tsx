@@ -183,15 +183,10 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
         return
       }
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: nextMessageId(),
-          role: "assistant",
-          content: "Please reply with Yes if the issue is solved, or No if it is still not solved.",
-        },
-      ])
-      return
+      // If user enters a fresh issue instead of Yes/No, continue as a new request.
+      setAwaitingResolution(false)
+      setShowManualReportOption(false)
+      setShowCloseOption(false)
     }
 
     setShowManualReportOption(false)

@@ -1,0 +1,191 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "hello",
+        "hi",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "hello there",
+        "hi there",
+        "hey support",
+        "hello support team"
+      ],
+      "responses": [
+        "Hello! Welcome to LEC IntelliSupport. How may I assist you today?",
+        "Hi there! I'm the IntelliSupport assistant. Tell me about the IT issue you are experiencing.",
+        "Good day! I'm here to help you troubleshoot IT problems or submit a support request."
+      ]
+    },
+    {
+      "tag": "thanks",
+      "patterns": [
+        "thank you",
+        "thanks",
+        "thanks a lot",
+        "appreciate it",
+        "thank you very much"
+      ],
+      "responses": [
+        "You're welcome! Let me know if you need any more assistance.",
+        "Happy to help! If you have another IT issue, just ask."
+      ]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": [
+        "bye",
+        "goodbye",
+        "see you later",
+        "talk to you later"
+      ],
+      "responses": [
+        "Goodbye! If you need IT support again, I'm here to help.",
+        "Have a great day! Feel free to return if you need technical assistance."
+      ]
+    },
+    {
+      "tag": "computer_not_turning_on",
+      "patterns": [
+        "my computer won't start",
+        "computer not turning on",
+        "pc not powering on",
+        "laptop not starting",
+        "my desktop won't turn on"
+      ],
+      "responses": [
+        "Please check if the power cable is properly connected.",
+        "Ensure the power outlet is working and press the power button again.",
+        "If the issue persists, please submit a Hardware Support Ticket."
+      ]
+    },
+    {
+      "tag": "slow_computer",
+      "patterns": [
+        "my computer is slow",
+        "pc running slow",
+        "laptop very slow",
+        "system taking too long to open programs"
+      ],
+      "responses": [
+        "Try restarting your computer to clear temporary processes.",
+        "Check if many applications are running simultaneously.",
+        "If the issue continues, please submit a Performance Support Request."
+      ]
+    },
+    {
+      "tag": "printer_issue",
+      "patterns": [
+        "printer not printing",
+        "printer error",
+        "cannot print",
+        "printer offline",
+        "printer not working",
+        "why can't i print"
+      ],
+      "responses": [
+        "Please ensure the printer is powered on and connected to the network.",
+        "Check if the printer has paper and no paper jams.",
+        "If the issue continues, please submit a Printer Support Request."
+      ]
+    },
+    {
+      "tag": "internet_problem",
+      "patterns": [
+        "internet not working",
+        "wifi not connecting",
+        "no internet connection",
+        "network problem",
+        "internet is down"
+      ],
+      "responses": [
+        "Please check if your device is connected to the correct WiFi network.",
+        "Try restarting your router or reconnecting to the network.",
+        "If the issue persists, please report a Network Support Ticket."
+      ]
+    },
+    {
+      "tag": "email_issue",
+      "patterns": [
+        "email not sending",
+        "cannot receive emails",
+        "outlook not working",
+        "email problem"
+      ],
+      "responses": [
+        "Please check your internet connection and try sending the email again.",
+        "Ensure your email account credentials are correct.",
+        "If the issue continues, please submit an Email Support Request."
+      ]
+    },
+    {
+      "tag": "keyboard_issue",
+      "patterns": [
+        "keyboard not working",
+        "some keys not responding",
+        "keyboard problem",
+        "my keyboard stopped working"
+      ],
+      "responses": [
+        "Try reconnecting the keyboard if it is external.",
+        "Restart your computer and test the keyboard again.",
+        "If the problem continues, please request a keyboard replacement."
+      ]
+    },
+    {
+      "tag": "mouse_issue",
+      "patterns": [
+        "mouse not working",
+        "cursor not moving",
+        "mouse stopped responding"
+      ],
+      "responses": [
+        "Please check if the mouse is properly connected.",
+        "Try plugging the mouse into a different USB port.",
+        "If the issue continues, please submit a hardware support request."
+      ]
+    },
+    {
+      "tag": "software_installation",
+      "patterns": [
+        "install software",
+        "i need a new software installed",
+        "how do i request software",
+        "install application"
+      ],
+      "responses": [
+        "You can request software installation through the IntelliSupport portal.",
+        "Please submit a Software Installation Request with the application name and version."
+      ]
+    },
+    {
+      "tag": "password_reset",
+      "patterns": [
+        "forgot password",
+        "reset my password",
+        "cannot login",
+        "password not working"
+      ],
+      "responses": [
+        "Please use the password reset option on the login page.",
+        "If you cannot reset your password, submit an Account Support Request."
+      ]
+    },
+    {
+      "tag": "create_ticket",
+      "patterns": [
+        "report an issue",
+        "open a ticket",
+        "submit support request",
+        "report IT problem"
+      ],
+      "responses": [
+        "You can submit an IT support ticket through the IntelliSupport dashboard.",
+        "Please provide details about the issue, including device type and error message."
+      ]
+    }
+  ]
+}
