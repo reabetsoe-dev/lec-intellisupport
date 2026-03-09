@@ -59,7 +59,7 @@ type AssetForm = {
 const initialForm: AssetForm = {
   assetTag: "",
   categoryType: "Laptop",
-  brand: "",
+  brand: "Dell",
   model: "",
   serial: "",
   manufacturer: "",
@@ -92,6 +92,47 @@ const categoryTypeOptions: Record<CategoryTab, string[]> = {
   printer: ["Laser", "Inkjet", "Thermal"],
   gadget: ["Smartphone", "Tablet", "Router", "Scanner", "Webcam"],
 }
+
+const brandOptions: Record<CategoryTab, string[]> = {
+  computer: ["Dell", "HP", "Lenovo", "Apple", "Acer", "ASUS", "MSI"],
+  printer: ["HP", "Canon", "Epson", "Brother", "Xerox", "Ricoh", "Kyocera"],
+  gadget: ["Samsung", "Apple", "Huawei", "Xiaomi", "TP-Link", "D-Link", "Logitech"],
+}
+
+const processorOptions = [
+  "Intel Core i3",
+  "Intel Core i5",
+  "Intel Core i7",
+  "Intel Core i9",
+  "AMD Ryzen 5",
+  "AMD Ryzen 7",
+  "AMD Ryzen 9",
+  "Apple M1",
+  "Apple M2",
+  "Apple M3",
+]
+
+const computerRamOptions = ["8 GB", "16 GB", "32 GB", "64 GB"]
+const gadgetRamOptions = ["4 GB", "6 GB", "8 GB", "12 GB", "16 GB"]
+const storageTypeOptions = ["SSD", "HDD", "NVMe SSD", "eMMC", "UFS"]
+const computerStorageCapacityOptions = ["256 GB", "512 GB", "1 TB", "2 TB"]
+const gadgetStorageCapacityOptions = ["64 GB", "128 GB", "256 GB", "512 GB", "1 TB"]
+const graphicsCardOptions = [
+  "Integrated",
+  "NVIDIA GeForce RTX 3050",
+  "NVIDIA GeForce RTX 4060",
+  "NVIDIA Quadro T1000",
+  "AMD Radeon RX 6600",
+  "AMD Radeon RX 7600",
+]
+const printerConnectivityOptions = ["USB", "USB / Ethernet", "USB / WiFi", "USB / WiFi / Ethernet", "WiFi / Ethernet"]
+const printSpeedOptions = ["20 ppm", "30 ppm", "40 ppm", "50 ppm", "60 ppm"]
+const paperCapacityOptions = ["100 sheets", "150 sheets", "250 sheets", "500 sheets", "550 sheets"]
+const operatingSystemOptions = ["Android", "iOS", "Windows 11", "Windows 10", "macOS", "Linux"]
+const batteryCapacityOptions = ["3000 mAh", "4000 mAh", "5000 mAh", "6000 mAh", "7000 mAh"]
+const yesNoOptions: YesNo[] = ["Yes", "No"]
+const conditionOptions: AssetCondition[] = ["New", "Refurbished"]
+const selectClassName = "h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800"
 
 function boolFromYesNo(value: YesNo): boolean {
   return value === "Yes"
@@ -146,11 +187,19 @@ export function AddConsumableForm() {
   }, [])
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, categoryType: categoryTypeOptions[tab][0] ?? "" }))
+    setForm((prev) => ({
+      ...prev,
+      categoryType: categoryTypeOptions[tab][0] ?? "",
+      brand: tab === "gadget" ? "" : brandOptions[tab][0] ?? prev.brand,
+    }))
   }, [tab])
 
   const onCancel = () => {
-    setForm(initialForm)
+    setForm({
+      ...initialForm,
+      categoryType: categoryTypeOptions[tab][0] ?? initialForm.categoryType,
+      brand: tab === "gadget" ? "" : brandOptions[tab][0] ?? initialForm.brand,
+    })
     setError("")
   }
 
@@ -279,10 +328,20 @@ export function AddConsumableForm() {
                 {sectionTitle(`${tabLabel} Information`, "Basic details for the asset.")}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Input placeholder="Asset Tag (LEC-CMP-001)" value={form.assetTag} onChange={(e) => update("assetTag", e.target.value)} />
-                  <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.categoryType} onChange={(e) => update("categoryType", e.target.value)}>
+                  <select className={selectClassName} value={form.categoryType} onChange={(e) => update("categoryType", e.target.value)}>
                     {categoryTypeOptions[tab].map((opt) => <option key={opt}>{opt}</option>)}
                   </select>
-                  <Input placeholder="Brand (Dell, HP, Samsung)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
+                  {tab === "gadget" ? (
+                    <Input placeholder="Brand (Samsung, Apple, etc.)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
+                  ) : (
+                    <select className={selectClassName} value={form.brand} onChange={(e) => update("brand", e.target.value)}>
+                      {brandOptions[tab].map((opt) => (
+                        <option key={opt} value={opt}>
+                          Brand: {opt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Input placeholder="Model" value={form.model} onChange={(e) => update("model", e.target.value)} />
                   <Input placeholder="Serial Number" value={form.serial} onChange={(e) => update("serial", e.target.value)} />
                   <Input placeholder="Manufacturer" value={form.manufacturer} onChange={(e) => update("manufacturer", e.target.value)} />
@@ -293,11 +352,41 @@ export function AddConsumableForm() {
                 <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                   {sectionTitle("Hardware Specifications", "Capture core computer specs.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Input placeholder="Processor (Intel Core i7)" value={form.processor} onChange={(e) => update("processor", e.target.value)} />
-                    <Input placeholder="RAM (16 GB)" value={form.ram} onChange={(e) => update("ram", e.target.value)} />
-                    <Input placeholder="Storage Type (SSD)" value={form.storageType} onChange={(e) => update("storageType", e.target.value)} />
-                    <Input placeholder="Storage Capacity (512 GB)" value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)} />
-                    <Input placeholder="Graphics Card (Integrated)" value={form.graphicsCard} onChange={(e) => update("graphicsCard", e.target.value)} />
+                    <select className={selectClassName} value={form.processor} onChange={(e) => update("processor", e.target.value)}>
+                      {processorOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Processor: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.ram} onChange={(e) => update("ram", e.target.value)}>
+                      {computerRamOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          RAM: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.storageType} onChange={(e) => update("storageType", e.target.value)}>
+                      {storageTypeOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Storage Type: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)}>
+                      {computerStorageCapacityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Storage Capacity: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.graphicsCard} onChange={(e) => update("graphicsCard", e.target.value)}>
+                      {graphicsCardOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Graphics Card: {opt}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </section>
               ) : null}
@@ -306,9 +395,12 @@ export function AddConsumableForm() {
                 <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                   {sectionTitle("Laptop Details", "Laptop specific fields.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.chargerIncluded} onChange={(e) => update("chargerIncluded", e.target.value as YesNo)}>
-                      <option value="Yes">Charger Included: Yes</option>
-                      <option value="No">Charger Included: No</option>
+                    <select className={selectClassName} value={form.chargerIncluded} onChange={(e) => update("chargerIncluded", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Charger Included: {opt}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </section>
@@ -318,17 +410,26 @@ export function AddConsumableForm() {
                 <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                   {sectionTitle("Desktop Details", "Desktop accessory coverage.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.monitorIncluded} onChange={(e) => update("monitorIncluded", e.target.value as YesNo)}>
-                      <option value="Yes">Monitor Included: Yes</option>
-                      <option value="No">Monitor Included: No</option>
+                    <select className={selectClassName} value={form.monitorIncluded} onChange={(e) => update("monitorIncluded", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Monitor Included: {opt}
+                        </option>
+                      ))}
                     </select>
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.keyboardIncluded} onChange={(e) => update("keyboardIncluded", e.target.value as YesNo)}>
-                      <option value="Yes">Keyboard Included: Yes</option>
-                      <option value="No">Keyboard Included: No</option>
+                    <select className={selectClassName} value={form.keyboardIncluded} onChange={(e) => update("keyboardIncluded", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Keyboard Included: {opt}
+                        </option>
+                      ))}
                     </select>
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.mouseIncluded} onChange={(e) => update("mouseIncluded", e.target.value as YesNo)}>
-                      <option value="Yes">Mouse Included: Yes</option>
-                      <option value="No">Mouse Included: No</option>
+                    <select className={selectClassName} value={form.mouseIncluded} onChange={(e) => update("mouseIncluded", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Mouse Included: {opt}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </section>
@@ -338,16 +439,42 @@ export function AddConsumableForm() {
                 <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                   {sectionTitle("Technical Specifications", "Printer performance and capability fields.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Input placeholder="Print Speed (40 pages/min)" value={form.printSpeed} onChange={(e) => update("printSpeed", e.target.value)} />
-                    <Input placeholder="Connectivity (USB / WiFi / Ethernet)" value={form.connectivity} onChange={(e) => update("connectivity", e.target.value)} />
-                    <Input placeholder="Paper Capacity (250 sheets)" value={form.paperCapacity} onChange={(e) => update("paperCapacity", e.target.value)} />
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.duplexPrinting} onChange={(e) => update("duplexPrinting", e.target.value as YesNo)}>
-                      <option value="Yes">Duplex Printing: Yes</option>
-                      <option value="No">Duplex Printing: No</option>
+                    <select className={selectClassName} value={form.printSpeed} onChange={(e) => update("printSpeed", e.target.value)}>
+                      <option value="">Print Speed</option>
+                      {printSpeedOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
                     </select>
-                    <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.colorPrinting} onChange={(e) => update("colorPrinting", e.target.value as YesNo)}>
-                      <option value="Yes">Color Printing: Yes</option>
-                      <option value="No">Color Printing: No</option>
+                    <select className={selectClassName} value={form.connectivity} onChange={(e) => update("connectivity", e.target.value)}>
+                      {printerConnectivityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Connectivity: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.paperCapacity} onChange={(e) => update("paperCapacity", e.target.value)}>
+                      <option value="">Paper Capacity</option>
+                      {paperCapacityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.duplexPrinting} onChange={(e) => update("duplexPrinting", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Duplex Printing: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.colorPrinting} onChange={(e) => update("colorPrinting", e.target.value as YesNo)}>
+                      {yesNoOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Color Printing: {opt}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </section>
@@ -357,10 +484,35 @@ export function AddConsumableForm() {
                 <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                   {sectionTitle("Device Specifications", "Gadget hardware and OS information.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Input placeholder="Operating System (Android)" value={form.operatingSystem} onChange={(e) => update("operatingSystem", e.target.value)} />
-                    <Input placeholder="RAM (6 GB)" value={form.ram} onChange={(e) => update("ram", e.target.value)} />
-                    <Input placeholder="Storage Capacity (128 GB)" value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)} />
-                    <Input placeholder="Battery Capacity (5000 mAh)" value={form.batteryCapacity} onChange={(e) => update("batteryCapacity", e.target.value)} />
+                    <select className={selectClassName} value={form.operatingSystem} onChange={(e) => update("operatingSystem", e.target.value)}>
+                      {operatingSystemOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Operating System: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.ram} onChange={(e) => update("ram", e.target.value)}>
+                      {gadgetRamOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          RAM: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)}>
+                      {gadgetStorageCapacityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Storage Capacity: {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <select className={selectClassName} value={form.batteryCapacity} onChange={(e) => update("batteryCapacity", e.target.value)}>
+                      <option value="">Battery Capacity</option>
+                      {batteryCapacityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
                     <Input placeholder="IMEI Number" value={form.imeiNumber} onChange={(e) => update("imeiNumber", e.target.value)} />
                   </div>
                 </section>
@@ -373,9 +525,12 @@ export function AddConsumableForm() {
                   <Input placeholder="Purchase Cost (M 18,000)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
                   <Input placeholder="Supplier" value={form.supplier} onChange={(e) => update("supplier", e.target.value)} />
                   <Input type="date" value={form.warrantyExpiry} onChange={(e) => update("warrantyExpiry", e.target.value)} />
-                  <select className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800" value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
-                    <option value="New">Condition: New</option>
-                    <option value="Refurbished">Condition: Refurbished</option>
+                  <select className={selectClassName} value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
+                    {conditionOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        Condition: {opt}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </section>
