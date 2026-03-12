@@ -144,7 +144,7 @@ function boolFromYesNo(value: YesNo): boolean | undefined {
 }
 
 function fmtCost(value?: number | null): string {
-  return value === null || value === undefined ? "N/A" : `M ${value.toLocaleString()}`
+  return value === null || value === undefined ? "-" : `M ${value.toLocaleString()}`
 }
 
 function sectionTitle(title: string, subtitle: string) {
@@ -167,6 +167,7 @@ export function AddConsumableForm() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [successOpen, setSuccessOpen] = useState(false)
+  const [noWarrantyExpiry, setNoWarrantyExpiry] = useState(false)
 
   const tabLabel = useMemo(() => (tab === "computer" ? "Computer" : tab === "printer" ? "Printer" : "Gadget"), [tab])
   const isLaptop = tab === "computer" && form.categoryType === "Laptop"
@@ -189,9 +190,21 @@ export function AddConsumableForm() {
 
   useEffect(() => {
     void loadAssets()
+    const id = window.setInterval(() => {
+      void loadAssets()
+    }, 15000)
+    const syncListener = () => {
+      void loadAssets()
+    }
+    window.addEventListener("assets:sync", syncListener)
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener("assets:sync", syncListener)
+    }
   }, [])
 
   useEffect(() => {
+    setNoWarrantyExpiry(false)
     setForm((prev) => ({
       ...prev,
       categoryType: "",
@@ -219,6 +232,7 @@ export function AddConsumableForm() {
 
   const onCancel = () => {
     setForm(initialForm)
+    setNoWarrantyExpiry(false)
     setError("")
   }
 
@@ -277,11 +291,12 @@ export function AddConsumableForm() {
         purchase_cost: purchaseCost,
         supplier: form.supplier,
         purchase_date: form.purchaseDate,
-        warranty_expiry: form.warrantyExpiry || undefined,
+        warranty_expiry: noWarrantyExpiry ? undefined : form.warrantyExpiry || undefined,
         condition: form.condition,
         status: "In Stock",
       })
       await loadAssets()
+      window.dispatchEvent(new Event("assets:sync"))
       setSuccessOpen(true)
       if (mode === "add") {
         onCancel()
@@ -313,27 +328,29 @@ export function AddConsumableForm() {
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand / Model</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Quantity</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Available Quantity</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Total Quantity</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Condition</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingAssets ? (
-                  <TableRow><TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading assets...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">Loading assets...</TableCell></TableRow>
                 ) : assets.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">No assets added yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">No assets added yet.</TableCell></TableRow>
                 ) : (
                   assets.map((asset) => (
                     <TableRow key={asset.id}>
-                      <TableCell className="px-6 font-medium text-slate-800">{asset.asset_tag || "N/A"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.category || "N/A"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.subcategory || asset.device_type || asset.printer_type || "N/A"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.brand || "N/A"} {asset.model_number || ""}</TableCell>
-                      <TableCell className="text-slate-700">{asset.serial_number || "N/A"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.quantity ?? 0}</TableCell>
-                      <TableCell><Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">{asset.condition || "N/A"}</Badge></TableCell>
-                      <TableCell className="text-slate-700">{fmtCost(asset.purchase_cost)}</TableCell>
+                      <TableCell className="px-6 font-medium text-slate-800">{asset.asset_tag || "-"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.category || "-"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.type || asset.subcategory || asset.device_type || asset.printer_type || "-"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.brand_model || `${asset.brand || ""} ${asset.model_number || ""}`.trim() || "-"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.serial_number || "-"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.available_quantity ?? asset.quantity ?? 0}</TableCell>
+                      <TableCell className="text-slate-700">{asset.total_quantity ?? 0}</TableCell>
+                      <TableCell><Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">{asset.condition || "-"}</Badge></TableCell>
+                      <TableCell className="text-slate-700">{fmtCost(asset.cost ?? asset.purchase_cost)}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -565,25 +582,70 @@ export function AddConsumableForm() {
               <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                 {sectionTitle("Purchase Information", "Purchase, warranty, and condition fields.")}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Input type="date" value={form.purchaseDate} onChange={(e) => update("purchaseDate", e.target.value)} />
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder="Quantity"
-                    value={form.quantity}
-                    onChange={(e) => update("quantity", e.target.value)}
-                  />
-                  <Input placeholder="Purchase Cost (Currency: M)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
-                  <Input placeholder="Supplier" value={form.supplier} onChange={(e) => update("supplier", e.target.value)} />
-                  <Input type="date" value={form.warrantyExpiry} onChange={(e) => update("warrantyExpiry", e.target.value)} />
-                  <select className={selectClassName} value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
-                    <option value="" disabled>Select condition</option>
-                    {conditionOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        Condition: {opt}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Purchase Date</label>
+                    <Input
+                      type="date"
+                      placeholder="Purchase Date"
+                      title="Purchase Date"
+                      value={form.purchaseDate}
+                      onChange={(e) => update("purchaseDate", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Quantity</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="Quantity"
+                      value={form.quantity}
+                      onChange={(e) => update("quantity", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Purchase Cost</label>
+                    <Input placeholder="Purchase Cost (Currency: M)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Supplier</label>
+                    <Input placeholder="Supplier" value={form.supplier} onChange={(e) => update("supplier", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-700">Warranty Expiry (Optional)</label>
+                    <Input
+                      type="date"
+                      placeholder="Warranty Expiry"
+                      title="Warranty Expiry"
+                      value={form.warrantyExpiry}
+                      disabled={noWarrantyExpiry}
+                      onChange={(e) => update("warrantyExpiry", e.target.value)}
+                    />
+                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={noWarrantyExpiry}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setNoWarrantyExpiry(checked)
+                          if (checked) {
+                            update("warrantyExpiry", "")
+                          }
+                        }}
+                      />
+                      No Warranty Expiry
+                    </label>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">Condition</label>
+                    <select className={selectClassName} value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
+                      <option value="" disabled>Select condition</option>
+                      {conditionOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          Condition: {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </section>
 
