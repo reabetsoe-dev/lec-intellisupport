@@ -8,6 +8,9 @@ from .views import (
     consumable_detail_view,
     consumable_request_approve_view,
     consumable_request_reject_view,
+    consumable_return_receive_view,
+    consumable_return_reject_view,
+    consumable_returns_collection_view,
     employee_detail_view,
     employees_collection_view,
     consumable_requests_collection_view,
@@ -52,4 +55,7 @@ urlpatterns = [
     path("consumable-requests", consumable_requests_collection_view),
     path("consumable-requests/<int:request_id>/approve", consumable_request_approve_view),
     path("consumable-requests/<int:request_id>/reject", consumable_request_reject_view),
+    path("consumable-returns", consumable_returns_collection_view),
+    path("consumable-returns/<int:return_id>/receive", consumable_return_receive_view),
+    path("consumable-returns/<int:return_id>/reject", consumable_return_reject_view),
 ]

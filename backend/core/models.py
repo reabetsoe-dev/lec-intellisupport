@@ -44,10 +44,15 @@ class Technician(models.Model):
 
 
 class Ticket(models.Model):
-    STATUS_OPEN = "Open"
-    STATUS_IN_PROGRESS = "In Progress"
-    STATUS_PENDING_VENDOR = "Pending Vendor"
-    STATUS_RESOLVED = "Resolved"
+    STATUS_PENDING = "Pending"
+    STATUS_IN_PROCESS = "In Process"
+    STATUS_SOLVED = "Solved"
+
+    # Legacy values kept for backward compatibility with existing records.
+    LEGACY_STATUS_OPEN = "Open"
+    LEGACY_STATUS_IN_PROGRESS = "In Progress"
+    LEGACY_STATUS_PENDING_VENDOR = "Pending Vendor"
+    LEGACY_STATUS_RESOLVED = "Resolved"
 
     PRIORITY_LOW = "Low"
     PRIORITY_MEDIUM = "Medium"
@@ -55,10 +60,9 @@ class Ticket(models.Model):
     PRIORITY_CRITICAL = "Critical"
 
     STATUS_CHOICES = [
-        (STATUS_OPEN, "Open"),
-        (STATUS_IN_PROGRESS, "In Progress"),
-        (STATUS_PENDING_VENDOR, "Pending Vendor"),
-        (STATUS_RESOLVED, "Resolved"),
+        (STATUS_PENDING, "Pending"),
+        (STATUS_IN_PROCESS, "In Process"),
+        (STATUS_SOLVED, "Solved"),
     ]
 
     PRIORITY_CHOICES = [
@@ -73,7 +77,7 @@ class Ticket(models.Model):
     category = models.CharField(max_length=100)
     location = models.CharField(max_length=255, blank=True)
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_LOW)
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
     employee = models.ForeignKey(User, on_delete=models.PROTECT, related_name="submitted_tickets")
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
@@ -217,10 +221,23 @@ class ConsumableRequest(models.Model):
         (STATUS_APPROVED, "Approved"),
         (STATUS_REJECTED, "Rejected"),
     ]
+    ASSIGNMENT_TYPE_NEW = "new"
+    ASSIGNMENT_TYPE_LOAN = "loan"
+    ASSIGNMENT_TYPE_EXCHANGE = "exchange"
+    ASSIGNMENT_TYPE_CHOICES = [
+        (ASSIGNMENT_TYPE_NEW, "New"),
+        (ASSIGNMENT_TYPE_LOAN, "Loan"),
+        (ASSIGNMENT_TYPE_EXCHANGE, "Exchange"),
+    ]
 
     consumable = models.ForeignKey(Consumable, on_delete=models.PROTECT, related_name="requests")
     employee = models.ForeignKey(User, on_delete=models.PROTECT, related_name="consumable_requests")
     quantity = models.PositiveIntegerField(default=1)
+    assignment_type = models.CharField(
+        max_length=20,
+        choices=ASSIGNMENT_TYPE_CHOICES,
+        default=ASSIGNMENT_TYPE_NEW,
+    )
     department = models.CharField(max_length=120, blank=True, default="")
     notes = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
@@ -241,3 +258,43 @@ class ConsumableRequest(models.Model):
 
     def __str__(self) -> str:
         return f"Request #{self.pk} ({self.status})"
+
+
+class ConsumableReturn(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_RECEIVED = "received"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_RECEIVED, "Received"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    consumable_request = models.ForeignKey(
+        ConsumableRequest,
+        on_delete=models.PROTECT,
+        related_name="return_requests",
+    )
+    consumable = models.ForeignKey(Consumable, on_delete=models.PROTECT, related_name="return_requests")
+    employee = models.ForeignKey(User, on_delete=models.PROTECT, related_name="consumable_returns")
+    quantity = models.PositiveIntegerField(default=1)
+    reason = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    received_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="received_consumable_returns"
+    )
+    received_at = models.DateTimeField(null=True, blank=True)
+    rejected_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="rejected_consumable_returns"
+    )
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "consumable_returns"
+
+    def __str__(self) -> str:
+        return f"ConsumableReturn #{self.pk} ({self.status})"

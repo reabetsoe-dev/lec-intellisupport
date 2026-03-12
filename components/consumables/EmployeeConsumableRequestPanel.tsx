@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useEffect, useMemo, useState } from "react"
+import { FormEvent, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import {
@@ -39,10 +39,6 @@ function extractRequestDetails(notes: string): { branch: string; reason: string 
   }
 }
 
-function normalizeItemName(value: string): string {
-  return value.trim().toLowerCase()
-}
-
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
@@ -54,6 +50,7 @@ export function EmployeeConsumableRequestPanel() {
   const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
   const [quantity, setQuantity] = useState("")
+  const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [notes, setNotes] = useState("")
@@ -73,7 +70,11 @@ export function EmployeeConsumableRequestPanel() {
           getConsumables(),
           getConsumableRequestsApi(user?.id),
         ])
-        setConsumables(inventoryData)
+        setConsumables(
+          inventoryData
+            .filter((item) => item.item_name.trim() && item.quantity > 0)
+            .sort((a, b) => a.item_name.localeCompare(b.item_name))
+        )
         setRequests(requestData)
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
@@ -85,12 +86,6 @@ export function EmployeeConsumableRequestPanel() {
     void run()
   }, [user?.id])
 
-  const selectedConsumable = useMemo(
-    () => consumables.find((item) => normalizeItemName(item.item_name) === normalizeItemName(itemName)),
-    [consumables, itemName]
-  )
-
-  const availableStock = selectedConsumable?.quantity ?? 0
   const myRequests = requests
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -106,6 +101,10 @@ export function EmployeeConsumableRequestPanel() {
 
     if (!itemName) {
       setError("No consumable item available.")
+      return
+    }
+    if (!assignmentType) {
+      setError("Please select assignment type (new, loan, or exchange).")
       return
     }
 
@@ -129,31 +128,29 @@ export function EmployeeConsumableRequestPanel() {
       return
     }
 
-    if (parsedQuantity > availableStock) {
-      setError(`Only ${availableStock} ${itemName} in stock. Reduce quantity or choose another item.`)
-      return
-    }
-
     const composedNotes = `[Branch:${branch.trim()}] ${notes.trim()}`
 
     try {
       await createConsumableRequestApi({
         itemName,
         quantity: parsedQuantity,
+        assignment_type: assignmentType,
         department,
         notes: composedNotes,
         employee_id: user.id,
       })
       setItemName("")
       setQuantity("")
+      setAssignmentType("")
       setBranch("")
       setDepartment("")
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
       setSuccess("Request submitted successfully. Redirecting to dashboard...")
+      const dashboardPath = user.role === "technician" ? "/technician/dashboard" : "/employee/dashboard"
       window.setTimeout(() => {
-        router.push("/employee/dashboard")
+        router.push(dashboardPath)
       }, 350)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to submit request.")
@@ -231,7 +228,6 @@ export function EmployeeConsumableRequestPanel() {
                       </option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-[#1E3A6D]">Current available stock: {availableStock}</p>
                 </div>
               </div>
 
@@ -250,6 +246,25 @@ export function EmployeeConsumableRequestPanel() {
                     autoComplete="off"
                     className="h-8 border-[#0072CE]/30 px-2.5 text-sm text-[#0B1F3A]"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="assignment-type" className="text-xs font-semibold text-[#0B1F3A]">
+                    Assignment Type
+                  </label>
+                  <select
+                    id="assignment-type"
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    value={assignmentType}
+                    onChange={(event) => setAssignmentType(event.target.value as "" | "new" | "loan" | "exchange")}
+                  >
+                    <option value="" disabled>
+                      Select type
+                    </option>
+                    <option value="new">New</option>
+                    <option value="loan">Loan</option>
+                    <option value="exchange">Exchange</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -308,17 +323,19 @@ export function EmployeeConsumableRequestPanel() {
                   <TableHead className="px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">ID</TableHead>
                   <TableHead className="min-w-[140px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
                   <TableHead className="min-w-[70px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Qty</TableHead>
+                  <TableHead className="min-w-[110px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
                   <TableHead className="min-w-[130px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Branch</TableHead>
                   <TableHead className="min-w-[170px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Reason</TableHead>
                   <TableHead className="min-w-[100px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
                   <TableHead className="min-w-[220px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Decision Notes</TableHead>
                   <TableHead className="min-w-[180px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Requested At</TableHead>
+                  <TableHead className="min-w-[140px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {myRequests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
+                    <TableCell colSpan={10} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                       No requests submitted yet.
                     </TableCell>
                   </TableRow>
@@ -328,9 +345,14 @@ export function EmployeeConsumableRequestPanel() {
 
                     return (
                       <TableRow key={request.id}>
-                        <TableCell className="px-6 font-medium text-[#0B1F3A]">{request.id}</TableCell>
+                      <TableCell className="px-6 font-medium text-[#0B1F3A]">{request.id}</TableCell>
                       <TableCell className="text-[#0B1F3A]">{toDisplayItemName(request.itemName)}</TableCell>
                       <TableCell className="text-[#0B1F3A]">{request.quantity}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="border-slate-300 bg-slate-50 text-[#0B1F3A]">
+                          {request.assignmentType}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-[#0B1F3A]">{requestDetails.branch}</TableCell>
                       <TableCell className="max-w-[220px] text-xs text-[#0B1F3A]">{requestDetails.reason}</TableCell>
                       <TableCell>
@@ -355,6 +377,21 @@ export function EmployeeConsumableRequestPanel() {
                               : "Awaiting admin decision"}
                         </TableCell>
                         <TableCell className="text-[#0B1F3A]">{formatDate(request.requestedAt)}</TableCell>
+                        <TableCell>
+                          {request.status === "approved" ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-[#0072CE]/35 text-[#0B1F3A] hover:bg-[#EAF3FF]"
+                              onClick={() => router.push("/employee/my-consumables")}
+                            >
+                              Return Item
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-slate-500">N/A</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     )
                   })

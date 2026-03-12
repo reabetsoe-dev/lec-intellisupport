@@ -31,7 +31,15 @@ export type Ticket = {
   employee_name?: string | null
   routed_to_role?: UserRole
   routing_note?: string
+  latest_escalation_comment?: string | null
+  latest_escalation_by?: string | null
+  latest_escalation_at?: string | null
+  latest_escalation_target?: string | null
+  is_currently_assigned_to_me?: boolean
+  escalated_by_me?: boolean
+  current_owner?: string | null
   created_at?: string
+  updated_at?: string
 }
 
 export type TicketComment = {
@@ -163,6 +171,7 @@ export type ConsumableRequest = {
   db_id: number
   itemName: string
   quantity: number
+  assignmentType: "new" | "loan" | "exchange"
   department: string
   notes: string
   requestedBy: string
@@ -173,6 +182,26 @@ export type ConsumableRequest = {
   rejectedBy?: string | null
   rejectedAt?: string | null
   rejectionReason?: string | null
+}
+
+export type ConsumableReturn = {
+  id: number
+  consumableRequestId: number
+  consumableId: number
+  itemName: string
+  assignmentType: "new" | "loan" | "exchange"
+  employeeId: number
+  employeeName: string
+  quantity: number
+  reason: string
+  status: "pending" | "received" | "rejected"
+  receivedBy?: string | null
+  receivedAt?: string | null
+  rejectedBy?: string | null
+  rejectedAt?: string | null
+  rejectionReason?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 type AddConsumablePayload = {
@@ -502,6 +531,7 @@ export async function sendChatMessage(message: string): Promise<{ reply: string 
 export async function createConsumableRequest(payload: {
   itemName: string
   quantity: number
+  assignment_type?: "new" | "loan" | "exchange"
   department: string
   notes: string
   employee_id: number
@@ -519,11 +549,12 @@ export async function getConsumableRequests(employeeId?: number): Promise<Consum
 
 export async function approveConsumableRequestById(
   requestId: number,
-  approvedById?: number
+  approvedById?: number,
+  assignmentType?: "new" | "loan" | "exchange"
 ): Promise<ConsumableRequest> {
   return requestJson<ConsumableRequest>(BACKEND_BASE_URL, `/api/consumable-requests/${requestId}/approve`, {
     method: "PUT",
-    body: { approved_by_id: approvedById },
+    body: { approved_by_id: approvedById, assignment_type: assignmentType },
   })
 }
 
@@ -533,6 +564,37 @@ export async function rejectConsumableRequestById(
   rejectedById?: number
 ): Promise<ConsumableRequest> {
   return requestJson<ConsumableRequest>(BACKEND_BASE_URL, `/api/consumable-requests/${requestId}/reject`, {
+    method: "PUT",
+    body: { reason, rejected_by_id: rejectedById },
+  })
+}
+
+export async function getConsumableReturns(employeeId?: number): Promise<ConsumableReturn[]> {
+  const query = employeeId ? `?employee_id=${employeeId}` : ""
+  return requestJson<ConsumableReturn[]>(BACKEND_BASE_URL, `/api/consumable-returns${query}`)
+}
+
+export async function createConsumableReturnRequest(payload: {
+  consumable_request_id: number
+  employee_id: number
+  quantity: number
+  reason: string
+}): Promise<ConsumableReturn> {
+  return requestJson<ConsumableReturn>(BACKEND_BASE_URL, "/api/consumable-returns", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function receiveConsumableReturn(returnId: number, receivedById?: number): Promise<ConsumableReturn> {
+  return requestJson<ConsumableReturn>(BACKEND_BASE_URL, `/api/consumable-returns/${returnId}/receive`, {
+    method: "PUT",
+    body: { received_by_id: receivedById },
+  })
+}
+
+export async function rejectConsumableReturn(returnId: number, reason: string, rejectedById?: number): Promise<ConsumableReturn> {
+  return requestJson<ConsumableReturn>(BACKEND_BASE_URL, `/api/consumable-returns/${returnId}/reject`, {
     method: "PUT",
     body: { reason, rejected_by_id: rejectedById },
   })

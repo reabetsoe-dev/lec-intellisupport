@@ -9,6 +9,7 @@ import {
   Boxes,
   ClipboardList,
   Gauge,
+  History,
   LogOut,
   MessageCircleQuestion,
   Package,
@@ -45,6 +46,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/technician/dashboard", label: "Dashboard", icon: Wrench },
       { href: "/technician/tickets", label: "Assigned Tickets", icon: Ticket },
+      { href: "/technician/hardware-request", label: "Office Asset Request", icon: PackagePlus },
     ],
   },
   admin_fault: {
@@ -60,6 +62,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/admin-consumables/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/admin-consumables/inventory", label: "Assets", icon: Boxes },
+      { href: "/admin-consumables/returns", label: "Returns", icon: History },
       { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
     ],
   },

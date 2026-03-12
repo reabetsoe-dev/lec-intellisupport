@@ -63,8 +63,8 @@ export default function EmployeeProfilePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">My Profile</h2>
-        <p className="mt-1 text-sm text-slate-500">Change your account password.</p>
+        <h2 className="lec-page-title">My Profile</h2>
+        <p className="lec-page-subtitle">Change your account password.</p>
       </div>
 
       <Card className="max-w-xl rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
@@ -114,3 +114,4 @@ export default function EmployeeProfilePage() {
     </div>
   )
 }
+

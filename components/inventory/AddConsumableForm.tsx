@@ -22,8 +22,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 type ViewMode = "assets" | "add"
 type CategoryTab = "computer" | "printer" | "gadget"
 type SubmitMode = "add" | "save"
-type YesNo = "Yes" | "No"
-type AssetCondition = "New" | "Refurbished"
+type YesNo = "Yes" | "No" | ""
+type AssetCondition = "New" | "Refurbished" | ""
 
 type AssetForm = {
   assetTag: string
@@ -50,6 +50,7 @@ type AssetForm = {
   batteryCapacity: string
   imeiNumber: string
   purchaseDate: string
+  quantity: string
   purchaseCost: string
   supplier: string
   warrantyExpiry: string
@@ -58,33 +59,34 @@ type AssetForm = {
 
 const initialForm: AssetForm = {
   assetTag: "",
-  categoryType: "Laptop",
-  brand: "Dell",
+  categoryType: "",
+  brand: "",
   model: "",
   serial: "",
   manufacturer: "",
-  processor: "Intel Core i7",
-  ram: "16 GB",
-  storageType: "SSD",
-  storageCapacity: "512 GB",
-  graphicsCard: "Integrated",
-  chargerIncluded: "Yes",
-  monitorIncluded: "Yes",
-  keyboardIncluded: "Yes",
-  mouseIncluded: "Yes",
+  processor: "",
+  ram: "",
+  storageType: "",
+  storageCapacity: "",
+  graphicsCard: "",
+  chargerIncluded: "",
+  monitorIncluded: "",
+  keyboardIncluded: "",
+  mouseIncluded: "",
   printSpeed: "",
-  connectivity: "USB / WiFi / Ethernet",
-  duplexPrinting: "Yes",
+  connectivity: "",
+  duplexPrinting: "",
   paperCapacity: "",
-  colorPrinting: "No",
-  operatingSystem: "Android",
+  colorPrinting: "",
+  operatingSystem: "",
   batteryCapacity: "",
   imeiNumber: "",
   purchaseDate: "",
+  quantity: "",
   purchaseCost: "",
   supplier: "",
   warrantyExpiry: "",
-  condition: "New",
+  condition: "",
 }
 
 const categoryTypeOptions: Record<CategoryTab, string[]> = {
@@ -134,7 +136,10 @@ const yesNoOptions: YesNo[] = ["Yes", "No"]
 const conditionOptions: AssetCondition[] = ["New", "Refurbished"]
 const selectClassName = "h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800"
 
-function boolFromYesNo(value: YesNo): boolean {
+function boolFromYesNo(value: YesNo): boolean | undefined {
+  if (value === "") {
+    return undefined
+  }
   return value === "Yes"
 }
 
@@ -189,25 +194,45 @@ export function AddConsumableForm() {
   useEffect(() => {
     setForm((prev) => ({
       ...prev,
-      categoryType: categoryTypeOptions[tab][0] ?? "",
-      brand: tab === "gadget" ? "" : brandOptions[tab][0] ?? prev.brand,
+      categoryType: "",
+      brand: "",
+      processor: "",
+      ram: "",
+      storageType: "",
+      storageCapacity: "",
+      graphicsCard: "",
+      chargerIncluded: "",
+      monitorIncluded: "",
+      keyboardIncluded: "",
+      mouseIncluded: "",
+      printSpeed: "",
+      connectivity: "",
+      duplexPrinting: "",
+      paperCapacity: "",
+      colorPrinting: "",
+      operatingSystem: "",
+      batteryCapacity: "",
+      quantity: "",
+      condition: "",
     }))
   }, [tab])
 
   const onCancel = () => {
-    setForm({
-      ...initialForm,
-      categoryType: categoryTypeOptions[tab][0] ?? initialForm.categoryType,
-      brand: tab === "gadget" ? "" : brandOptions[tab][0] ?? initialForm.brand,
-    })
+    setForm(initialForm)
     setError("")
   }
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError("")
-    if (!form.assetTag || !form.brand || !form.model || !form.serial || !form.purchaseDate || !form.purchaseCost || !form.supplier) {
-      setError("Asset Tag, Brand, Model, Serial Number, Purchase Date, Purchase Cost, and Supplier are required.")
+    if (!form.assetTag || !form.categoryType || !form.brand || !form.model || !form.serial || !form.purchaseDate || !form.quantity || !form.purchaseCost || !form.supplier || !form.condition) {
+      setError("Asset Tag, Type, Brand, Model, Serial Number, Purchase Date, Quantity, Purchase Cost, Supplier, and Condition are required.")
+      return
+    }
+
+    const quantity = Number(form.quantity.replace(/[^0-9]/g, ""))
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError("Quantity must be a valid number greater than 0.")
       return
     }
 
@@ -248,7 +273,7 @@ export function AddConsumableForm() {
         operating_system: tab === "gadget" ? form.operatingSystem : "",
         battery_capacity: tab === "gadget" ? form.batteryCapacity : "",
         imei_number: tab === "gadget" ? form.imeiNumber : "",
-        quantity: 1,
+        quantity,
         purchase_cost: purchaseCost,
         supplier: form.supplier,
         purchase_date: form.purchaseDate,
@@ -288,15 +313,16 @@ export function AddConsumableForm() {
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand / Model</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Quantity</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Condition</TableHead>
                   <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingAssets ? (
-                  <TableRow><TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">Loading assets...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading assets...</TableCell></TableRow>
                 ) : assets.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">No assets added yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">No assets added yet.</TableCell></TableRow>
                 ) : (
                   assets.map((asset) => (
                     <TableRow key={asset.id}>
@@ -305,6 +331,7 @@ export function AddConsumableForm() {
                       <TableCell className="text-slate-700">{asset.subcategory || asset.device_type || asset.printer_type || "N/A"}</TableCell>
                       <TableCell className="text-slate-700">{asset.brand || "N/A"} {asset.model_number || ""}</TableCell>
                       <TableCell className="text-slate-700">{asset.serial_number || "N/A"}</TableCell>
+                      <TableCell className="text-slate-700">{asset.quantity ?? 0}</TableCell>
                       <TableCell><Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">{asset.condition || "N/A"}</Badge></TableCell>
                       <TableCell className="text-slate-700">{fmtCost(asset.purchase_cost)}</TableCell>
                     </TableRow>
@@ -329,12 +356,14 @@ export function AddConsumableForm() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Input placeholder="Asset Tag (LEC-CMP-001)" value={form.assetTag} onChange={(e) => update("assetTag", e.target.value)} />
                   <select className={selectClassName} value={form.categoryType} onChange={(e) => update("categoryType", e.target.value)}>
+                    <option value="" disabled>Select type</option>
                     {categoryTypeOptions[tab].map((opt) => <option key={opt}>{opt}</option>)}
                   </select>
                   {tab === "gadget" ? (
                     <Input placeholder="Brand (Samsung, Apple, etc.)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
                   ) : (
                     <select className={selectClassName} value={form.brand} onChange={(e) => update("brand", e.target.value)}>
+                      <option value="" disabled>Select brand</option>
                       {brandOptions[tab].map((opt) => (
                         <option key={opt} value={opt}>
                           Brand: {opt}
@@ -353,6 +382,7 @@ export function AddConsumableForm() {
                   {sectionTitle("Hardware Specifications", "Capture core computer specs.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.processor} onChange={(e) => update("processor", e.target.value)}>
+                      <option value="" disabled>Select processor</option>
                       {processorOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Processor: {opt}
@@ -360,6 +390,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.ram} onChange={(e) => update("ram", e.target.value)}>
+                      <option value="" disabled>Select RAM</option>
                       {computerRamOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           RAM: {opt}
@@ -367,6 +398,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.storageType} onChange={(e) => update("storageType", e.target.value)}>
+                      <option value="" disabled>Select storage type</option>
                       {storageTypeOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Storage Type: {opt}
@@ -374,6 +406,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)}>
+                      <option value="" disabled>Select storage capacity</option>
                       {computerStorageCapacityOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Storage Capacity: {opt}
@@ -381,6 +414,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.graphicsCard} onChange={(e) => update("graphicsCard", e.target.value)}>
+                      <option value="" disabled>Select graphics card</option>
                       {graphicsCardOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Graphics Card: {opt}
@@ -396,6 +430,7 @@ export function AddConsumableForm() {
                   {sectionTitle("Laptop Details", "Laptop specific fields.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.chargerIncluded} onChange={(e) => update("chargerIncluded", e.target.value as YesNo)}>
+                      <option value="" disabled>Select charger inclusion</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Charger Included: {opt}
@@ -411,6 +446,7 @@ export function AddConsumableForm() {
                   {sectionTitle("Desktop Details", "Desktop accessory coverage.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.monitorIncluded} onChange={(e) => update("monitorIncluded", e.target.value as YesNo)}>
+                      <option value="" disabled>Select monitor inclusion</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Monitor Included: {opt}
@@ -418,6 +454,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.keyboardIncluded} onChange={(e) => update("keyboardIncluded", e.target.value as YesNo)}>
+                      <option value="" disabled>Select keyboard inclusion</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Keyboard Included: {opt}
@@ -425,6 +462,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.mouseIncluded} onChange={(e) => update("mouseIncluded", e.target.value as YesNo)}>
+                      <option value="" disabled>Select mouse inclusion</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Mouse Included: {opt}
@@ -448,6 +486,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.connectivity} onChange={(e) => update("connectivity", e.target.value)}>
+                      <option value="" disabled>Select connectivity</option>
                       {printerConnectivityOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Connectivity: {opt}
@@ -463,6 +502,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.duplexPrinting} onChange={(e) => update("duplexPrinting", e.target.value as YesNo)}>
+                      <option value="" disabled>Select duplex printing</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Duplex Printing: {opt}
@@ -470,6 +510,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.colorPrinting} onChange={(e) => update("colorPrinting", e.target.value as YesNo)}>
+                      <option value="" disabled>Select color printing</option>
                       {yesNoOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Color Printing: {opt}
@@ -485,6 +526,7 @@ export function AddConsumableForm() {
                   {sectionTitle("Device Specifications", "Gadget hardware and OS information.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.operatingSystem} onChange={(e) => update("operatingSystem", e.target.value)}>
+                      <option value="" disabled>Select operating system</option>
                       {operatingSystemOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Operating System: {opt}
@@ -492,6 +534,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.ram} onChange={(e) => update("ram", e.target.value)}>
+                      <option value="" disabled>Select RAM</option>
                       {gadgetRamOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           RAM: {opt}
@@ -499,6 +542,7 @@ export function AddConsumableForm() {
                       ))}
                     </select>
                     <select className={selectClassName} value={form.storageCapacity} onChange={(e) => update("storageCapacity", e.target.value)}>
+                      <option value="" disabled>Select storage capacity</option>
                       {gadgetStorageCapacityOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           Storage Capacity: {opt}
@@ -522,10 +566,18 @@ export function AddConsumableForm() {
                 {sectionTitle("Purchase Information", "Purchase, warranty, and condition fields.")}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Input type="date" value={form.purchaseDate} onChange={(e) => update("purchaseDate", e.target.value)} />
-                  <Input placeholder="Purchase Cost (M 18,000)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Quantity"
+                    value={form.quantity}
+                    onChange={(e) => update("quantity", e.target.value)}
+                  />
+                  <Input placeholder="Purchase Cost (Currency: M)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
                   <Input placeholder="Supplier" value={form.supplier} onChange={(e) => update("supplier", e.target.value)} />
                   <Input type="date" value={form.warrantyExpiry} onChange={(e) => update("warrantyExpiry", e.target.value)} />
                   <select className={selectClassName} value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
+                    <option value="" disabled>Select condition</option>
                     {conditionOptions.map((opt) => (
                       <option key={opt} value={opt}>
                         Condition: {opt}

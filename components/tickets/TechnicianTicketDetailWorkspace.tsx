@@ -4,22 +4,64 @@ import { useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
-  createTicketMaterialRequest,
   escalateTicket,
   getTechnicians,
   getTicketById,
-  getTicketMaterialRequests,
   type Technician,
   type TicketDetail,
-  type TicketMaterialRequest,
   updateTicketStatus,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 
-const statusChoices = ["Open", "In Progress", "Pending Vendor", "Resolved"]
+const statusChoices: Array<{ value: string; label: string }> = [
+  { value: "In Process", label: "In Process" },
+  { value: "Solved", label: "Solved" },
+]
+
+function normalizeTicketStatus(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
+    return "Pending"
+  }
+  if (normalized === "escalated") {
+    return "In Process"
+  }
+  if (normalized === "in progress" || normalized === "in process") {
+    return "In Process"
+  }
+  if (normalized === "resolved" || normalized === "solved") {
+    return "Solved"
+  }
+  return status
+}
+
+function getTechnicianDisplayStatus(status: string): string {
+  const normalized = normalizeTicketStatus(status)
+  if (normalized === "Pending") {
+    return "Escalated"
+  }
+  return normalized
+}
+
+function extractEscalationReason(commentText: string): string {
+  const separatorIndex = commentText.indexOf(":")
+  if (separatorIndex < 0) {
+    return ""
+  }
+  return commentText.slice(separatorIndex + 1).trim()
+}
+
+function formatTicketCommentText(commentText: string, authorName: string): string {
+  const trimmed = commentText.trim()
+  const normalized = trimmed.toLowerCase()
+  if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
+    const reason = extractEscalationReason(trimmed)
+    return reason ? `Escalated by ${authorName}: ${reason}` : `Escalated by ${authorName}`
+  }
+  return commentText
+}
 
 type TechnicianTicketDetailWorkspaceProps = {
   ticketId: number
@@ -27,14 +69,10 @@ type TechnicianTicketDetailWorkspaceProps = {
 
 export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDetailWorkspaceProps) {
   const [ticket, setTicket] = useState<TicketDetail | null>(null)
-  const [materialRequests, setMaterialRequests] = useState<TicketMaterialRequest[]>([])
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [statusValue, setStatusValue] = useState("Open")
+  const [statusValue, setStatusValue] = useState("In Process")
   const [escalationTarget, setEscalationTarget] = useState<string>("")
   const [escalationComment, setEscalationComment] = useState("")
-  const [materialName, setMaterialName] = useState("")
-  const [materialQty, setMaterialQty] = useState("1")
-  const [materialNotes, setMaterialNotes] = useState("")
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState("")
@@ -43,15 +81,11 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   const currentUser = getStoredUserSession()
 
   const loadAll = async () => {
-    const [ticketData, requestData, techData] = await Promise.all([
-      getTicketById(ticketId),
-      getTicketMaterialRequests(ticketId),
-      getTechnicians(),
-    ])
+    const [ticketData, techData] = await Promise.all([getTicketById(ticketId), getTechnicians()])
     setTicket(ticketData)
-    setMaterialRequests(requestData)
     setTechnicians(techData)
-    setStatusValue(ticketData.status)
+    const normalizedStatus = normalizeTicketStatus(ticketData.status)
+    setStatusValue(normalizedStatus === "Pending" ? "In Process" : normalizedStatus)
   }
 
   useEffect(() => {
@@ -80,8 +114,8 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       setSuccess("")
       setActionLoading(true)
       const updated = await updateTicketStatus(ticket.id, statusValue)
-      setTicket((current) => (current ? { ...current, status: updated.status } : current))
-      setSuccess("Ticket status updated.")
+      setTicket((current) => (current ? { ...current, status: normalizeTicketStatus(updated.status) } : current))
+      setSuccess(statusValue === "Solved" ? "Ticket marked as solved." : "Ticket status updated.")
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Failed to update status.")
     } finally {
@@ -123,47 +157,6 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     }
   }
 
-  const handleMaterialRequest = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!ticket || !currentUser) {
-      return
-    }
-
-    const quantity = Number(materialQty)
-    if (!materialName.trim()) {
-      setError("Material name is required.")
-      return
-    }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError("Material quantity must be greater than 0.")
-      return
-    }
-
-    try {
-      setError("")
-      setSuccess("")
-      setActionLoading(true)
-      await createTicketMaterialRequest(ticket.id, {
-        requested_by_id: currentUser.id,
-        item_name: materialName.trim(),
-        quantity,
-        notes: materialNotes.trim(),
-      })
-      setMaterialName("")
-      setMaterialQty("1")
-      setMaterialNotes("")
-      const updatedRequests = await getTicketMaterialRequests(ticket.id)
-      setMaterialRequests(updatedRequests)
-      const updatedTicket = await getTicketById(ticket.id)
-      setTicket(updatedTicket)
-      setSuccess("Material request submitted.")
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to request material.")
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   if (loading) {
     return <p className="text-sm text-slate-500">Loading ticket details...</p>
   }
@@ -188,7 +181,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">Category: {ticket.category}</Badge>
             <Badge variant="outline">Priority: {ticket.priority}</Badge>
-            <Badge variant="outline">Status: {ticket.status}</Badge>
+            <Badge variant="outline">Status: {getTechnicianDisplayStatus(ticket.status)}</Badge>
             <Badge variant="outline">Employee: {ticket.employee_name ?? ticket.employee_id}</Badge>
           </div>
         </CardContent>
@@ -211,8 +204,8 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
                 onChange={(event) => setStatusValue(event.target.value)}
               >
                 {statusChoices.map((choice) => (
-                  <option key={choice} value={choice}>
-                    {choice}
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
                   </option>
                 ))}
               </select>
@@ -252,55 +245,6 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
 
       <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
         <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Request Hardware / Material</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 px-6 pb-6">
-          <form className="space-y-3" onSubmit={handleMaterialRequest}>
-            <Input
-              placeholder="Item name (e.g. Keyboard, RAM, Ethernet cable)"
-              value={materialName}
-              onChange={(event) => setMaterialName(event.target.value)}
-            />
-            <Input
-              type="number"
-              min={1}
-              value={materialQty}
-              onChange={(event) => setMaterialQty(event.target.value)}
-            />
-            <textarea
-              className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
-              placeholder="Reason for this request"
-              value={materialNotes}
-              onChange={(event) => setMaterialNotes(event.target.value)}
-            />
-            <Button type="submit" disabled={actionLoading}>
-              Submit Material Request
-            </Button>
-          </form>
-
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-slate-800">Request History</p>
-            {materialRequests.length === 0 ? (
-              <p className="text-sm text-slate-500">No material requests yet.</p>
-            ) : (
-              materialRequests.map((item) => (
-                <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                  <p className="font-medium text-slate-800">
-                    {item.item_name} x{item.quantity}
-                  </p>
-                  <p className="text-slate-600">{item.notes || "No notes"}</p>
-                  <p className="text-xs text-slate-500">
-                    {item.requested_by_name} | {item.status} | {new Date(item.created_at).toLocaleString()}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
           <CardTitle className="text-base font-semibold text-slate-900">Ticket Comments</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 px-6 pb-6">
@@ -310,7 +254,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
             ticket.comments.map((item) => (
               <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
                 <p className="font-medium text-slate-800">{item.author_name}</p>
-                <p className="text-slate-700">{item.comment}</p>
+                <p className="text-slate-700">{formatTicketCommentText(item.comment, item.author_name)}</p>
                 <p className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
               </div>
             ))

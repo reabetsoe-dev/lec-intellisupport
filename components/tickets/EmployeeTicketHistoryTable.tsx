@@ -17,10 +17,23 @@ import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
-  Open: "bg-[#EAF3FF] text-[#0B1F3A] border border-[#0072CE]/30",
-  "In Progress": "bg-[#D9EBFF] text-[#0B1F3A] border border-[#0072CE]/35",
-  "Pending Vendor": "bg-[#FFECEF] text-[#B1121A] border border-[#D71920]/25",
-  Resolved: "bg-[#EAF8F0] text-[#007A3D] border border-[#007A3D]/25",
+  Pending: "bg-[#FFECEF] text-[#B1121A] border border-[#D71920]/25",
+  "In Process": "bg-[#D9EBFF] text-[#0B1F3A] border border-[#0072CE]/35",
+  Solved: "bg-[#EAF8F0] text-[#007A3D] border border-[#007A3D]/25",
+}
+
+function normalizeEmployeeStatus(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending" || normalized === "escalated") {
+    return "Pending"
+  }
+  if (normalized === "in progress" || normalized === "in process") {
+    return "In Process"
+  }
+  if (normalized === "resolved" || normalized === "solved") {
+    return "Solved"
+  }
+  return status
 }
 
 export function EmployeeTicketHistoryTable() {
@@ -86,22 +99,25 @@ export function EmployeeTicketHistoryTable() {
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((ticket) => (
-                <TableRow key={ticket.id}>
-                  <TableCell className="px-6 font-medium text-[#0B1F3A]">#{ticket.id}</TableCell>
-                  <TableCell className="font-medium text-[#0B1F3A]">{ticket.title}</TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "rounded-full px-2 py-0.5",
-                        statusBadgeStyles[ticket.status] ?? "bg-[#EAF3FF] text-[#0B1F3A] border border-[#0072CE]/30"
-                      )}
-                    >
-                      {ticket.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))
+              rows.map((ticket) => {
+                const displayStatus = normalizeEmployeeStatus(ticket.status)
+                return (
+                  <TableRow key={ticket.id}>
+                    <TableCell className="px-6 font-medium text-[#0B1F3A]">#{ticket.id}</TableCell>
+                    <TableCell className="font-medium text-[#0B1F3A]">{ticket.title}</TableCell>
+                    <TableCell>
+                      <Badge
+                        className={cn(
+                          "rounded-full px-2 py-0.5",
+                          statusBadgeStyles[displayStatus] ?? "bg-[#EAF3FF] text-[#0B1F3A] border border-[#0072CE]/30"
+                        )}
+                      >
+                        {displayStatus}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

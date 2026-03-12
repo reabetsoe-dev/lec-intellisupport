@@ -5,8 +5,8 @@ export default function AdminFaultDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Admin Fault Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Manage ticket lifecycle, ownership, and escalation workflow.</p>
+        <h2 className="lec-page-title">Admin Fault Dashboard</h2>
+        <p className="lec-page-subtitle">Manage ticket lifecycle, ownership, and escalation workflow.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -40,3 +40,4 @@ export default function AdminFaultDashboardPage() {
     </div>
   )
 }
+
