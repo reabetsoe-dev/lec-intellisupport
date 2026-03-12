@@ -17,7 +17,6 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
 import re
-import random
 
 app = FastAPI(title="LEC IntelliSupport AI")
 app.add_middleware(
@@ -44,6 +43,16 @@ STOPWORDS = {
 }
 GREETING_TOKENS = {"hi", "hello", "hey", "yo", "hola", "morning", "afternoon", "evening", "greetings"}
 COURTESY_TOKENS = {"thanks", "thank", "please", "assist", "help"}
+ISSUE_SIGNAL_TOKENS = {
+    "printer", "print", "paper", "jam", "offline", "toner", "cartridge",
+    "internet", "wifi", "network", "dns", "vpn", "latency", "ip",
+    "email", "outlook", "mailbox", "teams", "audio", "microphone", "speaker",
+    "password", "reset", "login", "signin", "mfa", "authenticator", "otp",
+    "rdp", "remote", "desktop", "drive", "server", "share", "file",
+    "software", "install", "update", "browser", "app", "error", "failed",
+    "keyboard", "mouse", "monitor", "display", "boot", "crash", "freeze",
+}
+KB_PRECISION_TOKENS = {"rdp", "mfa", "vpn", "outlook", "teams", "printer", "dns", "phishing", "bsod"}
 
 KB_PATH = Path(__file__).resolve().parent / "data" / "helpdesk_kb.json"
 with KB_PATH.open("r", encoding="utf-8") as kb_file:
@@ -73,6 +82,34 @@ INTENT_CATEGORY_MAP = {
     "password_reset": "SOFTWARE",
     "create_ticket": "SOFTWARE",
 }
+INTENT_HINT_TOKENS = {
+    "internet_problem": {"internet", "wifi", "network", "dns", "vpn", "latency", "connection", "slow"},
+    "slow_computer": {"computer", "pc", "laptop", "startup", "hang", "freeze", "performance"},
+    "email_issue": {"email", "outlook", "mail", "smtp", "inbox"},
+    "printer_issue": {"printer", "print", "paper", "jam", "offline"},
+    "password_reset": {"password", "reset", "login", "account"},
+}
+NON_ISSUE_INTENTS = {"greeting", "thanks", "goodbye"}
+CATEGORY_PLAYBOOK = {
+    "HARDWARE": [
+        "Verify the device has stable power and all cables are firmly connected.",
+        "Restart the device and check whether status LEDs or startup beeps indicate hardware faults.",
+        "Test with known-good peripherals or ports to isolate whether the issue is with the device or accessory.",
+        "Record visible fault indicators (error text, blinking lights, serial number) before escalation.",
+    ],
+    "SOFTWARE": [
+        "Restart the affected application and sign in again using the correct account.",
+        "Clear temporary app/session data and confirm the device date/time and permissions are correct.",
+        "Check for pending updates for the application and operating system, then retry the action.",
+        "Capture the exact error message and the action that triggered it before escalation.",
+    ],
+    "NETWORK": [
+        "Confirm the device is connected to the correct network and that link/Wi-Fi status is stable.",
+        "Run a quick connectivity check (gateway/DNS/internet) to identify where communication fails.",
+        "Reconnect network interface or restart router/switch path where possible and retry service access.",
+        "Capture IP details, affected sites/apps, and outage scope (single user vs branch-wide) before escalation.",
+    ],
+}
 
 class ClassifyRequest(BaseModel):
     text: str
@@ -101,35 +138,84 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
 
 
+def _tokens_with_stopwords(text: str) -> List[str]:
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _contains_phrase(message_tokens: List[str], phrase_tokens: List[str]) -> bool:
+    if not message_tokens or not phrase_tokens or len(phrase_tokens) > len(message_tokens):
+        return False
+    window = len(phrase_tokens)
+    for idx in range(0, len(message_tokens) - window + 1):
+        if message_tokens[idx:idx + window] == phrase_tokens:
+            return True
+    return False
+
+
 def _match_intent(message: str) -> Optional[dict]:
     normalized_message = _normalize_text(message)
     if not normalized_message:
         return None
 
-    message_tokens = set(normalized_message.split())
+    message_words = _tokens_with_stopwords(normalized_message)
+    message_tokens = _tokenize(normalized_message)
     best_intent = None
     best_score = 0.0
 
     for intent in INTENTS_DATA:
+        intent_tag = str(intent.get("tag", "")).strip().lower()
+        intent_best_score = 0.0
         for pattern in intent.get("patterns", []):
             normalized_pattern = _normalize_text(str(pattern))
             if not normalized_pattern:
                 continue
 
-            if normalized_pattern in normalized_message:
-                score = 2.0
+            pattern_words = _tokens_with_stopwords(normalized_pattern)
+            if not pattern_words:
+                continue
+            phrase_match = _contains_phrase(message_words, pattern_words)
+
+            if phrase_match:
+                score = 1.0 + min(0.6, 0.15 * len(pattern_words))
             else:
-                pattern_tokens = set(normalized_pattern.split())
+                pattern_tokens = _tokenize(normalized_pattern)
                 if not pattern_tokens:
                     continue
                 overlap = len(message_tokens.intersection(pattern_tokens))
+                if overlap == 0:
+                    continue
                 score = overlap / max(len(pattern_tokens), 1)
+                if intent_tag not in NON_ISSUE_INTENTS and overlap == 1 and len(pattern_tokens) > 1:
+                    score -= 0.15
 
-            if score > best_score:
-                best_score = score
-                best_intent = intent
+            hint_tokens = INTENT_HINT_TOKENS.get(intent_tag, set())
+            if hint_tokens:
+                hint_overlap = len(message_tokens.intersection(hint_tokens))
+                if hint_overlap == 0 and intent_tag not in NON_ISSUE_INTENTS and not phrase_match:
+                    score -= 0.25
+                else:
+                    score += min(0.45, hint_overlap * 0.15)
 
-    if best_score < 0.6:
+            if intent_tag == "slow_computer" and message_tokens.intersection({"internet", "wifi", "network", "dns", "vpn"}):
+                score -= 0.25
+
+            if score > intent_best_score:
+                intent_best_score = score
+
+        if intent_best_score > best_score:
+            best_score = intent_best_score
+            best_intent = intent
+
+    if best_intent is None:
+        return None
+
+    best_tag = str(best_intent.get("tag", "")).strip().lower()
+    if best_tag in NON_ISSUE_INTENTS:
+        if len(message_tokens) > 3 or message_tokens.intersection(ISSUE_SIGNAL_TOKENS):
+            return None
+        if best_score < 0.75:
+            return None
+    elif best_score < 0.7:
         return None
     return best_intent
 
@@ -139,6 +225,10 @@ def _is_greeting_or_smalltalk(message: str) -> bool:
     tokens = [token for token in normalized.split() if token]
     if not tokens:
         return True
+
+    issue_tokens = _tokenize(normalized)
+    if issue_tokens.intersection(ISSUE_SIGNAL_TOKENS):
+        return False
 
     if len(tokens) <= 3 and all(token in GREETING_TOKENS.union(COURTESY_TOKENS) for token in tokens):
         return True
@@ -165,23 +255,127 @@ def _clarification_reply() -> str:
     )
 
 
+def _clean_instruction(text: str) -> str:
+    cleaned = re.sub(r"__eou__|__eot__", " ", str(text), flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -\t")
+    if not cleaned:
+        return ""
+    return cleaned[0].upper() + cleaned[1:]
+
+
+def _is_actionable_instruction(step: str) -> bool:
+    lowered = step.lower().strip()
+    if len(lowered) < 12:
+        return False
+    low_quality_signals = (
+        "thats why i ask",
+        "that's why i ask",
+        "thank you",
+        "thanks",
+        "hi there",
+        "hello there",
+    )
+    return not any(signal in lowered for signal in low_quality_signals)
+
+
+def _merge_unique_steps(primary_steps: List[str], fallback_steps: List[str], limit: int = 4) -> List[str]:
+    merged: List[str] = []
+    seen = set()
+    for raw_step in primary_steps + fallback_steps:
+        step = _clean_instruction(raw_step)
+        if not _is_actionable_instruction(step):
+            continue
+        key = step.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(step)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
+def _format_troubleshooting_reply(
+    summary: str,
+    category: str,
+    steps: List[str],
+    escalation: str,
+    recommended_technician: str,
+) -> str:
+    numbered_steps = "\n".join([f"{idx}. {step}" for idx, step in enumerate(steps, start=1)])
+    escalation_text = _clean_instruction(escalation) or "Escalate to Service Desk if unresolved."
+    return (
+        f"{summary} ({category})\n"
+        "Troubleshooting steps:\n"
+        f"{numbered_steps}\n"
+        "Collect before escalation: exact error text, screenshot, affected users, and branch/location.\n"
+        f"Escalation path: {recommended_technician}.\n"
+        f"If unresolved: {escalation_text}"
+    )
+
+
+def _intent_issue_summary(tag: str) -> str:
+    return f"{tag.replace('_', ' ').strip().title()} troubleshooting"
+
+
+def _format_intent_issue_reply(intent: dict, category: str, recommended_technician: str) -> str:
+    responses = [str(item) for item in intent.get("responses", []) if str(item).strip()]
+    escalation = "Create a ticket manually with impact, location, and error details."
+    troubleshooting_steps: List[str] = []
+
+    for response in responses:
+        cleaned = _clean_instruction(response)
+        lower_response = cleaned.lower()
+        if (
+            "ticket" in lower_response or "support request" in lower_response or "support ticket" in lower_response
+        ) and any(action in lower_response for action in ("submit", "request", "report", "create", "open", "escalate")):
+            escalation = cleaned
+            continue
+        troubleshooting_steps.append(cleaned)
+
+    steps = _merge_unique_steps(
+        troubleshooting_steps,
+        CATEGORY_PLAYBOOK.get(category, CATEGORY_PLAYBOOK["SOFTWARE"]),
+    )
+    if not steps:
+        steps = CATEGORY_PLAYBOOK.get(category, CATEGORY_PLAYBOOK["SOFTWARE"])[:4]
+
+    return _format_troubleshooting_reply(
+        _intent_issue_summary(str(intent.get("tag", "issue"))),
+        category,
+        steps,
+        escalation,
+        recommended_technician,
+    )
+
+
 def _low_confidence_reply(category_hint: str) -> str:
-    queue_hint = TECHNICIAN_MAPPING.get(category_hint, "Service Desk")
+    normalized_category = _normalize_category(category_hint)
+    safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
+    queue_hint = TECHNICIAN_MAPPING.get(safe_category, "Service Desk")
+    starter_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])[:2]
+    starter_steps_block = "\n".join([f"{idx}. {step}" for idx, step in enumerate(starter_steps, start=1)])
     return (
         "I need a bit more detail before I can give precise steps.\n"
+        "Start with these checks:\n"
+        f"{starter_steps_block}\n"
         "Please provide the exact symptom, error text, and affected system.\n"
-        f"Current best category hint: {category_hint.title()} (queue: {queue_hint}).\n"
+        f"Current best category hint: {safe_category.title()} (queue: {queue_hint}).\n"
         "If business operations are blocked right now, proceed with manual fault reporting immediately."
     )
 
 
 def _best_kb_article(message: str) -> Optional[dict]:
+    normalized_message = _normalize_text(message)
+    message_words = _tokens_with_stopwords(normalized_message)
     msg_tokens = _tokenize(message)
     if not msg_tokens:
         return None
 
     best_article = None
     best_score = 0
+    best_phrase_bonus = -1
+    best_overlap = -1
 
     for article in HELPDESK_KB:
         keyword_tokens = set()
@@ -192,14 +386,22 @@ def _best_kb_article(message: str) -> Optional[dict]:
 
         # Prefer direct phrase matches if available
         phrase_bonus = 0
-        lower_message = message.lower()
         for keyword in article.get("keywords", []):
-            if keyword.lower() in lower_message:
+            keyword_words = _tokens_with_stopwords(str(keyword))
+            if _contains_phrase(message_words, keyword_words):
                 phrase_bonus += 2
+                if len(keyword_words) == 1 and keyword_words[0] in KB_PRECISION_TOKENS:
+                    phrase_bonus += 2
 
         score = overlap + phrase_bonus
-        if score > best_score:
+        if (
+            score > best_score
+            or (score == best_score and phrase_bonus > best_phrase_bonus)
+            or (score == best_score and phrase_bonus == best_phrase_bonus and overlap > best_overlap)
+        ):
             best_score = score
+            best_phrase_bonus = phrase_bonus
+            best_overlap = overlap
             best_article = article
 
     if best_score < 2:
@@ -207,28 +409,36 @@ def _best_kb_article(message: str) -> Optional[dict]:
     return best_article
 
 
-def _format_kb_reply(article: dict, category: str) -> str:
-    steps = article.get("steps", [])[:4]
-    escalation = article.get("escalation", "Escalate to service desk if issue remains unresolved.")
+def _format_kb_reply(article: dict, category: str, recommended_technician: str) -> str:
+    normalized_category = _normalize_category(category)
+    safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
+    article_steps = [str(item) for item in article.get("steps", [])]
+    fallback_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])
+    merged_steps = _merge_unique_steps(article_steps, fallback_steps, limit=4)
+    if not merged_steps:
+        merged_steps = fallback_steps[:4]
 
-    numbered_steps = "\n".join([f"{idx}. {step}" for idx, step in enumerate(steps, start=1)])
-    return (
-        f"{article.get('title')} ({category})\n"
-        f"Try these steps:\n{numbered_steps}\n"
-        f"If unresolved: {escalation}\n"
-        "You can choose 'Create Ticket Manually' if the issue continues."
+    title = _clean_instruction(article.get("title", "Recommended troubleshooting actions"))
+    escalation = str(article.get("escalation", "Escalate to service desk if issue remains unresolved."))
+    return _format_troubleshooting_reply(
+        title,
+        safe_category,
+        merged_steps,
+        escalation,
+        recommended_technician,
     )
 
 
 def _generic_helpdesk_reply(category: str, recommended_technician: str) -> str:
-    return (
-        f"I understand this appears to be a {category.lower()} issue.\n"
-        "Please try the following:\n"
-        "1. Restart the affected app/device.\n"
-        "2. Check network/power connection and retry.\n"
-        "3. Capture any error message or screenshot.\n"
-        f"Suggested technician queue: {recommended_technician}.\n"
-        "If still unresolved, create a ticket manually with impact and location."
+    normalized_category = _normalize_category(category)
+    safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
+    default_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])[:4]
+    return _format_troubleshooting_reply(
+        "Recommended troubleshooting actions",
+        safe_category,
+        default_steps,
+        "Create a ticket manually with impact, location, and error details.",
+        recommended_technician,
     )
 
 def _normalize_category(cat: str) -> str:
@@ -329,13 +539,32 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
 
     intent = _match_intent(message)
     if intent is not None:
-        responses = [str(item) for item in intent.get("responses", []) if str(item).strip()]
-        reply = random.choice(responses) if responses else _clarification_reply()
-        category = INTENT_CATEGORY_MAP.get(str(intent.get("tag", "")).strip(), None)
+        intent_tag = str(intent.get("tag", "")).strip().lower()
+        matched_intent_tag = intent_tag
+        category = INTENT_CATEGORY_MAP.get(intent_tag, None)
+        if category not in ALLOWED_CATEGORIES:
+            category = None
         recommended_technician = TECHNICIAN_MAPPING.get(category, "Service Desk") if category else "Service Desk"
+        if intent_tag in NON_ISSUE_INTENTS:
+            responses = [str(item) for item in intent.get("responses", []) if str(item).strip()]
+            reply = _clean_instruction(responses[0]) if responses else _clarification_reply()
+        else:
+            kb_article = _best_kb_article(message)
+            if kb_article is not None:
+                matched_intent_tag = str(kb_article.get("id", intent_tag)).strip().lower() or intent_tag
+                kb_category = _normalize_category(str(kb_article.get("category", "")))
+                safe_category = kb_category if kb_category in ALLOWED_CATEGORIES else (category if category in ALLOWED_CATEGORIES else "SOFTWARE")
+                recommended_technician = TECHNICIAN_MAPPING.get(safe_category, "Service Desk")
+                reply = _format_kb_reply(kb_article, safe_category, recommended_technician)
+                category = safe_category
+            else:
+                safe_category = category if category in ALLOWED_CATEGORIES else "SOFTWARE"
+                recommended_technician = TECHNICIAN_MAPPING.get(safe_category, "Service Desk")
+                reply = _format_intent_issue_reply(intent, safe_category, recommended_technician)
+                category = safe_category
         return {
             "reply": reply,
-            "intent": intent.get("tag"),
+            "intent": matched_intent_tag,
             "category": category,
             "recommended_technician": recommended_technician,
             "confidence": 1.0,
@@ -371,7 +600,12 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     article = _best_kb_article(message)
 
     if article is not None:
-        reply = _format_kb_reply(article, article.get("category", category))
+        article_category = _normalize_category(str(article.get("category", "")))
+        safe_category = article_category if article_category in ALLOWED_CATEGORIES else category
+        recommended_technician = TECHNICIAN_MAPPING.get(safe_category, "Service Desk")
+        reply = _format_kb_reply(article, safe_category, recommended_technician)
+        category = safe_category
+        confidence = max(confidence, 0.78)
     elif confidence < 0.5:
         reply = _low_confidence_reply(category)
     else:

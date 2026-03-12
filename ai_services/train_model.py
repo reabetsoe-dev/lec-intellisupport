@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 # - Assignment will be based on the predicted category
 # ------------------------------------------------------------
 
-DATA_PATH = "data/tickets.csv"
+DATA_PATH = "data/tickets_advanced.csv"
 MODEL_DIR = "models"
 
 os.makedirs(MODEL_DIR, exist_ok=True)

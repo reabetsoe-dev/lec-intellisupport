@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local data workspaces (do not commit)
+/backend/IT_CHATBOT_DATASET/
+
+# python runtime artifacts
+**/__pycache__/
+*.py[cod]
+*.log
+backend/db.sqlite3

@@ -185,7 +185,7 @@
     "id": "rdp_issue",
     "category": "NETWORK",
     "title": "Remote desktop (RDP) connection issue",
-    "keywords": ["rdp", "remote desktop", "cannot connect remote", "mstsc"],
+    "keywords": ["rdp", "remote desktop", "cannot connect remote", "mstsc", "rdp timeout", "remote desktop timeout"],
     "steps": [
       "Confirm target machine is powered on and reachable on VPN.",
       "Use hostname and IP to test both connection methods.",
@@ -276,7 +276,7 @@
     "id": "app_not_responding",
     "category": "SOFTWARE",
     "title": "Application freezing or not responding",
-    "keywords": ["application not responding", "app freeze", "app hangs", "stuck", "loading forever", "crash on open"],
+    "keywords": ["application not responding", "app freeze", "app freezes", "application freezing", "app hangs", "stuck", "loading forever", "crash on open"],
     "steps": [
       "Close the application from Task Manager and reopen it.",
       "Restart the workstation and retry the same action.",
