@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 
+import { AdminFaultBackButton } from "@/components/layout/AdminFaultBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -219,6 +220,7 @@ export default function AdminFaultLogCallPage() {
 
   return (
     <div className="space-y-6">
+      <AdminFaultBackButton />
       <EmployeePageHero
         title="Log Employee Call"
         description="Capture call-in faults for employees who need admin-assisted reporting and route them into the normal fault workflow."
@@ -338,4 +340,3 @@ export default function AdminFaultLogCallPage() {
     </div>
   )
 }
-

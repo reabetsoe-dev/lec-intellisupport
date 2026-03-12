@@ -3,7 +3,6 @@ import { BarChart3, ClipboardList, type LucideIcon, PhoneCall, UsersRound } from
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TechnicianManagementPanel } from "@/components/admin-fault/TechnicianManagementPanel"
 
 const quickActions: Array<{
   href: string
@@ -18,7 +17,7 @@ const quickActions: Array<{
     icon: ClipboardList,
   },
   {
-    href: "#technician-management",
+    href: "/admin-fault/manage-users",
     title: "Manage Users",
     description: "Add or remove employees and technicians from the support system.",
     icon: UsersRound,
@@ -70,8 +69,6 @@ export default function AdminFaultDashboardPage() {
           })}
         </CardContent>
       </Card>
-
-      <TechnicianManagementPanel />
     </div>
   )
 }
