@@ -17,28 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })
-}
-
-function extractRequestDetails(notes: string): { branch: string; reason: string } {
-  const match = notes.match(/^\[Branch:(.+?)\]\s*(.*)$/i)
-  if (!match) {
-    return {
-      branch: "N/A",
-      reason: notes.trim() || "N/A",
-    }
-  }
-
-  return {
-    branch: match[1]?.trim() || "N/A",
-    reason: match[2]?.trim() || "N/A",
-  }
-}
-
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
@@ -317,47 +295,48 @@ export function EmployeeConsumableRequestPanel() {
             <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumable Requests</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">ID</TableHead>
-                  <TableHead className="min-w-[140px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
-                  <TableHead className="min-w-[70px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Qty</TableHead>
-                  <TableHead className="min-w-[110px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
-                  <TableHead className="min-w-[130px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Branch</TableHead>
-                  <TableHead className="min-w-[170px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Reason</TableHead>
-                  <TableHead className="min-w-[100px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
-                  <TableHead className="min-w-[220px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Decision Notes</TableHead>
-                  <TableHead className="min-w-[180px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Requested At</TableHead>
-                  <TableHead className="min-w-[140px] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Action</TableHead>
+                  <TableHead className="w-[30%] px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
+                  <TableHead className="w-[8%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Qty</TableHead>
+                  <TableHead className="w-[14%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
+                  <TableHead className="w-[33%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
+                  <TableHead className="w-[15%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {myRequests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
+                    <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                       No requests submitted yet.
                     </TableCell>
                   </TableRow>
                 ) : (
                   myRequests.map((request) => {
-                    const requestDetails = extractRequestDetails(request.notes)
+                    const decisionNote =
+                      request.status === "approved"
+                        ? `Approved by ${request.approvedBy ?? "Admin"}`
+                        : request.status === "rejected"
+                          ? `Rejected: ${request.rejectionReason ?? "No reason provided"}`
+                          : "Awaiting admin decision"
 
                     return (
                       <TableRow key={request.id}>
-                      <TableCell className="px-6 font-medium text-[#0B1F3A]">{request.id}</TableCell>
-                      <TableCell className="text-[#0B1F3A]">{toDisplayItemName(request.itemName)}</TableCell>
-                      <TableCell className="text-[#0B1F3A]">{request.quantity}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="border-slate-300 bg-slate-50 text-[#0B1F3A]">
-                          {request.assignmentType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-[#0B1F3A]">{requestDetails.branch}</TableCell>
-                      <TableCell className="max-w-[220px] text-xs text-[#0B1F3A]">{requestDetails.reason}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
+                        <TableCell className="px-6 text-[#0B1F3A]">
+                          <p className="truncate" title={toDisplayItemName(request.itemName)}>
+                            {toDisplayItemName(request.itemName)}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-[#0B1F3A]">{request.quantity}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="border-slate-300 bg-slate-50 text-[#0B1F3A] whitespace-nowrap">
+                            {request.assignmentType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-[#0B1F3A]">
+                          <Badge
+                            variant="outline"
                             className={
                               request.status === "approved"
                                 ? "border-[#007A3D]/30 bg-[#EAF8F0] text-[#007A3D]"
@@ -368,25 +347,20 @@ export function EmployeeConsumableRequestPanel() {
                           >
                             {request.status}
                           </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[260px] text-xs text-[#0B1F3A]">
-                        {request.status === "approved"
-                          ? `Approved by ${request.approvedBy ?? "Admin"}`
-                          : request.status === "rejected"
-                              ? `Rejected: ${request.rejectionReason ?? "No reason provided"}`
-                              : "Awaiting admin decision"}
+                          <p className="truncate" title={decisionNote}>
+                            {decisionNote}
+                          </p>
                         </TableCell>
-                        <TableCell className="text-[#0B1F3A]">{formatDate(request.requestedAt)}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-2">
                           {request.status === "approved" ? (
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="border-[#0072CE]/35 text-[#0B1F3A] hover:bg-[#EAF3FF]"
+                              className="h-8 w-full border-[#0072CE]/35 px-2 text-xs text-[#0B1F3A] hover:bg-[#EAF3FF]"
                               onClick={() => router.push("/employee/my-consumables")}
                             >
-                              Return Item
+                              Return
                             </Button>
                           ) : (
                             <span className="text-xs text-slate-500">N/A</span>
