@@ -121,3 +121,17 @@ Watching for file changes with StatReloader
 [12/Mar/2026 15:18:09] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
 [12/Mar/2026 15:18:09] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
 [12/Mar/2026 15:18:09] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:14] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:20:14] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:14] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:24] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:20:24] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:34] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:20:34] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:44] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:20:44] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:20:54] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:20:54] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+C:\Users\motel\lec-intellisupport\backend\core\views.py changed, reloading.
+Watching for file changes with StatReloader
+C:\Users\motel\lec-intellisupport\backend\core\urls.py changed, reloading.

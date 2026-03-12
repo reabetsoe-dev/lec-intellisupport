@@ -895,21 +895,6 @@ def ticket_priority_view(request, ticket_id: int):
 
 
 @api_view(["PUT"])
-def ticket_category_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
-    if not ticket:
-        return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    category = str(request.data.get("category", "")).strip()
-    if not category:
-        return Response({"message": "category is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    ticket.category = category
-    ticket.save(update_fields=["category", "updated_at"])
-    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
-
-
-@api_view(["PUT"])
 def ticket_status_view(request, ticket_id: int):
     ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:

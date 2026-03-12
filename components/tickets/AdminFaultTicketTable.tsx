@@ -5,7 +5,7 @@ import { AlertTriangle, ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Dialog,
   DialogClose,
@@ -25,14 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   assignTechnician,
   escalateTicketByAdmin,
@@ -40,7 +33,6 @@ import {
   getTechnicians,
   type Technician,
   type Ticket,
-  updateTicketCategory,
   updateTicketPriority,
   updateTicketStatus,
 } from "@/lib/api"
@@ -49,35 +41,32 @@ import { cn } from "@/lib/utils"
 
 type TicketRecord = {
   id: number
+  tracking_id: string
   requester: string
   employee_name: string
-  caller_name: string
   title: string
   description: string
   location: string
   created_at: string
-  category: string
   priority: string
   status: string
   technician: string
   technician_id: number | null
 }
 
-const statusOptions = ["Pending", "In Process", "Solved"]
 const priorityOptions = ["Low", "Medium", "High", "Critical"]
-const categoryOptions = ["HARDWARE", "SOFTWARE", "NETWORK"]
-
-const statusBadgeStyles: Record<string, string> = {
-  Pending: "bg-amber-50 text-amber-700 border border-amber-100",
-  "In Process": "bg-blue-50 text-blue-700 border border-blue-100",
-  Solved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-}
 
 const priorityBadgeStyles: Record<string, string> = {
-  Low: "bg-slate-100 text-slate-700 border border-slate-200",
-  Medium: "bg-indigo-50 text-indigo-700 border border-indigo-100",
-  High: "bg-orange-50 text-orange-700 border border-orange-100",
-  Critical: "bg-rose-50 text-rose-700 border border-rose-100",
+  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
+  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]",
+  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]",
+  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]",
+}
+
+const statusTextStyles: Record<string, string> = {
+  Pending: "text-[#D63C3C]",
+  "In Process": "text-[#6D3CC4]",
+  Solved: "text-[#1E7A45]",
 }
 
 function normalizeTicketStatus(status: string): string {
@@ -97,18 +86,28 @@ function normalizeTicketStatus(status: string): string {
   return status
 }
 
+function formatTrackingId(id: number): string {
+  return `TK-${String(id).padStart(5, "0")}`
+}
+
+function formatDateLabel(isoDate: string): string {
+  if (!isoDate) return "N/A"
+  const date = new Date(isoDate)
+  if (Number.isNaN(date.getTime())) return "N/A"
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+}
+
 function toRow(ticket: Ticket): TicketRecord {
   const requesterName = ticket.caller_name?.trim() || ticket.employee_name || `Employee #${ticket.employee_id}`
   return {
     id: ticket.id,
+    tracking_id: formatTrackingId(ticket.id),
     requester: requesterName,
     employee_name: ticket.employee_name ?? `Employee #${ticket.employee_id}`,
-    caller_name: ticket.caller_name?.trim() || "",
     title: ticket.title,
     description: ticket.description || "",
     location: ticket.location || "",
     created_at: ticket.created_at || "",
-    category: ticket.category,
     priority: ticket.priority,
     status: normalizeTicketStatus(ticket.status),
     technician: ticket.technician_name ?? (ticket.technician_id ? `Technician #${ticket.technician_id}` : "Unassigned"),
@@ -120,7 +119,6 @@ export function AdminFaultTicketTable() {
   const [query, setQuery] = useState("")
   const [rows, setRows] = useState<TicketRecord[]>([])
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [statusFilter, setStatusFilter] = useState("All")
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -142,28 +140,32 @@ export function AdminFaultTicketTable() {
         setLoading(false)
       }
     }
-
     void run()
   }, [])
 
   const filteredRows = rows.filter((ticket) => {
     const search = query.toLowerCase()
     const matchesQuery =
+      ticket.tracking_id.toLowerCase().includes(search) ||
       ticket.title.toLowerCase().includes(search) ||
       ticket.requester.toLowerCase().includes(search) ||
       ticket.technician.toLowerCase().includes(search) ||
       String(ticket.id).includes(search)
-    const matchesStatus = statusFilter === "All" || ticket.status === statusFilter
     const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter
-    return matchesQuery && matchesStatus && matchesPriority
+    return matchesQuery && matchesPriority
   })
+
+  const summary = {
+    open: rows.filter((row) => row.status === "Pending").length,
+    assigned: rows.filter((row) => row.technician_id !== null).length,
+    unassigned: rows.filter((row) => row.technician_id === null).length,
+    highPriority: rows.filter((row) => row.priority === "High" || row.priority === "Critical").length,
+  }
 
   const refreshRow = async (ticketId: number) => {
     const all = await getAllTickets()
     const updated = all.find((item) => item.id === ticketId)
-    if (!updated) {
-      return
-    }
+    if (!updated) return
     setRows((current) => current.map((row) => (row.id === ticketId ? toRow(updated) : row)))
   }
 
@@ -187,27 +189,7 @@ export function AdminFaultTicketTable() {
     }
   }
 
-  const handleCategory = async (ticketId: number, category: string) => {
-    try {
-      setError("")
-      await updateTicketCategory(ticketId, category)
-      await refreshRow(ticketId)
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to update category.")
-    }
-  }
-
-  const handleStatus = async (ticketId: number, status: string) => {
-    try {
-      setError("")
-      await updateTicketStatus(ticketId, status)
-      await refreshRow(ticketId)
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to update status.")
-    }
-  }
-
-  const handleEscalate = async (ticketId: number) => {
+  const handleReceive = async (ticketId: number) => {
     try {
       setError("")
       await updateTicketStatus(ticketId, "In Process")
@@ -218,21 +200,16 @@ export function AdminFaultTicketTable() {
   }
 
   const submitEscalation = async () => {
-    if (!escalationTicket) {
-      return
-    }
-
+    if (!escalationTicket) return
     const user = getStoredUserSession()
     if (!user || user.role !== "admin_fault") {
       setError("Admin Fault session required. Please login again.")
       return
     }
-
     if (!escalationTechnicianId) {
       setError("Please choose the technician to escalate to.")
       return
     }
-
     if (!escalationComment.trim()) {
       setError("Please provide escalation details.")
       return
@@ -241,12 +218,7 @@ export function AdminFaultTicketTable() {
     try {
       setEscalating(true)
       setError("")
-      await escalateTicketByAdmin(
-        escalationTicket.id,
-        user.id,
-        Number(escalationTechnicianId),
-        escalationComment.trim()
-      )
+      await escalateTicketByAdmin(escalationTicket.id, user.id, Number(escalationTechnicianId), escalationComment.trim())
       await refreshRow(escalationTicket.id)
       setEscalationTicket(null)
       setEscalationTechnicianId("")
@@ -259,355 +231,255 @@ export function AdminFaultTicketTable() {
   }
 
   return (
-    <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-      <CardHeader className="space-y-4 border-b border-slate-100 px-6 py-5">
-        <div>
-          <CardTitle className="text-base font-semibold text-slate-900">Admin Ticket Table</CardTitle>
-          <p className="text-sm text-slate-500">Assign technician, change priority, update status, and escalate.</p>
+    <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
+      <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">Open tickets {summary.open}</span>
+          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Assigned {summary.assigned}</span>
+          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Unassigned {summary.unassigned}</span>
+          <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">High/Critical {summary.highPriority}</span>
         </div>
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by ticket, employee, or technician"
-            className="max-w-lg"
-          />
-          <div className="flex flex-wrap gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-slate-200">
-                  Status: {statusFilter}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Status</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setStatusFilter("All")}>All</DropdownMenuItem>
-                {statusOptions.map((item) => (
-                  <DropdownMenuItem key={item} onClick={() => setStatusFilter(item)}>
-                    {item}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-slate-200">
-                  Priority: {priorityFilter}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Priority</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setPriorityFilter("All")}>All</DropdownMenuItem>
-                {priorityOptions.map((item) => (
-                  <DropdownMenuItem key={item} onClick={() => setPriorityFilter(item)}>
-                    {item}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tracking ID, caller, or technician" className="max-w-lg border-[#93AECA] bg-white" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
+                Priority: {priorityFilter}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuLabel>Priority</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setPriorityFilter("All")}>All</DropdownMenuItem>
+              {priorityOptions.map((item) => (
+                <DropdownMenuItem key={item} onClick={() => setPriorityFilter(item)}>
+                  {item}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
+
       <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Ticket ID</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Caller / Employee</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Category</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Assigned Technician</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
-                  Loading tickets...
-                </TableCell>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
+                <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Name</TableHead>
+                <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Last Replier</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+                <TableHead className="w-[270px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
               </TableRow>
-            ) : error ? (
-              <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-rose-600">
-                  {error}
-                </TableCell>
-              </TableRow>
-            ) : filteredRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
-                  No tickets found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredRows.map((ticket) => (
-                <TableRow key={ticket.id}>
-                  <TableCell className="px-6 font-medium text-slate-700">#{ticket.id}</TableCell>
-                  <TableCell className="font-medium text-slate-800">{ticket.requester}</TableCell>
-                  <TableCell className="text-slate-700">{ticket.category}</TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "rounded-full px-2 py-0.5",
-                        priorityBadgeStyles[ticket.priority] ?? "bg-slate-100 text-slate-700 border border-slate-200"
-                      )}
-                    >
-                      {ticket.priority}
-                    </Badge>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                    Loading tickets...
                   </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "rounded-full px-2 py-0.5",
-                        statusBadgeStyles[ticket.status] ?? "bg-slate-100 text-slate-700 border border-slate-200"
-                      )}
-                    >
-                      {ticket.status}
-                    </Badge>
+                </TableRow>
+              ) : error ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
+                    {error}
                   </TableCell>
-                  <TableCell className="text-slate-700">{ticket.technician}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline" className="border-slate-200">
-                            Assign
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem onClick={() => void handleAssign(ticket.id, null)}>Unassigned</DropdownMenuItem>
-                          {technicians.map((option) => (
-                            <DropdownMenuItem key={option.id} onClick={() => void handleAssign(ticket.id, option.id)}>
-                              {option.name}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                </TableRow>
+              ) : filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                    No tickets found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredRows.map((ticket) => (
+                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                    <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">{ticket.tracking_id}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.created_at)}</TableCell>
+                    <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.requester}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#2A5D8D] underline underline-offset-2">{ticket.title}</TableCell>
+                    <TableCell className={cn("py-3 text-xs font-semibold", statusTextStyles[ticket.status] ?? "text-[#345F85]")}>{ticket.status}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#1F4469]">{ticket.technician}</TableCell>
+                    <TableCell className="py-3">
+                      <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]")}>{ticket.priority}</Badge>
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
+                              Assign
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => void handleAssign(ticket.id, null)}>Unassigned</DropdownMenuItem>
+                            {technicians.map((option) => (
+                              <DropdownMenuItem key={option.id} onClick={() => void handleAssign(ticket.id, option.id)}>
+                                {option.name}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline" className="border-slate-200">
-                            Category
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {categoryOptions.map((option) => (
-                            <DropdownMenuItem key={option} onClick={() => void handleCategory(ticket.id, option)}>
-                              {option}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
+                              Priority
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            {priorityOptions.map((option) => (
+                              <DropdownMenuItem key={option} onClick={() => void handlePriority(ticket.id, option)}>
+                                {option}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline" className="border-slate-200">
-                            Change Priority
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {priorityOptions.map((option) => (
-                            <DropdownMenuItem key={option} onClick={() => void handlePriority(ticket.id, option)}>
-                              {option}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline" className="border-slate-200">
-                            Status
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {statusOptions.map((option) => (
-                            <DropdownMenuItem key={option} onClick={() => void handleStatus(ticket.id, option)}>
-                              {option}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-                            onClick={() => setViewTicket(ticket)}
-                            disabled={ticket.status === "Pending"}
-                            title={ticket.status === "Pending" ? "Receive this fault first." : undefined}
-                          >
-                            Open
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-2xl">
-                          <DialogHeader>
-                            <DialogTitle>Fault Details - Ticket #{ticket.id}</DialogTitle>
-                            <DialogDescription>Review fault details before deciding to solve or escalate.</DialogDescription>
-                          </DialogHeader>
-                          <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
-                            <div>
-                              <p className="text-xs text-slate-500">Caller</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.requester || ticket.requester}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Employee Account</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.employee_name || ticket.employee_name}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Category</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.category || ticket.category}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Priority</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.priority || ticket.priority}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Status</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.status || ticket.status}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Location</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.location || ticket.location || "N/A"}</p>
-                            </div>
-                            <div className="md:col-span-2">
-                              <p className="text-xs text-slate-500">Title</p>
-                              <p className="font-medium text-slate-800">{viewTicket?.title || ticket.title}</p>
-                            </div>
-                            <div className="md:col-span-2">
-                              <p className="text-xs text-slate-500">Description</p>
-                              <p className="whitespace-pre-wrap text-slate-700">
-                                {viewTicket?.description || ticket.description || "No description."}
-                              </p>
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <DialogClose asChild>
-                              <Button variant="outline" onClick={() => setViewTicket(null)}>
-                                Close
-                              </Button>
-                            </DialogClose>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-                        onClick={() => void handleEscalate(ticket.id)}
-                      >
-                        Receive
-                      </Button>
-
-                      <Dialog
-                        open={escalationTicket?.id === ticket.id}
-                        onOpenChange={(open) => {
-                          if (!open) {
-                            setEscalationTicket(null)
-                            setEscalationTechnicianId("")
-                            setEscalationComment("")
-                          } else {
-                            setEscalationTicket(ticket)
-                          }
-                        }}
-                      >
-                        <DialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            className="bg-rose-600 text-white hover:bg-rose-700"
-                            onClick={() => {
-                              setEscalationTicket(ticket)
-                              setEscalationTechnicianId("")
-                              setEscalationComment("")
-                            }}
-                            disabled={ticket.status === "Pending"}
-                            title={ticket.status === "Pending" ? "Receive this fault first." : undefined}
-                          >
-                            <AlertTriangle className="h-4 w-4" />
-                            Escalate
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-2xl">
-                          <DialogHeader>
-                            <DialogTitle>Escalate Ticket #{ticket.id}</DialogTitle>
-                            <DialogDescription>
-                              Review the fault details and choose the technician to escalate this fault to.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 border-[#7EA5CC] bg-[#EEF5FD] text-[#255680] hover:bg-[#E3F0FC] hover:text-[#1A4469]" onClick={() => setViewTicket(ticket)} disabled={ticket.status === "Pending"} title={ticket.status === "Pending" ? "Receive this fault first." : undefined}>
+                              Open
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Fault Details - Ticket #{ticket.id}</DialogTitle>
+                              <DialogDescription>Review fault details before deciding to solve or escalate.</DialogDescription>
+                            </DialogHeader>
                             <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
                               <div>
                                 <p className="text-xs text-slate-500">Caller</p>
-                                <p className="font-medium text-slate-800">{ticket.requester}</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.requester || ticket.requester}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-slate-500">Employee Account</p>
-                                <p className="font-medium text-slate-800">{ticket.employee_name}</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.employee_name || ticket.employee_name}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Priority</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.priority || ticket.priority}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Status</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.status || ticket.status}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Location</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.location || ticket.location || "N/A"}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Updated</p>
+                                <p className="font-medium text-slate-800">{formatDateLabel(viewTicket?.created_at || ticket.created_at)}</p>
                               </div>
                               <div className="md:col-span-2">
-                                <p className="text-xs text-slate-500">Fault</p>
-                                <p className="font-medium text-slate-800">{ticket.title}</p>
-                                <p className="mt-1 whitespace-pre-wrap text-slate-700">{ticket.description || "No description."}</p>
+                                <p className="text-xs text-slate-500">Title</p>
+                                <p className="font-medium text-slate-800">{viewTicket?.title || ticket.title}</p>
+                              </div>
+                              <div className="md:col-span-2">
+                                <p className="text-xs text-slate-500">Description</p>
+                                <p className="whitespace-pre-wrap text-slate-700">{viewTicket?.description || ticket.description || "No description."}</p>
                               </div>
                             </div>
+                            <DialogFooter>
+                              <DialogClose asChild>
+                                <Button variant="outline" onClick={() => setViewTicket(null)}>
+                                  Close
+                                </Button>
+                              </DialogClose>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
 
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
-                              <select
-                                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800"
-                                value={escalationTechnicianId}
-                                onChange={(event) => setEscalationTechnicianId(event.target.value)}
-                              >
-                                <option value="">Select technician</option>
-                                {technicians.map((option) => (
-                                  <option key={option.id} value={String(option.id)}>
-                                    {option.name} ({option.branch || "No branch"})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                        <Button size="sm" variant="outline" className="h-8 border-[#D9C08A] bg-[#FFF5DE] text-[#875D00] hover:bg-[#FCEECD] hover:text-[#6E4A00]" onClick={() => void handleReceive(ticket.id)}>
+                          Receive
+                        </Button>
 
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
-                              <textarea
-                                className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-                                value={escalationComment}
-                                onChange={(event) => setEscalationComment(event.target.value)}
-                                placeholder="Why this fault is being escalated and any troubleshooting already done."
-                              />
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <DialogClose asChild>
-                              <Button variant="outline">Cancel</Button>
-                            </DialogClose>
-                            <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
-                              {escalating ? "Escalating..." : "Confirm Escalation"}
+                        <Dialog
+                          open={escalationTicket?.id === ticket.id}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              setEscalationTicket(null)
+                              setEscalationTechnicianId("")
+                              setEscalationComment("")
+                            } else {
+                              setEscalationTicket(ticket)
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button size="sm" className="h-8 bg-[#D9534F] text-white hover:bg-[#C44642]" onClick={() => { setEscalationTicket(ticket); setEscalationTechnicianId(""); setEscalationComment("") }} disabled={ticket.status === "Pending"} title={ticket.status === "Pending" ? "Receive this fault first." : undefined}>
+                              <AlertTriangle className="h-4 w-4" />
+                              Escalate
                             </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Escalate Ticket #{ticket.id}</DialogTitle>
+                              <DialogDescription>Review the fault details and choose the technician to escalate to.</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
+                                <div>
+                                  <p className="text-xs text-slate-500">Caller</p>
+                                  <p className="font-medium text-slate-800">{ticket.requester}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">Employee Account</p>
+                                  <p className="font-medium text-slate-800">{ticket.employee_name}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                  <p className="text-xs text-slate-500">Fault</p>
+                                  <p className="font-medium text-slate-800">{ticket.title}</p>
+                                  <p className="mt-1 whitespace-pre-wrap text-slate-700">{ticket.description || "No description."}</p>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
+                                <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={escalationTechnicianId} onChange={(event) => setEscalationTechnicianId(event.target.value)}>
+                                  <option value="">Select technician</option>
+                                  {technicians.map((option) => (
+                                    <option key={option.id} value={String(option.id)}>
+                                      {option.name} ({option.branch || "No branch"})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
+                                <textarea className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800" value={escalationComment} onChange={(event) => setEscalationComment(event.target.value)} placeholder="Why this fault is being escalated and what checks were done." />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <DialogClose asChild>
+                                <Button variant="outline">Cancel</Button>
+                              </DialogClose>
+                              <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
+                                {escalating ? "Escalating..." : "Confirm Escalation"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   )
 }
+
