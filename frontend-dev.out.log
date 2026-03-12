@@ -79,3 +79,5 @@
 ○ Compiling /employee/profile ...
  GET /employee/profile 200 in 4.3s (compile: 4.1s, render: 171ms)
  GET /employee/profile 200 in 104ms (compile: 23ms, render: 80ms)
+ GET /login 200 in 826ms (compile: 60ms, render: 766ms)
+ GET /employee/profile 200 in 71ms (compile: 9ms, render: 62ms)

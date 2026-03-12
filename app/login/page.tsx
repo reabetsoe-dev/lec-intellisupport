@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 
 import { getDashboardPathByRole, persistUserSession, simulateLogin } from "@/lib/auth"
@@ -48,6 +49,16 @@ export default function LoginPage() {
 
       <Card className="relative z-10 w-full max-w-md rounded-2xl border border-[#2A6FB2]/45 bg-[linear-gradient(180deg,rgba(8,30,66,0.88)_0%,rgba(5,20,47,0.92)_100%)] py-0 text-slate-100 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md">
         <CardHeader className="space-y-2 px-8 py-7">
+          <div className="mb-2 flex justify-center">
+            <Image
+              src="/lec-logo.png"
+              alt="LEC logo"
+              width={320}
+              height={96}
+              priority
+              className="h-auto w-full max-w-[300px] object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.38)]"
+            />
+          </div>
           <CardTitle className="text-3xl font-semibold text-[#E5F1FF]">LEC IntelliSupport</CardTitle>
           <p className="text-sm text-[#6FC6E8]">Smart IT Service Management Platform</p>
         </CardHeader>
