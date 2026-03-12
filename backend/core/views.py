@@ -65,7 +65,6 @@ def _to_optional_decimal(value):
         return None
 
 
-<<<<<<< HEAD
 def _normalize_ticket_status(value: str | None) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -94,9 +93,6 @@ def _extract_escalation_target(comment_text: str) -> str | None:
     return None
 
 
-def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) -> dict:
-    payload = {
-=======
 def _find_matching_consumable_for_restock(
     *,
     asset_tag: str,
@@ -199,9 +195,8 @@ def _populate_missing_consumable_details(consumable: Consumable, payload: dict) 
     return updated
 
 
-def _ticket_to_dict(ticket: Ticket) -> dict:
-    return {
->>>>>>> d93be2b2 (consumables addition)
+def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) -> dict:
+    payload = {
         "id": ticket.id,
         "title": ticket.title,
         "description": ticket.description,
@@ -211,6 +206,9 @@ def _ticket_to_dict(ticket: Ticket) -> dict:
         "status": _normalize_ticket_status(ticket.status),
         "employee_id": ticket.employee_id,
         "employee_name": ticket.employee.name,
+        "caller_name": ticket.caller_name,
+        "logged_by_admin_id": ticket.logged_by_admin_id,
+        "logged_by_admin_name": ticket.logged_by_admin.name if ticket.logged_by_admin_id else None,
         "technician_id": ticket.technician_id,
         "technician_name": ticket.technician.user.name if ticket.technician_id else None,
         "routed_to_role": User.ROLE_ADMIN_FAULT,
@@ -369,7 +367,7 @@ def change_password_view(request):
 def tickets_collection_view(request):
     if request.method == "GET":
         employee_id = request.query_params.get("employee_id")
-        queryset = Ticket.objects.select_related("employee", "technician__user").all().order_by("-created_at")
+        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
         return Response([_ticket_to_dict(ticket) for ticket in queryset], status=status.HTTP_200_OK)
@@ -380,6 +378,8 @@ def tickets_collection_view(request):
     location = str(request.data.get("location", "")).strip()
     priority = str(request.data.get("priority", "Low")).strip() or "Low"
     employee_id = request.data.get("employee_id")
+    caller_name = str(request.data.get("caller_name", "")).strip()
+    logged_by_admin_id = request.data.get("logged_by_admin_id")
 
     if not title or not description or not category or not employee_id:
         return Response(
@@ -391,6 +391,14 @@ def tickets_collection_view(request):
     if not employee:
         return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    logged_by_admin = None
+    if logged_by_admin_id not in (None, ""):
+        logged_by_admin = User.objects.filter(id=logged_by_admin_id, role=User.ROLE_ADMIN_FAULT, is_active=True).first()
+        if not logged_by_admin:
+            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not caller_name:
+            return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
+
     ticket = Ticket.objects.create(
         title=title,
         description=description,
@@ -398,9 +406,12 @@ def tickets_collection_view(request):
         location=location,
         priority=priority,
         employee=employee,
+        caller_name=caller_name or employee.name,
+        logged_by_admin=logged_by_admin,
     )
+    submission_actor = caller_name or employee.name
     for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
-        _notify_user(admin_user, f"New ticket #{ticket.id} submitted by {employee.name}.", ticket=ticket)
+        _notify_user(admin_user, f"New ticket #{ticket.id} submitted by {submission_actor}.", ticket=ticket)
     payload = _ticket_to_dict(ticket)
     payload["routing_note"] = "Ticket routed to Admin Fault queue for assignment."
     return Response(payload, status=status.HTTP_201_CREATED)
@@ -428,7 +439,7 @@ def assigned_tickets_view(request, technician_id: int):
         base_filter = base_filter | Q(id__in=escalated_ticket_ids)
 
     queryset = (
-        Ticket.objects.select_related("employee", "technician__user")
+        Ticket.objects.select_related("employee", "technician__user", "logged_by_admin")
         .filter(base_filter)
         .distinct()
         .order_by("-updated_at", "-created_at")
@@ -449,7 +460,7 @@ def assigned_tickets_view(request, technician_id: int):
 
 @api_view(["GET"])
 def ticket_detail_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
     return Response(_ticket_detail_to_dict(ticket), status=status.HTTP_200_OK)
@@ -457,7 +468,7 @@ def ticket_detail_view(request, ticket_id: int):
 
 @api_view(["GET", "POST"])
 def ticket_material_requests_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -518,7 +529,7 @@ def ticket_material_requests_view(request, ticket_id: int):
 
 @api_view(["PUT"])
 def assign_technician_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -554,14 +565,74 @@ def assign_technician_view(request, ticket_id: int):
 
 @api_view(["PUT"])
 def escalate_ticket_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    escalation_comment = str(request.data.get("comment", "")).strip()
+    if not escalation_comment:
+        return Response({"message": "comment is required when escalating."}, status=status.HTTP_400_BAD_REQUEST)
+
+    target_technician_id = request.data.get("target_technician_id")
+    from_admin_fault_user_id = request.data.get("from_admin_fault_user_id")
+    from_technician_user_id = request.data.get("from_technician_user_id")
+
+    # Admin Fault escalation path: admin reviews and escalates ticket to technician.
+    if from_admin_fault_user_id not in (None, "", "null"):
+        try:
+            from_admin_fault_user_id_int = int(from_admin_fault_user_id)
+        except (TypeError, ValueError):
+            return Response({"message": "from_admin_fault_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        actor_user = User.objects.filter(id=from_admin_fault_user_id_int, role=User.ROLE_ADMIN_FAULT, is_active=True).first()
+        if not actor_user:
+            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if target_technician_id in (None, "", "null"):
+            return Response({"message": "target_technician_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        target_technician = Technician.objects.filter(id=target_technician_id).select_related("user").first()
+        if not target_technician:
+            target_technician = Technician.objects.filter(user_id=target_technician_id).select_related("user").first()
+        if not target_technician:
+            return Response({"message": "Target technician not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if ticket.technician_id == target_technician.id:
+            return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
+
+        previous_technician_user = ticket.technician.user if ticket.technician_id else None
+        ticket.technician = target_technician
+        ticket.status = Ticket.STATUS_IN_PROCESS
+        ticket.save(update_fields=["technician", "status", "updated_at"])
+
+        TicketComment.objects.create(
+            ticket=ticket,
+            author=actor_user,
+            comment=f"Escalated by Admin Fault to technician {target_technician.user.name}: {escalation_comment}",
+        )
+        if previous_technician_user and previous_technician_user.id != target_technician.user_id:
+            _notify_user(
+                previous_technician_user,
+                f"Ticket #{ticket.id} was reassigned by Admin Fault to {target_technician.user.name}.",
+                ticket=ticket,
+            )
+        _notify_user(
+            target_technician.user,
+            f"Ticket #{ticket.id} escalated to you by Admin Fault.",
+            ticket=ticket,
+        )
+        for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+            _notify_user(
+                admin_user,
+                f"Ticket #{ticket.id} escalated to {target_technician.user.name} by {actor_user.name}.",
+                ticket=ticket,
+            )
+        return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+    # Technician escalation path (existing behavior).
     if not ticket.technician_id:
         return Response({"message": "Cannot escalate an unassigned ticket."}, status=status.HTTP_400_BAD_REQUEST)
 
-    from_technician_user_id = request.data.get("from_technician_user_id")
     if not from_technician_user_id:
         return Response({"message": "from_technician_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
     try:
@@ -575,16 +646,11 @@ def escalate_ticket_view(request, ticket_id: int):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    escalation_comment = str(request.data.get("comment", "")).strip()
-    if not escalation_comment:
-        return Response({"message": "comment is required when escalating."}, status=status.HTTP_400_BAD_REQUEST)
-
     actor_user = User.objects.filter(id=from_technician_user_id_int, role=User.ROLE_TECHNICIAN).first()
     if not actor_user:
         return Response({"message": "Technician user not found."}, status=status.HTTP_404_NOT_FOUND)
 
     target_role = str(request.data.get("target_role", "")).strip().lower()
-    target_technician_id = request.data.get("target_technician_id")
 
     if target_role == User.ROLE_ADMIN_FAULT:
         ticket.technician = None
@@ -815,7 +881,7 @@ def notifications_mark_read_view(request):
 
 @api_view(["PUT"])
 def ticket_priority_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -830,7 +896,7 @@ def ticket_priority_view(request, ticket_id: int):
 
 @api_view(["PUT"])
 def ticket_category_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -845,7 +911,7 @@ def ticket_category_view(request, ticket_id: int):
 
 @api_view(["PUT"])
 def ticket_status_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 

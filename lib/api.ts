@@ -15,6 +15,8 @@ export type CreateTicketPayload = {
   location: string
   priority: string
   employee_id: number
+  caller_name?: string
+  logged_by_admin_id?: number
 }
 
 export type Ticket = {
@@ -26,6 +28,9 @@ export type Ticket = {
   priority: string
   status: string
   employee_id: number
+  caller_name?: string | null
+  logged_by_admin_id?: number | null
+  logged_by_admin_name?: string | null
   technician_id?: number | null
   technician_name?: string | null
   employee_name?: string | null
@@ -306,15 +311,17 @@ async function requestJson<T>(baseUrl: string, path: string, options: RequestOpt
 
   if (!response.ok) {
     let message = `Request failed: ${response.status}`
-    try {
-      const errorPayload = await response.json()
-      if (errorPayload && typeof errorPayload === "object" && "message" in errorPayload) {
-        message = String((errorPayload as { message: unknown }).message)
-      }
-    } catch {
-      const text = await response.text()
-      if (text) {
-        message = text
+    const errorText = await response.text()
+    if (errorText) {
+      try {
+        const errorPayload = JSON.parse(errorText) as { message?: unknown }
+        if (errorPayload && typeof errorPayload === "object" && "message" in errorPayload) {
+          message = String(errorPayload.message)
+        } else {
+          message = errorText
+        }
+      } catch {
+        message = errorText
       }
     }
     throw new Error(message)
@@ -410,6 +417,22 @@ export async function escalateTicket(
       from_technician_user_id: fromTechnicianUserId,
       target_technician_id: targetTechnicianId,
       target_role: targetRole,
+      comment,
+    },
+  })
+}
+
+export async function escalateTicketByAdmin(
+  ticketId: number,
+  adminFaultUserId: number,
+  targetTechnicianId: number,
+  comment: string
+): Promise<Ticket> {
+  return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/escalate`, {
+    method: "PUT",
+    body: {
+      from_admin_fault_user_id: adminFaultUserId,
+      target_technician_id: targetTechnicianId,
       comment,
     },
   })

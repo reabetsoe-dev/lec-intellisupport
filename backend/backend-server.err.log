@@ -1,13 +1,123 @@
+Watching for file changes with StatReloader
+[12/Mar/2026 14:56:06] "OPTIONS /api/auth/login HTTP/1.1" 200 0
+Invalid HTTP_HOST header: '10.11.14.156:8000'. You may need to add '10.11.14.156' to ALLOWED_HOSTS.
 Traceback (most recent call last):
-  File "C:\Users\motel\lec-intellisupport\backend\manage.py", line 11, in main
-    from django.core.management import execute_from_command_line
-ModuleNotFoundError: No module named 'django'
-
-The above exception was the direct cause of the following exception:
-
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: '10.11.14.156:8000'. You may need to add '10.11.14.156' to ALLOWED_HOSTS.
+[12/Mar/2026 14:56:07] "POST /api/auth/login HTTP/1.1" 400 70209
+[12/Mar/2026 14:57:46] "OPTIONS /api/auth/login HTTP/1.1" 200 0
+Invalid HTTP_HOST header: '10.11.14.156:8000'. You may need to add '10.11.14.156' to ALLOWED_HOSTS.
 Traceback (most recent call last):
-  File "C:\Users\motel\lec-intellisupport\backend\manage.py", line 22, in <module>
-    main()
-  File "C:\Users\motel\lec-intellisupport\backend\manage.py", line 13, in main
-    raise ImportError(
-ImportError: Couldn't import Django. Are you sure it's installed and available on your PYTHONPATH environment variable? Did you forget to activate a virtual environment?
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\motel\lec-intellisupport\backend\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: '10.11.14.156:8000'. You may need to add '10.11.14.156' to ALLOWED_HOSTS.
+[12/Mar/2026 14:57:46] "POST /api/auth/login HTTP/1.1" 400 70209
+C:\Users\motel\lec-intellisupport\backend\lec_backend\settings.py changed, reloading.
+Watching for file changes with StatReloader
+[12/Mar/2026 15:00:48] "OPTIONS /api/auth/login HTTP/1.1" 200 0
+[12/Mar/2026 15:00:51] "POST /api/auth/login HTTP/1.1" 200 132
+[12/Mar/2026 15:00:56] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:00:56] "OPTIONS /api/employees HTTP/1.1" 200 0
+[12/Mar/2026 15:00:56] "OPTIONS /api/technicians HTTP/1.1" 200 0
+[12/Mar/2026 15:00:56] "OPTIONS /api/technicians HTTP/1.1" 200 0
+[12/Mar/2026 15:00:56] "OPTIONS /api/employees HTTP/1.1" 200 0
+[12/Mar/2026 15:00:56] "GET /api/employees HTTP/1.1" 200 228
+[12/Mar/2026 15:00:56] "GET /api/technicians HTTP/1.1" 200 1813
+[12/Mar/2026 15:00:56] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:00:56] "GET /api/technicians HTTP/1.1" 200 1813
+[12/Mar/2026 15:00:56] "GET /api/employees HTTP/1.1" 200 228
+[12/Mar/2026 15:00:56] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:06] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:06] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:16] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:16] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:23] "OPTIONS /api/tickets HTTP/1.1" 200 0
+[12/Mar/2026 15:01:23] "OPTIONS /api/technicians HTTP/1.1" 200 0
+[12/Mar/2026 15:01:23] "OPTIONS /api/technicians HTTP/1.1" 200 0
+[12/Mar/2026 15:01:23] "GET /api/tickets HTTP/1.1" 200 2001
+[12/Mar/2026 15:01:23] "GET /api/technicians HTTP/1.1" 200 1813
+[12/Mar/2026 15:01:23] "GET /api/technicians HTTP/1.1" 200 1813
+[12/Mar/2026 15:01:23] "GET /api/tickets HTTP/1.1" 200 2001
+[12/Mar/2026 15:01:26] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:26] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:36] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:36] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:46] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:46] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:01:56] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:01:56] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:06] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:06] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:16] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:16] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:26] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:26] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:36] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:36] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:46] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:46] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:02:56] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:02:56] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:03:06] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:03:06] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:03:16] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:03:16] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:03:26] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:03:26] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:03:36] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:03:36] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:03:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:03:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:04:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:04:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:05:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:05:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:06:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:06:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:07:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:07:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:08:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:08:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:09:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:09:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:10:00] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:10:00] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+C:\Users\motel\lec-intellisupport\backend\core\models.py changed, reloading.
+Watching for file changes with StatReloader
+[12/Mar/2026 15:10:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:10:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+C:\Users\motel\lec-intellisupport\backend\core\views.py changed, reloading.
+Watching for file changes with StatReloader
+[12/Mar/2026 15:11:02] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:11:02] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:11:21] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:11:21] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:11:30] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:11:30] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:11:47] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:11:47] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+C:\Users\motel\lec-intellisupport\backend\core\views.py changed, reloading.
+Watching for file changes with StatReloader
+[12/Mar/2026 15:18:09] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:18:09] "OPTIONS /api/notifications?user_id=12 HTTP/1.1" 200 0
+[12/Mar/2026 15:18:09] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731
+[12/Mar/2026 15:18:09] "GET /api/notifications?user_id=12 HTTP/1.1" 200 2731

@@ -79,6 +79,14 @@ class Ticket(models.Model):
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_LOW)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
     employee = models.ForeignKey(User, on_delete=models.PROTECT, related_name="submitted_tickets")
+    caller_name = models.CharField(max_length=150, blank=True, default="")
+    logged_by_admin = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logged_call_tickets",
+    )
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
     )

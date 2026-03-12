@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table"
 import {
   assignTechnician,
+  escalateTicketByAdmin,
   getAllTickets,
   getTechnicians,
   type Technician,
@@ -43,12 +44,18 @@ import {
   updateTicketPriority,
   updateTicketStatus,
 } from "@/lib/api"
+import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 type TicketRecord = {
   id: number
   requester: string
+  employee_name: string
+  caller_name: string
   title: string
+  description: string
+  location: string
+  created_at: string
   category: string
   priority: string
   status: string
@@ -91,10 +98,16 @@ function normalizeTicketStatus(status: string): string {
 }
 
 function toRow(ticket: Ticket): TicketRecord {
+  const requesterName = ticket.caller_name?.trim() || ticket.employee_name || `Employee #${ticket.employee_id}`
   return {
     id: ticket.id,
-    requester: ticket.employee_name ?? `Employee #${ticket.employee_id}`,
+    requester: requesterName,
+    employee_name: ticket.employee_name ?? `Employee #${ticket.employee_id}`,
+    caller_name: ticket.caller_name?.trim() || "",
     title: ticket.title,
+    description: ticket.description || "",
+    location: ticket.location || "",
+    created_at: ticket.created_at || "",
     category: ticket.category,
     priority: ticket.priority,
     status: normalizeTicketStatus(ticket.status),
@@ -111,6 +124,11 @@ export function AdminFaultTicketTable() {
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [viewTicket, setViewTicket] = useState<TicketRecord | null>(null)
+  const [escalationTicket, setEscalationTicket] = useState<TicketRecord | null>(null)
+  const [escalationTechnicianId, setEscalationTechnicianId] = useState("")
+  const [escalationComment, setEscalationComment] = useState("")
+  const [escalating, setEscalating] = useState(false)
 
   useEffect(() => {
     const run = async () => {
@@ -192,11 +210,51 @@ export function AdminFaultTicketTable() {
   const handleEscalate = async (ticketId: number) => {
     try {
       setError("")
-      await updateTicketPriority(ticketId, "Critical")
       await updateTicketStatus(ticketId, "In Process")
       await refreshRow(ticketId)
     } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
+    }
+  }
+
+  const submitEscalation = async () => {
+    if (!escalationTicket) {
+      return
+    }
+
+    const user = getStoredUserSession()
+    if (!user || user.role !== "admin_fault") {
+      setError("Admin Fault session required. Please login again.")
+      return
+    }
+
+    if (!escalationTechnicianId) {
+      setError("Please choose the technician to escalate to.")
+      return
+    }
+
+    if (!escalationComment.trim()) {
+      setError("Please provide escalation details.")
+      return
+    }
+
+    try {
+      setEscalating(true)
+      setError("")
+      await escalateTicketByAdmin(
+        escalationTicket.id,
+        user.id,
+        Number(escalationTechnicianId),
+        escalationComment.trim()
+      )
+      await refreshRow(escalationTicket.id)
+      setEscalationTicket(null)
+      setEscalationTechnicianId("")
+      setEscalationComment("")
+    } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
+    } finally {
+      setEscalating(false)
     }
   }
 
@@ -260,7 +318,7 @@ export function AdminFaultTicketTable() {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Ticket ID</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
+              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Caller / Employee</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Category</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
               <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
@@ -383,27 +441,162 @@ export function AdminFaultTicketTable() {
 
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" className="bg-rose-600 text-white hover:bg-rose-700">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                            onClick={() => setViewTicket(ticket)}
+                            disabled={ticket.status === "Pending"}
+                            title={ticket.status === "Pending" ? "Receive this fault first." : undefined}
+                          >
+                            Open
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle>Fault Details - Ticket #{ticket.id}</DialogTitle>
+                            <DialogDescription>Review fault details before deciding to solve or escalate.</DialogDescription>
+                          </DialogHeader>
+                          <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
+                            <div>
+                              <p className="text-xs text-slate-500">Caller</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.requester || ticket.requester}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Employee Account</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.employee_name || ticket.employee_name}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Category</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.category || ticket.category}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Priority</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.priority || ticket.priority}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Status</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.status || ticket.status}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Location</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.location || ticket.location || "N/A"}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <p className="text-xs text-slate-500">Title</p>
+                              <p className="font-medium text-slate-800">{viewTicket?.title || ticket.title}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <p className="text-xs text-slate-500">Description</p>
+                              <p className="whitespace-pre-wrap text-slate-700">
+                                {viewTicket?.description || ticket.description || "No description."}
+                              </p>
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <DialogClose asChild>
+                              <Button variant="outline" onClick={() => setViewTicket(null)}>
+                                Close
+                              </Button>
+                            </DialogClose>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                        onClick={() => void handleEscalate(ticket.id)}
+                      >
+                        Receive
+                      </Button>
+
+                      <Dialog
+                        open={escalationTicket?.id === ticket.id}
+                        onOpenChange={(open) => {
+                          if (!open) {
+                            setEscalationTicket(null)
+                            setEscalationTechnicianId("")
+                            setEscalationComment("")
+                          } else {
+                            setEscalationTicket(ticket)
+                          }
+                        }}
+                      >
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            className="bg-rose-600 text-white hover:bg-rose-700"
+                            onClick={() => {
+                              setEscalationTicket(ticket)
+                              setEscalationTechnicianId("")
+                              setEscalationComment("")
+                            }}
+                            disabled={ticket.status === "Pending"}
+                            title={ticket.status === "Pending" ? "Receive this fault first." : undefined}
+                          >
                             <AlertTriangle className="h-4 w-4" />
                             Escalate
                           </Button>
                         </DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="sm:max-w-2xl">
                           <DialogHeader>
                             <DialogTitle>Escalate Ticket #{ticket.id}</DialogTitle>
                             <DialogDescription>
-                              This sets the ticket to Critical priority and In Process status.
+                              Review the fault details and choose the technician to escalate this fault to.
                             </DialogDescription>
                           </DialogHeader>
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
+                              <div>
+                                <p className="text-xs text-slate-500">Caller</p>
+                                <p className="font-medium text-slate-800">{ticket.requester}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Employee Account</p>
+                                <p className="font-medium text-slate-800">{ticket.employee_name}</p>
+                              </div>
+                              <div className="md:col-span-2">
+                                <p className="text-xs text-slate-500">Fault</p>
+                                <p className="font-medium text-slate-800">{ticket.title}</p>
+                                <p className="mt-1 whitespace-pre-wrap text-slate-700">{ticket.description || "No description."}</p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
+                              <select
+                                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800"
+                                value={escalationTechnicianId}
+                                onChange={(event) => setEscalationTechnicianId(event.target.value)}
+                              >
+                                <option value="">Select technician</option>
+                                {technicians.map((option) => (
+                                  <option key={option.id} value={String(option.id)}>
+                                    {option.name} ({option.branch || "No branch"})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
+                              <textarea
+                                className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                value={escalationComment}
+                                onChange={(event) => setEscalationComment(event.target.value)}
+                                placeholder="Why this fault is being escalated and any troubleshooting already done."
+                              />
+                            </div>
+                          </div>
                           <DialogFooter>
                             <DialogClose asChild>
                               <Button variant="outline">Cancel</Button>
                             </DialogClose>
-                            <DialogClose asChild>
-                              <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleEscalate(ticket.id)}>
-                                Confirm Escalation
-                              </Button>
-                            </DialogClose>
+                            <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
+                              {escalating ? "Escalating..." : "Confirm Escalation"}
+                            </Button>
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
