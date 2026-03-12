@@ -390,10 +390,13 @@ export async function updateTicketPriority(ticketId: number, priority: string): 
   })
 }
 
-export async function updateTicketStatus(ticketId: number, status: string): Promise<Ticket> {
+export async function updateTicketStatus(ticketId: number, status: string, acceptedByAdminId?: number): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
-    body: { status },
+    body: {
+      status,
+      accepted_by_admin_id: acceptedByAdminId,
+    },
   })
 }
 

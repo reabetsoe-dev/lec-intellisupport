@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AlertTriangle, ChevronDown } from "lucide-react"
+import { CheckCircle2, ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -71,18 +70,10 @@ const statusTextStyles: Record<string, string> = {
 
 function normalizeTicketStatus(status: string): string {
   const normalized = status.trim().toLowerCase()
-  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
-    return "Pending"
-  }
-  if (normalized === "escalated") {
-    return "In Process"
-  }
-  if (normalized === "in progress" || normalized === "in process") {
-    return "In Process"
-  }
-  if (normalized === "resolved" || normalized === "solved") {
-    return "Solved"
-  }
+  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") return "Pending"
+  if (normalized === "escalated") return "In Process"
+  if (normalized === "in progress" || normalized === "in process") return "In Process"
+  if (normalized === "resolved" || normalized === "solved") return "Solved"
   return status
 }
 
@@ -122,7 +113,17 @@ export function AdminFaultTicketTable() {
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+
   const [viewTicket, setViewTicket] = useState<TicketRecord | null>(null)
+  const [acceptingViewTicket, setAcceptingViewTicket] = useState(false)
+  const [acceptedTicketId, setAcceptedTicketId] = useState<number | null>(null)
+  const [showAcceptedDialog, setShowAcceptedDialog] = useState(false)
+  const [assignTicket, setAssignTicket] = useState<TicketRecord | null>(null)
+  const [assignTechnicianId, setAssignTechnicianId] = useState("")
+  const [assigning, setAssigning] = useState(false)
+  const [priorityTicket, setPriorityTicket] = useState<TicketRecord | null>(null)
+  const [nextPriority, setNextPriority] = useState("Medium")
+  const [savingPriority, setSavingPriority] = useState(false)
   const [escalationTicket, setEscalationTicket] = useState<TicketRecord | null>(null)
   const [escalationTechnicianId, setEscalationTechnicianId] = useState("")
   const [escalationComment, setEscalationComment] = useState("")
@@ -169,33 +170,59 @@ export function AdminFaultTicketTable() {
     setRows((current) => current.map((row) => (row.id === ticketId ? toRow(updated) : row)))
   }
 
-  const handleAssign = async (ticketId: number, technicianId: number | null) => {
-    try {
-      setError("")
-      await assignTechnician(ticketId, technicianId)
-      await refreshRow(ticketId)
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to assign technician.")
-    }
-  }
-
-  const handlePriority = async (ticketId: number, priority: string) => {
-    try {
-      setError("")
-      await updateTicketPriority(ticketId, priority)
-      await refreshRow(ticketId)
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to update priority.")
-    }
-  }
-
   const handleReceive = async (ticketId: number) => {
     try {
       setError("")
-      await updateTicketStatus(ticketId, "In Process")
+      const user = getStoredUserSession()
+      const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
+      await updateTicketStatus(ticketId, "In Process", acceptedByAdminId)
       await refreshRow(ticketId)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
+    }
+  }
+
+  const handleAcceptFromDialog = async () => {
+    if (!viewTicket) return
+    try {
+      setAcceptingViewTicket(true)
+      await handleReceive(viewTicket.id)
+      setAcceptedTicketId(viewTicket.id)
+      setShowAcceptedDialog(true)
+      setViewTicket(null)
+    } finally {
+      setAcceptingViewTicket(false)
+    }
+  }
+
+  const handleAssignSubmit = async () => {
+    if (!assignTicket) return
+    try {
+      setAssigning(true)
+      setError("")
+      await assignTechnician(assignTicket.id, assignTechnicianId ? Number(assignTechnicianId) : null)
+      await refreshRow(assignTicket.id)
+      setAssignTicket(null)
+      setAssignTechnicianId("")
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to assign technician.")
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  const handlePrioritySubmit = async () => {
+    if (!priorityTicket) return
+    try {
+      setSavingPriority(true)
+      setError("")
+      await updateTicketPriority(priorityTicket.id, nextPriority)
+      await refreshRow(priorityTicket.id)
+      setPriorityTicket(null)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to update priority.")
+    } finally {
+      setSavingPriority(false)
     }
   }
 
@@ -214,7 +241,6 @@ export function AdminFaultTicketTable() {
       setError("Please provide escalation details.")
       return
     }
-
     try {
       setEscalating(true)
       setError("")
@@ -275,27 +301,21 @@ export function AdminFaultTicketTable() {
                 <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
                 <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Last Replier</TableHead>
                 <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
-                <TableHead className="w-[270px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
-                    Loading tickets...
-                  </TableCell>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading tickets...</TableCell>
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
-                    {error}
-                  </TableCell>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">{error}</TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
-                    No tickets found.
-                  </TableCell>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">No tickets found.</TableCell>
                 </TableRow>
               ) : (
                 filteredRows.map((ticket) => (
@@ -310,167 +330,49 @@ export function AdminFaultTicketTable() {
                       <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]")}>{ticket.priority}</Badge>
                     </TableCell>
                     <TableCell className="py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
-                              Assign
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem onClick={() => void handleAssign(ticket.id, null)}>Unassigned</DropdownMenuItem>
-                            {technicians.map((option) => (
-                              <DropdownMenuItem key={option.id} onClick={() => void handleAssign(ticket.id, option.id)}>
-                                {option.name}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
-                              Priority
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            {priorityOptions.map((option) => (
-                              <DropdownMenuItem key={option} onClick={() => void handlePriority(ticket.id, option)}>
-                                {option}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 border-[#7EA5CC] bg-[#EEF5FD] text-[#255680] hover:bg-[#E3F0FC] hover:text-[#1A4469]" onClick={() => setViewTicket(ticket)} disabled={ticket.status === "Pending"} title={ticket.status === "Pending" ? "Receive this fault first." : undefined}>
-                              Open
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>Fault Details - Ticket #{ticket.id}</DialogTitle>
-                              <DialogDescription>Review fault details before deciding to solve or escalate.</DialogDescription>
-                            </DialogHeader>
-                            <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
-                              <div>
-                                <p className="text-xs text-slate-500">Caller</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.requester || ticket.requester}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500">Employee Account</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.employee_name || ticket.employee_name}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500">Priority</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.priority || ticket.priority}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500">Status</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.status || ticket.status}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500">Location</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.location || ticket.location || "N/A"}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500">Updated</p>
-                                <p className="font-medium text-slate-800">{formatDateLabel(viewTicket?.created_at || ticket.created_at)}</p>
-                              </div>
-                              <div className="md:col-span-2">
-                                <p className="text-xs text-slate-500">Title</p>
-                                <p className="font-medium text-slate-800">{viewTicket?.title || ticket.title}</p>
-                              </div>
-                              <div className="md:col-span-2">
-                                <p className="text-xs text-slate-500">Description</p>
-                                <p className="whitespace-pre-wrap text-slate-700">{viewTicket?.description || ticket.description || "No description."}</p>
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <DialogClose asChild>
-                                <Button variant="outline" onClick={() => setViewTicket(null)}>
-                                  Close
-                                </Button>
-                              </DialogClose>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-
-                        <Button size="sm" variant="outline" className="h-8 border-[#D9C08A] bg-[#FFF5DE] text-[#875D00] hover:bg-[#FCEECD] hover:text-[#6E4A00]" onClick={() => void handleReceive(ticket.id)}>
-                          Receive
-                        </Button>
-
-                        <Dialog
-                          open={escalationTicket?.id === ticket.id}
-                          onOpenChange={(open) => {
-                            if (!open) {
-                              setEscalationTicket(null)
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
+                            Actions
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Ticket #{ticket.id}</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setViewTicket(ticket)}>
+                            Open Ticket
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setAssignTicket(ticket)
+                              setAssignTechnicianId(ticket.technician_id ? String(ticket.technician_id) : "")
+                            }}
+                          >
+                            Assign Technician
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setPriorityTicket(ticket)
+                              setNextPriority(ticket.priority)
+                            }}
+                          >
+                            Change Priority
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-rose-700 focus:text-rose-800"
+                            disabled={ticket.status === "Pending"}
+                            onClick={() => {
+                              setEscalationTicket(ticket)
                               setEscalationTechnicianId("")
                               setEscalationComment("")
-                            } else {
-                              setEscalationTicket(ticket)
-                            }
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <Button size="sm" className="h-8 bg-[#D9534F] text-white hover:bg-[#C44642]" onClick={() => { setEscalationTicket(ticket); setEscalationTechnicianId(""); setEscalationComment("") }} disabled={ticket.status === "Pending"} title={ticket.status === "Pending" ? "Receive this fault first." : undefined}>
-                              <AlertTriangle className="h-4 w-4" />
-                              Escalate
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>Escalate Ticket #{ticket.id}</DialogTitle>
-                              <DialogDescription>Review the fault details and choose the technician to escalate to.</DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
-                                <div>
-                                  <p className="text-xs text-slate-500">Caller</p>
-                                  <p className="font-medium text-slate-800">{ticket.requester}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-slate-500">Employee Account</p>
-                                  <p className="font-medium text-slate-800">{ticket.employee_name}</p>
-                                </div>
-                                <div className="md:col-span-2">
-                                  <p className="text-xs text-slate-500">Fault</p>
-                                  <p className="font-medium text-slate-800">{ticket.title}</p>
-                                  <p className="mt-1 whitespace-pre-wrap text-slate-700">{ticket.description || "No description."}</p>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
-                                <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={escalationTechnicianId} onChange={(event) => setEscalationTechnicianId(event.target.value)}>
-                                  <option value="">Select technician</option>
-                                  {technicians.map((option) => (
-                                    <option key={option.id} value={String(option.id)}>
-                                      {option.name} ({option.branch || "No branch"})
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
-                                <textarea className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800" value={escalationComment} onChange={(event) => setEscalationComment(event.target.value)} placeholder="Why this fault is being escalated and what checks were done." />
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <DialogClose asChild>
-                                <Button variant="outline">Cancel</Button>
-                              </DialogClose>
-                              <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
-                                {escalating ? "Escalating..." : "Confirm Escalation"}
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
+                            }}
+                          >
+                            Escalate
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
@@ -479,7 +381,184 @@ export function AdminFaultTicketTable() {
           </Table>
         </div>
       </CardContent>
+
+      <Dialog open={Boolean(viewTicket)} onOpenChange={(open) => !open && setViewTicket(null)}>
+        <DialogContent className="overflow-hidden border-[#9CB8D3] bg-[#F7FBFF] p-0 sm:max-w-2xl">
+          <div className="border-b border-[#B7CBE0] bg-gradient-to-r from-[#204B73] to-[#2E6EA0] px-6 py-5 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold tracking-wide text-white">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
+              <DialogDescription className="text-sm text-[#D8E8F7]">
+                Review this ticket and decide whether to resolve or escalate.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="space-y-4 px-6 py-5">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Caller</p>
+                <p className="mt-1 text-base font-semibold text-[#1D3F63]">{viewTicket?.requester}</p>
+              </div>
+              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Employee Account</p>
+                <p className="mt-1 text-base font-semibold text-[#1D3F63]">{viewTicket?.employee_name}</p>
+              </div>
+              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Priority</p>
+                <Badge
+                  className={cn(
+                    "mt-1 rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                    priorityBadgeStyles[viewTicket?.priority ?? ""] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+                  )}
+                >
+                  {viewTicket?.priority}
+                </Badge>
+              </div>
+              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Status</p>
+                <p className={cn("mt-1 text-base font-semibold", statusTextStyles[viewTicket?.status ?? ""] ?? "text-[#1D3F63]")}>
+                  {viewTicket?.status}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 rounded-lg border border-[#C8DAEC] bg-white p-4 md:grid-cols-2">
+              <div>
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Location</p>
+                <p className="mt-1 text-sm font-medium text-[#1D3F63]">{viewTicket?.location || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Updated</p>
+                <p className="mt-1 text-sm font-medium text-[#1D3F63]">{formatDateLabel(viewTicket?.created_at || "")}</p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Title</p>
+                <p className="mt-1 text-lg font-semibold text-[#163A5A]">{viewTicket?.title}</p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Description</p>
+                <p className="mt-1 whitespace-pre-wrap rounded-md border border-[#E2ECF6] bg-[#F8FBFF] p-3 text-sm leading-6 text-[#2B4B6B]">
+                  {viewTicket?.description || "No description."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-[#D5E3F1] bg-white px-6 py-4">
+            <Button
+              onClick={() => void handleAcceptFromDialog()}
+              disabled={!viewTicket || viewTicket.status !== "Pending" || acceptingViewTicket}
+              className="bg-[#1E7A45] text-white hover:bg-[#166438]"
+            >
+              {acceptingViewTicket ? "Accepting..." : "Accept"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="border-[#9FBAD6] text-[#1C466D] hover:bg-[#EEF5FD]">
+                Close
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAcceptedDialog} onOpenChange={setShowAcceptedDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <DialogTitle className="text-center text-xl text-[#0B1F3A]">Ticket Accepted</DialogTitle>
+            <DialogDescription className="text-center text-sm text-[#4A6A96]">
+              Ticket #{acceptedTicketId ?? ""} has been accepted. Sending reply to employee.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <DialogClose asChild>
+              <Button className="bg-[#0072CE] text-white hover:bg-[#005EA8]">Done</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(assignTicket)} onOpenChange={(open) => !open && setAssignTicket(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Technician - Ticket #{assignTicket?.id}</DialogTitle>
+            <DialogDescription>Select who should own this ticket next.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Technician</label>
+            <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={assignTechnicianId} onChange={(event) => setAssignTechnicianId(event.target.value)}>
+              <option value="">Unassigned</option>
+              {technicians.map((option) => (
+                <option key={option.id} value={String(option.id)}>
+                  {option.name} ({option.branch || "No branch"})
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button onClick={() => void handleAssignSubmit()} disabled={assigning}>{assigning ? "Saving..." : "Save Assignment"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(priorityTicket)} onOpenChange={(open) => !open && setPriorityTicket(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Priority - Ticket #{priorityTicket?.id}</DialogTitle>
+            <DialogDescription>Update the urgency level for this ticket.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Priority</label>
+            <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={nextPriority} onChange={(event) => setNextPriority(event.target.value)}>
+              {priorityOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button onClick={() => void handlePrioritySubmit()} disabled={savingPriority}>{savingPriority ? "Saving..." : "Save Priority"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(escalationTicket)} onOpenChange={(open) => !open && setEscalationTicket(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Escalate Ticket #{escalationTicket?.id}</DialogTitle>
+            <DialogDescription>Choose technician and add escalation notes.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
+              <div><p className="text-xs text-slate-500">Caller</p><p className="font-medium text-slate-800">{escalationTicket?.requester}</p></div>
+              <div><p className="text-xs text-slate-500">Employee Account</p><p className="font-medium text-slate-800">{escalationTicket?.employee_name}</p></div>
+              <div className="md:col-span-2"><p className="text-xs text-slate-500">Fault</p><p className="font-medium text-slate-800">{escalationTicket?.title}</p><p className="mt-1 whitespace-pre-wrap text-slate-700">{escalationTicket?.description || "No description."}</p></div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
+              <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={escalationTechnicianId} onChange={(event) => setEscalationTechnicianId(event.target.value)}>
+                <option value="">Select technician</option>
+                {technicians.map((option) => (
+                  <option key={option.id} value={String(option.id)}>{option.name} ({option.branch || "No branch"})</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
+              <textarea className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800" value={escalationComment} onChange={(event) => setEscalationComment(event.target.value)} placeholder="Why this fault is being escalated and what checks were done." />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
+              {escalating ? "Escalating..." : "Confirm Escalation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
-

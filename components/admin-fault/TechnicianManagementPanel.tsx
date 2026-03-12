@@ -413,25 +413,54 @@ export function TechnicianManagementPanel() {
           {technicians.length === 0 ? (
             <p className="text-sm text-[#4A6A96]">No technicians found.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="mx-auto w-full max-w-5xl space-y-2">
               {technicians.map((technician) => (
                 <div
                   key={technician.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2"
+                  className="rounded-lg border border-[#BFD8F3] bg-gradient-to-r from-[#F8FCFF] to-[#EDF6FF] p-3 shadow-[0_4px_12px_rgba(11,31,58,0.05)]"
                 >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#0B1F3A]">{technician.name}</p>
-                    <p className="text-xs text-[#1E3A6D]">{technician.email}</p>
-                    <p className="text-xs text-[#4A6A96]">Branch: {technician.branch || "Not set"}</p>
-                    {technician.skillset ? <p className="text-xs text-[#4A6A96]">{technician.skillset}</p> : null}
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#0072CE]/30 bg-white text-xs font-semibold text-[#0B4B84]">
+                        {technician.name
+                          .split(" ")
+                          .map((part) => part[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </span>
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-base font-semibold text-[#0B1F3A]">{technician.name}</p>
+                        <p className="truncate text-xs text-[#355A84]">{technician.email}</p>
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
+                            Branch: {technician.branch || "Not set"}
+                          </span>
+                          {(technician.skillset || "No skillset")
+                            .split(",")
+                            .map((item) => item.trim())
+                            .filter(Boolean)
+                            .slice(0, 3)
+                            .map((skill) => (
+                              <span
+                                key={`${technician.id}-${skill}`}
+                                className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]"
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="mt-2 flex items-center justify-end gap-2 border-t border-[#D6E5F4] pt-2">
+                    <span className="text-[11px] font-medium text-[#5F7FA4]">Status</span>
                     <Badge
                       variant="outline"
                       className={
                         technician.is_available
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-amber-200 bg-amber-50 text-amber-700"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-amber-300 bg-amber-50 text-amber-700"
                       }
                     >
                       {technician.is_available ? "Available" : "Unavailable"}
@@ -440,7 +469,7 @@ export function TechnicianManagementPanel() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                      className="h-8 border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
                       disabled={deletingTechnicianId === technician.id}
                       onClick={() => void handleDeleteTechnician(technician)}
                     >

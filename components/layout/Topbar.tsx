@@ -175,7 +175,8 @@ export function Topbar({ user }: TopbarProps) {
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
-  const supportsNotifications = user.role === "technician" || user.role === "admin_fault"
+  const supportsNotifications =
+    user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
 
   useEffect(() => {
     if (!supportsNotifications) {

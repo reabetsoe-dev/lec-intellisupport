@@ -908,8 +908,36 @@ def ticket_status_view(request, ticket_id: int):
     if status_value not in dict(Ticket.STATUS_CHOICES):
         return Response({"message": "Invalid status value."}, status=status.HTTP_400_BAD_REQUEST)
 
+    previous_status = _normalize_ticket_status(ticket.status)
+    accepted_by_admin_id = request.data.get("accepted_by_admin_id")
+    accepted_by_admin = None
+    if accepted_by_admin_id not in (None, "", "null"):
+        try:
+            accepted_by_admin_id_int = int(accepted_by_admin_id)
+        except (TypeError, ValueError):
+            return Response({"message": "accepted_by_admin_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+        accepted_by_admin = User.objects.filter(
+            id=accepted_by_admin_id_int,
+            role=User.ROLE_ADMIN_FAULT,
+            is_active=True,
+        ).first()
+        if not accepted_by_admin:
+            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+
     ticket.status = status_value
     ticket.save(update_fields=["status", "updated_at"])
+
+    if (
+        accepted_by_admin is not None
+        and status_value == Ticket.STATUS_IN_PROCESS
+        and previous_status != Ticket.STATUS_IN_PROCESS
+    ):
+        _notify_user(
+            ticket.employee,
+            f"Your ticket #{ticket.id} has been accepted by {accepted_by_admin.name} (Admin Fault).",
+            ticket=ticket,
+        )
+
     return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
 
