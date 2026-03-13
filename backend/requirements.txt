@@ -4,7 +4,7 @@ anyio==4.12.1
 asgiref==3.11.1
 click==8.3.1
 colorama==0.4.6
-Django==6.0.3
+Django==5.2.12
 djangorestframework==3.16.1
 fastapi==0.128.0
 h11==0.16.0
