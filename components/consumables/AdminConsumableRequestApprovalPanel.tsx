@@ -20,6 +20,8 @@ import {
   type ConsumableReturn,
 } from "@/lib/api"
 
+const REFRESH_INTERVAL_MS = 15_000
+
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleString()
 }
@@ -61,8 +63,10 @@ export function AdminConsumableRequestApprovalPanel() {
     return stockMap
   }, [consumables])
 
-  const loadAll = async () => {
-    setError("")
+  const loadAll = async (resetError = true) => {
+    if (resetError) {
+      setError("")
+    }
     const [inventoryData, requestData, returnData] = await Promise.all([
       getConsumables(),
       getConsumableRequestsApi(),
@@ -74,15 +78,28 @@ export function AdminConsumableRequestApprovalPanel() {
   }
 
   useEffect(() => {
-    const run = async () => {
+    const run = async (silent = false) => {
       try {
-        await loadAll()
+        await loadAll(!silent)
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load inventory stock.")
+        if (!silent) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load inventory stock.")
+        }
       }
     }
 
     void run()
+    const intervalId = window.setInterval(() => {
+      void run(true)
+    }, REFRESH_INTERVAL_MS)
+    const onFocus = () => {
+      void run(true)
+    }
+    window.addEventListener("focus", onFocus)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [])
 
   const handleApprove = async (requestId: string) => {

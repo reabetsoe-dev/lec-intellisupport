@@ -195,6 +195,29 @@ def _populate_missing_consumable_details(consumable: Consumable, payload: dict) 
     return updated
 
 
+def _consume_inventory_assignments(*, consumable_id: int, employee_id: int, quantity: int) -> None:
+    remaining = max(int(quantity), 0)
+    if remaining == 0:
+        return
+
+    assignments = (
+        InventoryAssignment.objects.select_for_update()
+        .filter(consumable_id=consumable_id, employee_id=employee_id)
+        .order_by("assigned_at", "id")
+    )
+    for assignment in assignments:
+        if remaining <= 0:
+            break
+
+        if assignment.quantity_assigned <= remaining:
+            remaining -= assignment.quantity_assigned
+            assignment.delete()
+        else:
+            assignment.quantity_assigned = assignment.quantity_assigned - remaining
+            assignment.save(update_fields=["quantity_assigned"])
+            remaining = 0
+
+
 def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) -> dict:
     payload = {
         "id": ticket.id,
@@ -1098,103 +1121,109 @@ def consumables_collection_view(request):
     if quantity_value <= 0:
         return Response({"message": "quantity must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
 
-    existing = _find_matching_consumable_for_restock(
-        asset_tag=asset_tag,
-        serial_number=serial_number,
-        item_name=item_name,
-        brand=brand,
-        model_number=model_number,
-        category=category,
-        subcategory=subcategory,
-    )
-    if existing:
-        existing.quantity = existing.quantity + quantity_value
-        details_updated = _populate_missing_consumable_details(
-            existing,
-            {
-                "asset_tag": asset_tag,
-                "item_name": item_name,
-                "manufacturer": manufacturer,
-                "brand": brand,
-                "model_number": model_number,
-                "serial_number": serial_number,
-                "category": category,
-                "subcategory": subcategory,
-                "processor": processor,
-                "ram": ram,
-                "storage_type": storage_type,
-                "storage_capacity": storage_capacity,
-                "graphics_card": graphics_card,
-                "charger_included": charger_included,
-                "monitor_included": monitor_included,
-                "keyboard_included": keyboard_included,
-                "mouse_included": mouse_included,
-                "printer_type": printer_type,
-                "print_speed": print_speed,
-                "connectivity": connectivity,
-                "duplex_printing": duplex_printing,
-                "paper_capacity": paper_capacity,
-                "color_printing": color_printing,
-                "device_type": device_type,
-                "operating_system": operating_system,
-                "battery_capacity": battery_capacity,
-                "imei_number": imei_number,
-                "purchase_cost": purchase_cost,
-                "supplier": supplier,
-                "warranty_expiry": warranty_expiry,
-                "purchase_date": purchase_date,
-                "condition": condition,
-                "status": status_value,
-                "department": department,
-                "assigned_employee": assigned_employee,
-            },
+    with transaction.atomic():
+        existing = _find_matching_consumable_for_restock(
+            asset_tag=asset_tag,
+            serial_number=serial_number,
+            item_name=item_name,
+            brand=brand,
+            model_number=model_number,
+            category=category,
+            subcategory=subcategory,
         )
-        if _is_blank_text(existing.status):
-            existing.status = status_value or "In Stock"
-            details_updated = True
-        update_fields = ["quantity", "updated_at"]
-        if details_updated:
-            update_fields.extend(
-                [
-                    "asset_tag",
-                    "item_name",
-                    "manufacturer",
-                    "brand",
-                    "model_number",
-                    "serial_number",
-                    "category",
-                    "subcategory",
-                    "processor",
-                    "ram",
-                    "storage_type",
-                    "storage_capacity",
-                    "graphics_card",
-                    "charger_included",
-                    "monitor_included",
-                    "keyboard_included",
-                    "mouse_included",
-                    "printer_type",
-                    "print_speed",
-                    "connectivity",
-                    "duplex_printing",
-                    "paper_capacity",
-                    "color_printing",
-                    "device_type",
-                    "operating_system",
-                    "battery_capacity",
-                    "imei_number",
-                    "purchase_cost",
-                    "supplier",
-                    "warranty_expiry",
-                    "purchase_date",
-                    "condition",
-                    "status",
-                    "department",
-                    "assigned_employee",
-                ]
+        if existing:
+            existing = Consumable.objects.select_for_update().filter(id=existing.id).first()
+            if not existing:
+                return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            existing.quantity = existing.quantity + quantity_value
+            details_updated = _populate_missing_consumable_details(
+                existing,
+                {
+                    "asset_tag": asset_tag,
+                    "item_name": item_name,
+                    "manufacturer": manufacturer,
+                    "brand": brand,
+                    "model_number": model_number,
+                    "serial_number": serial_number,
+                    "category": category,
+                    "subcategory": subcategory,
+                    "processor": processor,
+                    "ram": ram,
+                    "storage_type": storage_type,
+                    "storage_capacity": storage_capacity,
+                    "graphics_card": graphics_card,
+                    "charger_included": charger_included,
+                    "monitor_included": monitor_included,
+                    "keyboard_included": keyboard_included,
+                    "mouse_included": mouse_included,
+                    "printer_type": printer_type,
+                    "print_speed": print_speed,
+                    "connectivity": connectivity,
+                    "duplex_printing": duplex_printing,
+                    "paper_capacity": paper_capacity,
+                    "color_printing": color_printing,
+                    "device_type": device_type,
+                    "operating_system": operating_system,
+                    "battery_capacity": battery_capacity,
+                    "imei_number": imei_number,
+                    "purchase_cost": purchase_cost,
+                    "supplier": supplier,
+                    "warranty_expiry": warranty_expiry,
+                    "purchase_date": purchase_date,
+                    "condition": condition,
+                    "status": status_value,
+                    "department": department,
+                    "assigned_employee": assigned_employee,
+                },
             )
-        existing.save(update_fields=update_fields)
-        return Response(_consumable_to_dict(existing), status=status.HTTP_200_OK)
+            if _is_blank_text(existing.status):
+                existing.status = status_value or "In Stock"
+                details_updated = True
+            update_fields = ["quantity", "updated_at"]
+            if details_updated:
+                update_fields.extend(
+                    [
+                        "asset_tag",
+                        "item_name",
+                        "manufacturer",
+                        "brand",
+                        "model_number",
+                        "serial_number",
+                        "category",
+                        "subcategory",
+                        "processor",
+                        "ram",
+                        "storage_type",
+                        "storage_capacity",
+                        "graphics_card",
+                        "charger_included",
+                        "monitor_included",
+                        "keyboard_included",
+                        "mouse_included",
+                        "printer_type",
+                        "print_speed",
+                        "connectivity",
+                        "duplex_printing",
+                        "paper_capacity",
+                        "color_printing",
+                        "device_type",
+                        "operating_system",
+                        "battery_capacity",
+                        "imei_number",
+                        "purchase_cost",
+                        "supplier",
+                        "warranty_expiry",
+                        "purchase_date",
+                        "condition",
+                        "status",
+                        "department",
+                        "assigned_employee",
+                    ]
+                )
+            existing.save(update_fields=update_fields)
+            existing.refresh_from_db()
+            return Response(_consumable_to_dict(existing), status=status.HTTP_200_OK)
 
     required_fields = {
         "asset_tag": asset_tag,
@@ -1219,168 +1248,200 @@ def consumables_collection_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    consumable = Consumable.objects.create(
-        asset_tag=asset_tag,
-        item_name=item_name,
-        manufacturer=manufacturer,
-        brand=brand,
-        model_number=model_number,
-        serial_number=serial_number,
-        category=category,
-        subcategory=subcategory,
-        processor=processor,
-        ram=ram,
-        storage_type=storage_type,
-        storage_capacity=storage_capacity,
-        graphics_card=graphics_card,
-        charger_included=charger_included,
-        monitor_included=monitor_included,
-        keyboard_included=keyboard_included,
-        mouse_included=mouse_included,
-        printer_type=printer_type,
-        print_speed=print_speed,
-        connectivity=connectivity,
-        duplex_printing=duplex_printing,
-        paper_capacity=paper_capacity,
-        color_printing=color_printing,
-        device_type=device_type,
-        operating_system=operating_system,
-        battery_capacity=battery_capacity,
-        imei_number=imei_number,
-        quantity=quantity_value,
-        purchase_cost=purchase_cost,
-        supplier=supplier,
-        warranty_expiry=warranty_expiry,
-        purchase_date=purchase_date,
-        condition=condition,
-        status=status_value or "In Stock",
-        department=department,
-        assigned_employee=assigned_employee,
-    )
+    with transaction.atomic():
+        consumable = Consumable.objects.create(
+            asset_tag=asset_tag,
+            item_name=item_name,
+            manufacturer=manufacturer,
+            brand=brand,
+            model_number=model_number,
+            serial_number=serial_number,
+            category=category,
+            subcategory=subcategory,
+            processor=processor,
+            ram=ram,
+            storage_type=storage_type,
+            storage_capacity=storage_capacity,
+            graphics_card=graphics_card,
+            charger_included=charger_included,
+            monitor_included=monitor_included,
+            keyboard_included=keyboard_included,
+            mouse_included=mouse_included,
+            printer_type=printer_type,
+            print_speed=print_speed,
+            connectivity=connectivity,
+            duplex_printing=duplex_printing,
+            paper_capacity=paper_capacity,
+            color_printing=color_printing,
+            device_type=device_type,
+            operating_system=operating_system,
+            battery_capacity=battery_capacity,
+            imei_number=imei_number,
+            quantity=quantity_value,
+            purchase_cost=purchase_cost,
+            supplier=supplier,
+            warranty_expiry=warranty_expiry,
+            purchase_date=purchase_date,
+            condition=condition,
+            status=status_value or "In Stock",
+            department=department,
+            assigned_employee=assigned_employee,
+        )
     return Response(_consumable_to_dict(consumable), status=status.HTTP_201_CREATED)
 
 
 @api_view(["PUT"])
 def consumable_detail_view(request, consumable_id: int):
-    consumable = Consumable.objects.filter(id=consumable_id).first()
-    if not consumable:
-        return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+    with transaction.atomic():
+        consumable = Consumable.objects.select_for_update().filter(id=consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    if "asset_tag" in request.data:
-        consumable.asset_tag = str(request.data.get("asset_tag", "")).strip()
+        if "asset_tag" in request.data:
+            consumable.asset_tag = str(request.data.get("asset_tag", "")).strip()
 
-    if "item_name" in request.data:
-        consumable.item_name = str(request.data.get("item_name", consumable.item_name)).strip() or consumable.item_name
+        if "item_name" in request.data:
+            consumable.item_name = str(request.data.get("item_name", consumable.item_name)).strip() or consumable.item_name
 
-    if "manufacturer" in request.data:
-        consumable.manufacturer = str(request.data.get("manufacturer", "")).strip()
+        if "manufacturer" in request.data:
+            consumable.manufacturer = str(request.data.get("manufacturer", "")).strip()
 
-    if "brand" in request.data:
-        consumable.brand = str(request.data.get("brand", "")).strip()
+        if "brand" in request.data:
+            consumable.brand = str(request.data.get("brand", "")).strip()
 
-    if "model_number" in request.data:
-        consumable.model_number = str(request.data.get("model_number", "")).strip()
+        if "model_number" in request.data:
+            consumable.model_number = str(request.data.get("model_number", "")).strip()
 
-    if "serial_number" in request.data:
-        consumable.serial_number = str(request.data.get("serial_number", "")).strip()
+        if "serial_number" in request.data:
+            consumable.serial_number = str(request.data.get("serial_number", "")).strip()
 
-    if "category" in request.data:
-        consumable.category = str(request.data.get("category", "")).strip()
+        if "category" in request.data:
+            consumable.category = str(request.data.get("category", "")).strip()
 
-    if "subcategory" in request.data:
-        consumable.subcategory = str(request.data.get("subcategory", "")).strip()
+        if "subcategory" in request.data:
+            consumable.subcategory = str(request.data.get("subcategory", "")).strip()
 
-    if "processor" in request.data:
-        consumable.processor = str(request.data.get("processor", "")).strip()
+        if "processor" in request.data:
+            consumable.processor = str(request.data.get("processor", "")).strip()
 
-    if "ram" in request.data:
-        consumable.ram = str(request.data.get("ram", "")).strip()
+        if "ram" in request.data:
+            consumable.ram = str(request.data.get("ram", "")).strip()
 
-    if "storage_type" in request.data:
-        consumable.storage_type = str(request.data.get("storage_type", "")).strip()
+        if "storage_type" in request.data:
+            consumable.storage_type = str(request.data.get("storage_type", "")).strip()
 
-    if "storage_capacity" in request.data:
-        consumable.storage_capacity = str(request.data.get("storage_capacity", "")).strip()
+        if "storage_capacity" in request.data:
+            consumable.storage_capacity = str(request.data.get("storage_capacity", "")).strip()
 
-    if "graphics_card" in request.data:
-        consumable.graphics_card = str(request.data.get("graphics_card", "")).strip()
+        if "graphics_card" in request.data:
+            consumable.graphics_card = str(request.data.get("graphics_card", "")).strip()
 
-    if "charger_included" in request.data:
-        consumable.charger_included = _to_optional_bool(request.data.get("charger_included"))
+        if "charger_included" in request.data:
+            consumable.charger_included = _to_optional_bool(request.data.get("charger_included"))
 
-    if "monitor_included" in request.data:
-        consumable.monitor_included = _to_optional_bool(request.data.get("monitor_included"))
+        if "monitor_included" in request.data:
+            consumable.monitor_included = _to_optional_bool(request.data.get("monitor_included"))
 
-    if "keyboard_included" in request.data:
-        consumable.keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
+        if "keyboard_included" in request.data:
+            consumable.keyboard_included = _to_optional_bool(request.data.get("keyboard_included"))
 
-    if "mouse_included" in request.data:
-        consumable.mouse_included = _to_optional_bool(request.data.get("mouse_included"))
+        if "mouse_included" in request.data:
+            consumable.mouse_included = _to_optional_bool(request.data.get("mouse_included"))
 
-    if "printer_type" in request.data:
-        consumable.printer_type = str(request.data.get("printer_type", "")).strip()
+        if "printer_type" in request.data:
+            consumable.printer_type = str(request.data.get("printer_type", "")).strip()
 
-    if "print_speed" in request.data:
-        consumable.print_speed = str(request.data.get("print_speed", "")).strip()
+        if "print_speed" in request.data:
+            consumable.print_speed = str(request.data.get("print_speed", "")).strip()
 
-    if "connectivity" in request.data:
-        consumable.connectivity = str(request.data.get("connectivity", "")).strip()
+        if "connectivity" in request.data:
+            consumable.connectivity = str(request.data.get("connectivity", "")).strip()
 
-    if "duplex_printing" in request.data:
-        consumable.duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
+        if "duplex_printing" in request.data:
+            consumable.duplex_printing = _to_optional_bool(request.data.get("duplex_printing"))
 
-    if "paper_capacity" in request.data:
-        consumable.paper_capacity = str(request.data.get("paper_capacity", "")).strip()
+        if "paper_capacity" in request.data:
+            consumable.paper_capacity = str(request.data.get("paper_capacity", "")).strip()
 
-    if "color_printing" in request.data:
-        consumable.color_printing = _to_optional_bool(request.data.get("color_printing"))
+        if "color_printing" in request.data:
+            consumable.color_printing = _to_optional_bool(request.data.get("color_printing"))
 
-    if "device_type" in request.data:
-        consumable.device_type = str(request.data.get("device_type", "")).strip()
+        if "device_type" in request.data:
+            consumable.device_type = str(request.data.get("device_type", "")).strip()
 
-    if "operating_system" in request.data:
-        consumable.operating_system = str(request.data.get("operating_system", "")).strip()
+        if "operating_system" in request.data:
+            consumable.operating_system = str(request.data.get("operating_system", "")).strip()
 
-    if "battery_capacity" in request.data:
-        consumable.battery_capacity = str(request.data.get("battery_capacity", "")).strip()
+        if "battery_capacity" in request.data:
+            consumable.battery_capacity = str(request.data.get("battery_capacity", "")).strip()
 
-    if "imei_number" in request.data:
-        consumable.imei_number = str(request.data.get("imei_number", "")).strip()
+        if "imei_number" in request.data:
+            consumable.imei_number = str(request.data.get("imei_number", "")).strip()
 
-    if "quantity" in request.data:
-        try:
-            consumable.quantity = int(request.data.get("quantity"))
-        except (TypeError, ValueError):
-            return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
-        if consumable.quantity < 0:
-            return Response({"message": "quantity cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
+        if "quantity" in request.data:
+            try:
+                consumable.quantity = int(request.data.get("quantity"))
+            except (TypeError, ValueError):
+                return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+            if consumable.quantity < 0:
+                return Response({"message": "quantity cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if "purchase_cost" in request.data:
-        consumable.purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
+        if "purchase_cost" in request.data:
+            consumable.purchase_cost = _to_optional_decimal(request.data.get("purchase_cost"))
 
-    if "supplier" in request.data:
-        consumable.supplier = str(request.data.get("supplier", "")).strip()
+        if "supplier" in request.data:
+            consumable.supplier = str(request.data.get("supplier", "")).strip()
 
-    if "warranty_expiry" in request.data:
-        consumable.warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
+        if "warranty_expiry" in request.data:
+            consumable.warranty_expiry = _to_optional_date(request.data.get("warranty_expiry"))
 
-    if "purchase_date" in request.data:
-        consumable.purchase_date = _to_optional_date(request.data.get("purchase_date"))
+        if "purchase_date" in request.data:
+            consumable.purchase_date = _to_optional_date(request.data.get("purchase_date"))
 
-    if "condition" in request.data:
-        consumable.condition = str(request.data.get("condition", "")).strip()
+        if "condition" in request.data:
+            consumable.condition = str(request.data.get("condition", "")).strip()
 
-    if "status" in request.data:
-        consumable.status = str(request.data.get("status", "")).strip()
+        if "status" in request.data:
+            consumable.status = str(request.data.get("status", "")).strip()
 
-    if "department" in request.data:
-        consumable.department = str(request.data.get("department", "")).strip()
+        if "department" in request.data:
+            consumable.department = str(request.data.get("department", "")).strip()
 
-    if "assigned_employee" in request.data:
-        consumable.assigned_employee = str(request.data.get("assigned_employee", "")).strip()
+        if "assigned_employee" in request.data:
+            consumable.assigned_employee = str(request.data.get("assigned_employee", "")).strip()
 
-    consumable.save()
-    return Response(_consumable_to_dict(consumable), status=status.HTTP_200_OK)
+        consumable.save()
+        consumable.refresh_from_db()
+        return Response(_consumable_to_dict(consumable), status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+def consumable_quantity_adjust_view(request, consumable_id: int):
+    delta = request.data.get("delta")
+    try:
+        delta_value = int(delta)
+    except (TypeError, ValueError):
+        return Response({"message": "delta must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if delta_value == 0:
+        return Response({"message": "delta cannot be zero."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        consumable = Consumable.objects.select_for_update().filter(id=consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        next_quantity = consumable.quantity + delta_value
+        if next_quantity < 0:
+            return Response(
+                {"message": f"Insufficient stock. Available: {consumable.quantity}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        consumable.quantity = next_quantity
+        consumable.save(update_fields=["quantity", "updated_at"])
+        consumable.refresh_from_db()
+        return Response(_consumable_to_dict(consumable), status=status.HTTP_200_OK)
 
 
 def _consumable_request_to_dict(item: ConsumableRequest) -> dict:
@@ -1499,61 +1560,65 @@ def consumable_requests_collection_view(request):
 
 @api_view(["PUT"])
 def consumable_request_approve_view(request, request_id: int):
-    item = (
-        ConsumableRequest.objects.select_related("consumable", "employee", "approved_by", "rejected_by")
-        .filter(id=request_id)
-        .first()
-    )
-    if not item:
-        return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if item.status != ConsumableRequest.STATUS_PENDING:
-        return Response({"message": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
-
     approved_by_id = request.data.get("approved_by_id")
     approved_by_user = User.objects.filter(id=approved_by_id).first() if approved_by_id else None
-    assignment_type = str(request.data.get("assignment_type", item.assignment_type)).strip().lower()
-    if assignment_type not in {
-        ConsumableRequest.ASSIGNMENT_TYPE_NEW,
-        ConsumableRequest.ASSIGNMENT_TYPE_LOAN,
-        ConsumableRequest.ASSIGNMENT_TYPE_EXCHANGE,
-    }:
-        return Response(
-            {"message": "assignment_type must be one of: new, loan, exchange."},
-            status=status.HTTP_400_BAD_REQUEST,
+    with transaction.atomic():
+        item = (
+            ConsumableRequest.objects.select_for_update()
+            .select_related("consumable", "employee", "approved_by", "rejected_by")
+            .filter(id=request_id)
+            .first()
+        )
+        if not item:
+            return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if item.status != ConsumableRequest.STATUS_PENDING:
+            return Response({"message": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+        assignment_type = str(request.data.get("assignment_type", item.assignment_type)).strip().lower()
+        if assignment_type not in {
+            ConsumableRequest.ASSIGNMENT_TYPE_NEW,
+            ConsumableRequest.ASSIGNMENT_TYPE_LOAN,
+            ConsumableRequest.ASSIGNMENT_TYPE_EXCHANGE,
+        }:
+            return Response(
+                {"message": "assignment_type must be one of: new, loan, exchange."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        consumable = Consumable.objects.select_for_update().filter(id=item.consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if item.quantity > consumable.quantity:
+            return Response(
+                {"message": f"Insufficient stock. Available: {consumable.quantity}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        consumable.quantity = consumable.quantity - item.quantity
+        consumable.save(update_fields=["quantity", "updated_at"])
+
+        item.status = ConsumableRequest.STATUS_APPROVED
+        item.assignment_type = assignment_type
+        item.approved_by = approved_by_user
+        item.approved_at = timezone.now()
+        item.save(update_fields=["status", "assignment_type", "approved_by", "approved_at", "updated_at"])
+
+        InventoryAssignment.objects.create(
+            consumable=consumable,
+            employee=item.employee,
+            quantity_assigned=item.quantity,
+            assigned_by=approved_by_user,
+            notes=f"Approved request CR-{item.id} ({assignment_type})",
         )
 
-    if item.quantity > item.consumable.quantity:
-        return Response(
-            {"message": f"Insufficient stock. Available: {item.consumable.quantity}"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    item.consumable.quantity = item.consumable.quantity - item.quantity
-    item.consumable.save(update_fields=["quantity", "updated_at"])
-
-    item.status = ConsumableRequest.STATUS_APPROVED
-    item.assignment_type = assignment_type
-    item.approved_by = approved_by_user
-    item.approved_at = timezone.now()
-    item.save(update_fields=["status", "assignment_type", "approved_by", "approved_at", "updated_at"])
     item.refresh_from_db()
     return Response(_consumable_request_to_dict(item), status=status.HTTP_200_OK)
 
 
 @api_view(["PUT"])
 def consumable_request_reject_view(request, request_id: int):
-    item = (
-        ConsumableRequest.objects.select_related("consumable", "employee", "approved_by", "rejected_by")
-        .filter(id=request_id)
-        .first()
-    )
-    if not item:
-        return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if item.status != ConsumableRequest.STATUS_PENDING:
-        return Response({"message": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
-
     reason = str(request.data.get("reason", "")).strip()
     if not reason:
         return Response({"message": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1561,11 +1626,24 @@ def consumable_request_reject_view(request, request_id: int):
     rejected_by_id = request.data.get("rejected_by_id")
     rejected_by_user = User.objects.filter(id=rejected_by_id).first() if rejected_by_id else None
 
-    item.status = ConsumableRequest.STATUS_REJECTED
-    item.rejection_reason = reason
-    item.rejected_by = rejected_by_user
-    item.rejected_at = timezone.now()
-    item.save(update_fields=["status", "rejection_reason", "rejected_by", "rejected_at", "updated_at"])
+    with transaction.atomic():
+        item = (
+            ConsumableRequest.objects.select_for_update()
+            .select_related("consumable", "employee", "approved_by", "rejected_by")
+            .filter(id=request_id)
+            .first()
+        )
+        if not item:
+            return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if item.status != ConsumableRequest.STATUS_PENDING:
+            return Response({"message": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        item.status = ConsumableRequest.STATUS_REJECTED
+        item.rejection_reason = reason
+        item.rejected_by = rejected_by_user
+        item.rejected_at = timezone.now()
+        item.save(update_fields=["status", "rejection_reason", "rejected_by", "rejected_at", "updated_at"])
     item.refresh_from_db()
     return Response(_consumable_request_to_dict(item), status=status.HTTP_200_OK)
 
@@ -1605,80 +1683,89 @@ def consumable_returns_collection_view(request):
     if quantity_value <= 0:
         return Response({"message": "quantity must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
 
-    request_item = (
-        ConsumableRequest.objects.select_related("consumable", "employee")
-        .filter(id=consumable_request_id)
-        .first()
-    )
-    if not request_item:
-        return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if request_item.status != ConsumableRequest.STATUS_APPROVED:
-        return Response(
-            {"message": "Only approved consumable requests can be returned."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     try:
         employee_id_int = int(employee_id)
     except (TypeError, ValueError):
         return Response({"message": "employee_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if request_item.employee_id != employee_id_int:
-        return Response(
-            {"message": "You can only return consumables assigned to your own request."},
-            status=status.HTTP_403_FORBIDDEN,
+    with transaction.atomic():
+        request_item = (
+            ConsumableRequest.objects.select_for_update()
+            .select_related("consumable", "employee")
+            .filter(id=consumable_request_id)
+            .first()
         )
+        if not request_item:
+            return Response({"message": "Consumable request not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    already_requested_quantity = (
-        ConsumableReturn.objects.filter(
+        if request_item.status != ConsumableRequest.STATUS_APPROVED:
+            return Response(
+                {"message": "Only approved consumable requests can be returned."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request_item.employee_id != employee_id_int:
+            return Response(
+                {"message": "You can only return consumables assigned to your own request."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        already_requested_quantity = (
+            ConsumableReturn.objects.select_for_update()
+            .filter(
+                consumable_request=request_item,
+                status__in=[ConsumableReturn.STATUS_PENDING, ConsumableReturn.STATUS_RECEIVED],
+            )
+            .aggregate(total=Sum("quantity"))["total"]
+            or 0
+        )
+        remaining_quantity = request_item.quantity - already_requested_quantity
+        if quantity_value > remaining_quantity:
+            return Response(
+                {
+                    "message": (
+                        f"Return quantity exceeds remaining assigned quantity. "
+                        f"Remaining quantity available for return: {remaining_quantity}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return_item = ConsumableReturn.objects.create(
             consumable_request=request_item,
-            status__in=[ConsumableReturn.STATUS_PENDING, ConsumableReturn.STATUS_RECEIVED],
-        ).aggregate(total=Sum("quantity"))["total"]
-        or 0
-    )
-    remaining_quantity = request_item.quantity - already_requested_quantity
-    if quantity_value > remaining_quantity:
-        return Response(
-            {
-                "message": (
-                    f"Return quantity exceeds remaining assigned quantity. "
-                    f"Remaining quantity available for return: {remaining_quantity}"
-                )
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+            consumable=request_item.consumable,
+            employee=request_item.employee,
+            quantity=quantity_value,
+            reason=reason,
         )
-
-    return_item = ConsumableReturn.objects.create(
-        consumable_request=request_item,
-        consumable=request_item.consumable,
-        employee=request_item.employee,
-        quantity=quantity_value,
-        reason=reason,
-    )
     return_item.refresh_from_db()
     return Response(_consumable_return_to_dict(return_item), status=status.HTTP_201_CREATED)
 
 
 @api_view(["PUT"])
 def consumable_return_receive_view(request, return_id: int):
-    item = (
-        ConsumableReturn.objects.select_related("consumable", "employee", "consumable_request", "received_by", "rejected_by")
-        .filter(id=return_id)
-        .first()
-    )
-    if not item:
-        return Response({"message": "Consumable return request not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if item.status != ConsumableReturn.STATUS_PENDING:
-        return Response({"message": "Only pending return requests can be received."}, status=status.HTTP_400_BAD_REQUEST)
-
     received_by_id = request.data.get("received_by_id")
     received_by_user = User.objects.filter(id=received_by_id).first() if received_by_id else None
 
     with transaction.atomic():
-        item.consumable.quantity = item.consumable.quantity + item.quantity
-        item.consumable.save(update_fields=["quantity", "updated_at"])
+        item = (
+            ConsumableReturn.objects.select_for_update()
+            .select_related("consumable", "employee", "consumable_request", "received_by", "rejected_by")
+            .filter(id=return_id)
+            .first()
+        )
+        if not item:
+            return Response({"message": "Consumable return request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if item.status != ConsumableReturn.STATUS_PENDING:
+            return Response({"message": "Only pending return requests can be received."}, status=status.HTTP_400_BAD_REQUEST)
+
+        consumable = Consumable.objects.select_for_update().filter(id=item.consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        consumable.quantity = consumable.quantity + item.quantity
+        consumable.save(update_fields=["quantity", "updated_at"])
 
         item.status = ConsumableReturn.STATUS_RECEIVED
         item.received_by = received_by_user
@@ -1686,23 +1773,18 @@ def consumable_return_receive_view(request, return_id: int):
         item.rejection_reason = ""
         item.save(update_fields=["status", "received_by", "received_at", "rejection_reason", "updated_at"])
 
+        _consume_inventory_assignments(
+            consumable_id=item.consumable_id,
+            employee_id=item.employee_id,
+            quantity=item.quantity,
+        )
+
     item.refresh_from_db()
     return Response(_consumable_return_to_dict(item), status=status.HTTP_200_OK)
 
 
 @api_view(["PUT"])
 def consumable_return_reject_view(request, return_id: int):
-    item = (
-        ConsumableReturn.objects.select_related("consumable", "employee", "consumable_request", "received_by", "rejected_by")
-        .filter(id=return_id)
-        .first()
-    )
-    if not item:
-        return Response({"message": "Consumable return request not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if item.status != ConsumableReturn.STATUS_PENDING:
-        return Response({"message": "Only pending return requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
-
     reason = str(request.data.get("reason", "")).strip()
     if not reason:
         return Response({"message": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1710,11 +1792,24 @@ def consumable_return_reject_view(request, return_id: int):
     rejected_by_id = request.data.get("rejected_by_id")
     rejected_by_user = User.objects.filter(id=rejected_by_id).first() if rejected_by_id else None
 
-    item.status = ConsumableReturn.STATUS_REJECTED
-    item.rejected_by = rejected_by_user
-    item.rejected_at = timezone.now()
-    item.rejection_reason = reason
-    item.save(update_fields=["status", "rejected_by", "rejected_at", "rejection_reason", "updated_at"])
+    with transaction.atomic():
+        item = (
+            ConsumableReturn.objects.select_for_update()
+            .select_related("consumable", "employee", "consumable_request", "received_by", "rejected_by")
+            .filter(id=return_id)
+            .first()
+        )
+        if not item:
+            return Response({"message": "Consumable return request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if item.status != ConsumableReturn.STATUS_PENDING:
+            return Response({"message": "Only pending return requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        item.status = ConsumableReturn.STATUS_REJECTED
+        item.rejected_by = rejected_by_user
+        item.rejected_at = timezone.now()
+        item.rejection_reason = reason
+        item.save(update_fields=["status", "rejected_by", "rejected_at", "rejection_reason", "updated_at"])
     item.refresh_from_db()
     return Response(_consumable_return_to_dict(item), status=status.HTTP_200_OK)
 

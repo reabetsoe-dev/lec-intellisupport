@@ -555,6 +555,13 @@ export async function updateConsumable(id: number, payload: Partial<AddConsumabl
   })
 }
 
+export async function adjustConsumableQuantity(id: number, delta: number): Promise<Consumable> {
+  return requestJson<Consumable>(BACKEND_BASE_URL, `/api/consumables/${id}/adjust`, {
+    method: "PATCH",
+    body: { delta },
+  })
+}
+
 export async function sendChatMessage(message: string): Promise<{ reply: string }> {
   try {
     return await requestJson<{ reply: string }>(AI_BASE_URL, "/ai-service/chat", {

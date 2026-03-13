@@ -17,6 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+const REFRESH_INTERVAL_MS = 15_000
+
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
@@ -42,7 +44,7 @@ export function EmployeeConsumableRequestPanel() {
   const user = getStoredUserSession()
 
   useEffect(() => {
-    const run = async () => {
+    const run = async (silent = false) => {
       try {
         const [inventoryData, requestData] = await Promise.all([
           getConsumables(),
@@ -55,13 +57,28 @@ export function EmployeeConsumableRequestPanel() {
         )
         setRequests(requestData)
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
+        if (!silent) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
+        }
       } finally {
-        setLoadingStock(false)
+        if (!silent) {
+          setLoadingStock(false)
+        }
       }
     }
 
     void run()
+    const intervalId = window.setInterval(() => {
+      void run(true)
+    }, REFRESH_INTERVAL_MS)
+    const onFocus = () => {
+      void run(true)
+    }
+    window.addEventListener("focus", onFocus)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [user?.id])
 
   const myRequests = requests

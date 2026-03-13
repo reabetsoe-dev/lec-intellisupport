@@ -13,7 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getConsumables, updateConsumable, type Consumable } from "@/lib/api"
+import { adjustConsumableQuantity, getConsumables, type Consumable } from "@/lib/api"
+
+const REFRESH_INTERVAL_MS = 15_000
 
 export function InventoryTable() {
   const [items, setItems] = useState<Consumable[]>([])
@@ -35,19 +37,24 @@ export function InventoryTable() {
 
   useEffect(() => {
     void loadItems()
+    const intervalId = window.setInterval(() => {
+      void loadItems()
+    }, REFRESH_INTERVAL_MS)
+    const onFocus = () => {
+      void loadItems()
+    }
+    window.addEventListener("focus", onFocus)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [])
 
   const updateQuantity = async (item: Consumable, delta: number) => {
-    const current = item.quantity ?? 0
-    const next = current + delta
-    if (next < 0) {
-      return
-    }
-
     try {
       setSavingId(item.id)
       setError("")
-      const updated = await updateConsumable(item.id, { quantity: next })
+      const updated = await adjustConsumableQuantity(item.id, delta)
       setItems((currentItems) => currentItems.map((row) => (row.id === updated.id ? updated : row)))
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Failed to update quantity.")

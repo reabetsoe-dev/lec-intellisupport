@@ -16,6 +16,8 @@ import {
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 
+const REFRESH_INTERVAL_MS = 15_000
+
 function formatDate(value?: string | null): string {
   if (!value) {
     return "N/A"
@@ -51,23 +53,40 @@ export function EmployeeAssignedConsumablesPanel() {
   }
 
   useEffect(() => {
-    const run = async () => {
+    const run = async (silent = false) => {
       if (!user?.id) {
-        setError("Session expired. Please login again.")
-        setLoading(false)
+        if (!silent) {
+          setError("Session expired. Please login again.")
+          setLoading(false)
+        }
         return
       }
 
       try {
         await loadData(user.id)
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned consumables.")
+        if (!silent) {
+          setError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned consumables.")
+        }
       } finally {
-        setLoading(false)
+        if (!silent) {
+          setLoading(false)
+        }
       }
     }
 
     void run()
+    const intervalId = window.setInterval(() => {
+      void run(true)
+    }, REFRESH_INTERVAL_MS)
+    const onFocus = () => {
+      void run(true)
+    }
+    window.addEventListener("focus", onFocus)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [user?.id])
 
   const returnSummaryByRequestId = useMemo(() => {
