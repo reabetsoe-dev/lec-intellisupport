@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   createConsumableReturnRequest,
   getConsumableRequests,
@@ -168,116 +167,89 @@ export function EmployeeAssignedConsumablesPanel() {
       <CardHeader className="border-b border-[#0072CE]/15 px-6 py-5">
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumables</CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        {error ? <p className="px-6 pt-4 text-sm text-[#D71920]">{error}</p> : null}
-        {success ? <p className="px-6 pt-4 text-sm text-[#007A3D]">{success}</p> : null}
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Quantity</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Department</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Approved By</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Approved At</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Return Status</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Request Return</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
-                  Loading assigned consumables...
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
-                  No consumables have been assigned to your profile yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((request) => (
-                <TableRow key={request.db_id}>
-                  <TableCell className="px-6 font-medium text-[#0B1F3A]">{toDisplayLabel(request.itemName)}</TableCell>
-                  <TableCell className="text-[#0B1F3A]">{request.quantity}</TableCell>
-                  <TableCell>
+      <CardContent className="px-6 py-5">
+        {error ? <p className="mb-3 text-sm text-[#D71920]">{error}</p> : null}
+        {success ? <p className="mb-3 text-sm text-[#007A3D]">{success}</p> : null}
+
+        {loading ? (
+          <p className="py-6 text-center text-sm text-[#1E3A6D]">Loading assigned consumables...</p>
+        ) : rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-[#1E3A6D]">No consumables have been assigned to your profile yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {rows.map((request) => {
+              const summary = returnSummaryByRequestId.get(request.db_id)
+              const pending = summary?.pending ?? 0
+              const received = summary?.received ?? 0
+              const rejected = summary?.rejected ?? 0
+              const availableToReturn = request.quantity - pending - received
+
+              return (
+                <div
+                  key={request.db_id}
+                  className="space-y-3 rounded-lg border border-[#0072CE]/20 bg-[#F8FBFF] p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h3 className="break-words text-sm font-semibold text-[#0B1F3A]">{toDisplayLabel(request.itemName)}</h3>
                     <Badge className="rounded-full border border-slate-300 bg-slate-50 text-[#0B1F3A]">
                       {request.assignmentType}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className="rounded-full border border-[#0072CE]/35 bg-[#E9F3FF] text-[#0B1F3A]">
-                      {request.department || "N/A"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-[#0B1F3A]">{request.approvedBy || "Admin"}</TableCell>
-                  <TableCell className="text-[#0B1F3A]">{formatDate(request.approvedAt ?? request.requestedAt)}</TableCell>
-                  <TableCell className="text-xs text-[#0B1F3A]">
-                    {(() => {
-                      const summary = returnSummaryByRequestId.get(request.db_id)
-                      const pending = summary?.pending ?? 0
-                      const received = summary?.received ?? 0
-                      const rejected = summary?.rejected ?? 0
-                      const availableToReturn = request.quantity - pending - received
-                      return (
-                        <div className="space-y-1">
-                          <p>Available to return: {availableToReturn}</p>
-                          <p>Pending: {pending} | Received: {received} | Rejected: {rejected}</p>
-                        </div>
-                      )
-                    })()}
-                  </TableCell>
-                  <TableCell className="min-w-[280px]">
-                    {(() => {
-                      const summary = returnSummaryByRequestId.get(request.db_id)
-                      const pending = summary?.pending ?? 0
-                      const received = summary?.received ?? 0
-                      const availableToReturn = request.quantity - pending - received
+                  </div>
 
-                      if (availableToReturn <= 0) {
-                        return <p className="text-xs text-slate-500">No remaining quantity available for return.</p>
-                      }
+                  <div className="grid grid-cols-1 gap-2 text-sm text-[#0B1F3A] sm:grid-cols-2">
+                    <p><span className="font-semibold">Quantity:</span> {request.quantity}</p>
+                    <p><span className="font-semibold">Department:</span> {request.department || "N/A"}</p>
+                    <p><span className="font-semibold">Approved By:</span> {request.approvedBy || "Admin"}</p>
+                    <p><span className="font-semibold">Approved At:</span> {formatDate(request.approvedAt ?? request.requestedAt)}</p>
+                  </div>
 
-                      return (
-                        <div className="space-y-2">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={availableToReturn}
-                            placeholder={`Qty (max ${availableToReturn})`}
-                            value={returnQuantityByRequestId[request.db_id] ?? ""}
-                            onChange={(event) =>
-                              setReturnQuantityByRequestId((current) => ({ ...current, [request.db_id]: event.target.value }))
-                            }
-                            className="h-8"
-                          />
-                          <Input
-                            placeholder="Reason for return (e.g., no longer required)"
-                            value={returnReasonByRequestId[request.db_id] ?? ""}
-                            onChange={(event) =>
-                              setReturnReasonByRequestId((current) => ({ ...current, [request.db_id]: event.target.value }))
-                            }
-                            className="h-8"
-                          />
-                          <Button
-                            size="sm"
-                            className="bg-[#0072CE] text-white hover:bg-[#005DA8]"
-                            disabled={submittingReturnForId === request.db_id}
-                            onClick={() => void handleSubmitReturn(request)}
-                          >
-                            {submittingReturnForId === request.db_id ? "Submitting..." : "Submit Return"}
-                          </Button>
-                        </div>
-                      )
-                    })()}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                  <div className="rounded-md border border-[#0072CE]/20 bg-white p-3 text-xs text-[#0B1F3A]">
+                    <p className="font-semibold">Return Status</p>
+                    <p className="mt-1">Available to return: {availableToReturn}</p>
+                    <p>Pending: {pending} | Received: {received} | Rejected: {rejected}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-[#1E3A6D] uppercase tracking-wide">Request Return</p>
+                    {availableToReturn <= 0 ? (
+                      <p className="text-xs text-slate-500">No remaining quantity available for return.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[120px_1fr_140px]">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={availableToReturn}
+                          placeholder={`Qty (${availableToReturn})`}
+                          value={returnQuantityByRequestId[request.db_id] ?? ""}
+                          onChange={(event) =>
+                            setReturnQuantityByRequestId((current) => ({ ...current, [request.db_id]: event.target.value }))
+                          }
+                          className="h-9"
+                        />
+                        <Input
+                          placeholder="Reason for return (e.g., no longer required)"
+                          value={returnReasonByRequestId[request.db_id] ?? ""}
+                          onChange={(event) =>
+                            setReturnReasonByRequestId((current) => ({ ...current, [request.db_id]: event.target.value }))
+                          }
+                          className="h-9"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-9 bg-[#0072CE] text-white hover:bg-[#005DA8]"
+                          disabled={submittingReturnForId === request.db_id}
+                          onClick={() => void handleSubmitReturn(request)}
+                        >
+                          {submittingReturnForId === request.db_id ? "Submitting..." : "Submit Return"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
