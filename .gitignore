@@ -42,6 +42,7 @@ next-env.d.ts
 
 # local data workspaces (do not commit)
 /backend/IT_CHATBOT_DATASET/
+/lec-intellisupport-archive-*/
 
 # python runtime artifacts
 **/__pycache__/
