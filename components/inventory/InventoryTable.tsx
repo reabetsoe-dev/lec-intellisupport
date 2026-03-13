@@ -109,9 +109,9 @@ export function InventoryTable() {
               items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="px-6 font-medium text-slate-800">{item.asset_tag || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.category || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.subcategory || item.device_type || item.printer_type || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.brand || "N/A"} {item.model_number || ""}</TableCell>
+                  <TableCell className="text-slate-700">{item.category || item.department || "N/A"}</TableCell>
+                  <TableCell className="text-slate-700">{item.subcategory || item.device_type || item.printer_type || item.item_name || "N/A"}</TableCell>
+                  <TableCell className="text-slate-700">{`${item.brand || ""} ${item.model_number || ""}`.trim() || item.item_name || "N/A"}</TableCell>
                   <TableCell className="text-slate-700">{item.serial_number || "N/A"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

@@ -987,10 +987,22 @@ def performance_metrics_view(request):
 
 
 def _consumable_to_dict(consumable: Consumable) -> dict:
+    purchase_cost = float(consumable.purchase_cost) if consumable.purchase_cost is not None else None
+    asset_type = (
+        consumable.subcategory
+        or consumable.device_type
+        or consumable.printer_type
+        or consumable.item_name
+    )
+    brand_model = f"{consumable.brand} {consumable.model_number}".strip() or consumable.item_name
+
     return {
         "id": consumable.id,
         "asset_tag": consumable.asset_tag,
         "item_name": consumable.item_name,
+        # Backward-compatible aliases used by admin consumables UI.
+        "type": asset_type,
+        "brand_model": brand_model,
         "manufacturer": consumable.manufacturer,
         "brand": consumable.brand,
         "model_number": consumable.model_number,
@@ -1017,7 +1029,10 @@ def _consumable_to_dict(consumable: Consumable) -> dict:
         "battery_capacity": consumable.battery_capacity,
         "imei_number": consumable.imei_number,
         "quantity": consumable.quantity,
-        "purchase_cost": float(consumable.purchase_cost) if consumable.purchase_cost is not None else None,
+        "available_quantity": consumable.quantity,
+        "total_quantity": consumable.quantity,
+        "purchase_cost": purchase_cost,
+        "cost": purchase_cost,
         "supplier": consumable.supplier,
         "warranty_expiry": consumable.warranty_expiry.isoformat() if consumable.warranty_expiry else None,
         "purchase_date": consumable.purchase_date.isoformat() if consumable.purchase_date else None,
