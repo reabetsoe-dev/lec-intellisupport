@@ -17,9 +17,25 @@ function Invoke-Git {
   }
 }
 
+function Get-ModifiedTrackedFiles {
+  param([string]$Glob)
+  $tracked = & git ls-files -m -- $Glob
+  if ($LASTEXITCODE -ne 0) {
+    throw "git ls-files -m -- $Glob failed."
+  }
+  return @($tracked | Where-Object { $_ -and $_.Trim() })
+}
+
+$modifiedPycFiles = Get-ModifiedTrackedFiles "*.pyc"
+$restoreTargets = @($noisyFiles + $modifiedPycFiles) | Sort-Object -Unique
+
 try {
-  Invoke-Git update-index --no-skip-worktree @noisyFiles
-  Invoke-Git restore @noisyFiles
+  if ($noisyFiles.Count -gt 0) {
+    Invoke-Git update-index --no-skip-worktree @noisyFiles
+  }
+  if ($restoreTargets.Count -gt 0) {
+    Invoke-Git restore @restoreTargets
+  }
   Invoke-Git pull --rebase --autostash
 }
 finally {
