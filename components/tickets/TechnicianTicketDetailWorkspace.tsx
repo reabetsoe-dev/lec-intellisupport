@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { escalateTicket, getTechnicians, getTicketById, type Technician, type TicketDetail, updateTicketStatus } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 
 function normalizeTicketStatus(status: string): string {
   const normalized = status.trim().toLowerCase()
@@ -164,6 +165,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   })
 
   const currentUser = getStoredUserSession()
+  const currentUserId = currentUser?.id
 
   const showResultDialog = (status: "success" | "error", message: string) => {
     setResultDialog({
@@ -173,19 +175,19 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     })
   }
 
-  const loadAll = async () => {
-    if (!currentUser) {
+  const loadAll = useCallback(async () => {
+    if (!currentUserId) {
       throw new Error("Session expired. Please login again.")
     }
 
     const [ticketData, technicianData] = await Promise.all([
-      getTicketById(ticketId, { technicianUserId: currentUser.id }),
+      getTicketById(ticketId, { technicianUserId: currentUserId }),
       getTechnicians(),
     ])
     setTicket(ticketData)
-    setTechnicians(technicianData.filter((item) => item.user_id !== currentUser.id && item.is_available))
+    setTechnicians(technicianData.filter((item) => item.user_id !== currentUserId && item.is_available))
     setLoadError("")
-  }
+  }, [ticketId, currentUserId])
 
   useEffect(() => {
     const run = async () => {
@@ -198,7 +200,12 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       }
     }
     void run()
-  }, [ticketId])
+  }, [loadAll])
+
+  useAutoRefresh(loadAll, {
+    enabled: Boolean(currentUserId) && !loading && !actionLoading,
+    intervalMs: 10000,
+  })
 
   const detailStatus = ticket ? normalizeTicketStatus(ticket.status) : "Pending"
   const timelineItems = useMemo(() => ticket?.comments ?? [], [ticket])

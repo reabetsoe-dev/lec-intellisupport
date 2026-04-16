@@ -9,7 +9,7 @@ export default function AdminConsumablesReturnsPage() {
       <EmployeePageHero
         compact
         title="Consumable Return History"
-        description="Audit all consumable return transactions with status, date, employee, and item filters."
+        description="Audit all consumable return transactions, including status, employee, item, and decision history."
       />
       <AdminConsumableReturnHistoryPanel />
     </div>

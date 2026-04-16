@@ -69,7 +69,7 @@ with INTENTS_PATH.open("r", encoding="utf-8") as intents_file:
 # In production, you'll pass technician list from backend.
 # -------------------------------------------------------------------
 TECHNICIAN_MAPPING = {
-    "SOFTWARE": "Thabo Mokoena",
+    "SOFTWARE": "Lerato Molefe",
     "NETWORK": "Lerato Ndlovu",
     "HARDWARE": "Kabelo Phiri",
     "SECURITY": "Security Specialist",
@@ -760,3 +760,4 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         "confidence": confidence,
         "needs_clarification": needs_clarification,
     }
+

@@ -7,7 +7,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+<<<<<<< HEAD
+  Legend,
+=======
   LabelList,
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
   Line,
   LineChart,
   Pie,
@@ -156,7 +160,10 @@ export function PerformanceAnalyticsPanel() {
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const trendChartRef = useRef<HTMLDivElement>(null)
   const technicianChartRef = useRef<HTMLDivElement>(null)
+<<<<<<< HEAD
+=======
   const seasonChartRef = useRef<HTMLDivElement>(null)
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
 
   const loadMetrics = useCallback(async (range: PerformanceRange, startDate?: string, endDate?: string) => {
     try {
@@ -179,12 +186,21 @@ export function PerformanceAnalyticsPanel() {
     void loadMetrics("30d")
   }, [loadMetrics])
 
-  const technicianTop = useMemo(
-    () => (metrics?.by_technician ?? []).slice().sort((a, b) => b.count - a.count).slice(0, 8),
+  const technicianBreakdown = useMemo(
+    () =>
+      (metrics?.technician_breakdown ?? [])
+        .slice()
+        .sort((a, b) => b.assigned - a.assigned || a.name.localeCompare(b.name)),
     [metrics]
   )
+  const technicianChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const createdVsResolved = metrics?.created_vs_resolved ?? []
+<<<<<<< HEAD
+
+  const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
+=======
   const problemsBySeason = metrics?.by_season ?? []
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
 
   const handleRangeSelect = (range: PerformanceRange) => {
     setSelectedRange(range)
@@ -270,20 +286,23 @@ export function PerformanceAnalyticsPanel() {
         </Card>
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Resolved Rate</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.resolved_rate}%</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-slate-600">Unassigned Tickets</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.unassigned_tickets}</p>
           </CardContent>
         </Card>
+<<<<<<< HEAD
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4">
+            <CardTitle className="text-sm text-slate-600">Open &gt; 48h</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-3xl font-semibold text-slate-900">{staleOpenTickets}</p>
+          </CardContent>
+        </Card>
+=======
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -388,6 +407,8 @@ export function PerformanceAnalyticsPanel() {
           </CardContent>
         </Card>
 
+<<<<<<< HEAD
+=======
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
             <CardTitle className="text-base font-semibold text-slate-900">Problems By Season</CardTitle>
@@ -414,26 +435,41 @@ export function PerformanceAnalyticsPanel() {
           </CardContent>
         </Card>
 
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Technician Workload (Open Tickets)</CardTitle>
+            <CardTitle className="text-base font-semibold text-slate-900">Technician Workload (Assigned, Solved, Pending, Escalated)</CardTitle>
             <ChartActions
               title="technician_workload_chart"
-              csvRows={technicianTop.map((item) => ({ technician: item.name, open_tickets: item.count }))}
+              csvRows={technicianBreakdown.map((item) => ({
+                technician: item.name,
+                assigned: item.assigned,
+                solved: item.solved,
+                pending: item.pending,
+                escalated: item.escalated,
+              }))}
               containerRef={technicianChartRef}
             />
           </CardHeader>
           <CardContent className="px-4 pb-5">
-            <div ref={technicianChartRef} className="h-[320px] w-full">
+            <div ref={technicianChartRef} className="w-full" style={{ height: technicianChartHeight }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={technicianTop} layout="vertical">
+                <BarChart data={technicianBreakdown} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={180} />
                   <Tooltip />
+<<<<<<< HEAD
+                  <Legend />
+                  <Bar dataKey="assigned" fill="#2563eb" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="solved" fill="#16a34a" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="pending" fill="#f59e0b" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="escalated" fill="#dc2626" radius={[0, 8, 8, 0]} />
+=======
                   <Bar dataKey="count" fill="#14b8a6" radius={[0, 8, 8, 0]}>
                     <LabelList dataKey="count" position="right" fill="#0F172A" fontSize={11} />
                   </Bar>
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
                 </BarChart>
               </ResponsiveContainer>
             </div>

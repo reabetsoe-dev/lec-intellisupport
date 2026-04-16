@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { BarChart3, Boxes, ClipboardList, type LucideIcon } from "lucide-react"
 
-import { ManagerDashboardOverview } from "@/components/manager/ManagerDashboardOverview"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -74,8 +73,6 @@ export default function ManagerDashboardPage() {
           })}
         </CardContent>
       </Card>
-
-      <ManagerDashboardOverview />
     </div>
   )
 }

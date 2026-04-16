@@ -16,14 +16,7 @@ class Command(BaseCommand):
                 "email": "employee@lec.com",
                 "password": "Employee@123",
                 "role": User.ROLE_EMPLOYEE,
-            },
-            {
-                "name": "Thabo Mokoena",
-                "email": "technician@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
+            },{
                 "name": "Lerato Molefe",
                 "email": "technician2@lec.com",
                 "password": "Technician@123",
@@ -236,3 +229,4 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+

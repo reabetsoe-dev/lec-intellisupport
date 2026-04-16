@@ -47,6 +47,8 @@ export function ManagerResourceOversightPanel() {
     }),
     [requests, returns]
   )
+  const managerFlashcardClass =
+    "rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(11,31,58,0.18)]"
 
   const pendingRequests = requests.filter((item) => item.status === "pending").slice(0, 12)
   const pendingReturns = returns.filter((item) => item.status === "pending").slice(0, 12)
@@ -158,31 +160,31 @@ export function ManagerResourceOversightPanel() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className={managerFlashcardClass}>
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-[#1E3A6D]">Pending Requests</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6 text-3xl font-semibold text-[#0B1F3A]">{summary.pendingRequests}</CardContent>
         </Card>
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className={managerFlashcardClass}>
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-[#1E3A6D]">Approved Requests</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6 text-3xl font-semibold text-[#0B1F3A]">{summary.approvedRequests}</CardContent>
         </Card>
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className={managerFlashcardClass}>
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-[#1E3A6D]">Rejected Requests</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6 text-3xl font-semibold text-[#0B1F3A]">{summary.rejectedRequests}</CardContent>
         </Card>
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className={managerFlashcardClass}>
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-[#1E3A6D]">Pending Returns</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6 text-3xl font-semibold text-[#0B1F3A]">{summary.pendingReturns}</CardContent>
         </Card>
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className={managerFlashcardClass}>
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-[#1E3A6D]">Received Returns</CardTitle>
           </CardHeader>

@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useEffect, useState } from "react"
+import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import {
@@ -55,6 +55,14 @@ export function EmployeeConsumableRequestPanel() {
   const router = useRouter()
 
   const user = getStoredUserSession()
+  const isTechnician = user?.role === "technician"
+
+  const selectableConsumables = useMemo(() => {
+    if (!isTechnician) {
+      return consumables
+    }
+    return consumables.filter((item) => !item.item_name.toLowerCase().includes("paper"))
+  }, [consumables, isTechnician])
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
     setResultDialog({
@@ -239,12 +247,12 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     value={itemName}
                     onChange={(event) => setItemName(event.target.value)}
-                    disabled={loadingStock || consumables.length === 0}
+                    disabled={loadingStock || selectableConsumables.length === 0}
                   >
                     <option value="" disabled>
                       Select item
                     </option>
-                    {consumables.map((item) => (
+                    {selectableConsumables.map((item) => (
                       <option key={item.id} value={item.item_name}>
                         {toDisplayItemName(item.item_name)}
                       </option>

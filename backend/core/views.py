@@ -3,8 +3,9 @@ import os
 import json
 import hashlib
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 from smtplib import SMTPException
@@ -25,6 +26,9 @@ from rest_framework.response import Response
 
 from .authentication import issue_auth_token
 from .models import (
+    BusinessHoliday,
+    BusinessHours,
+    BusinessLeave,
     Consumable,
     ConsumableReturn,
     ConsumableRequest,
@@ -223,6 +227,352 @@ def _extract_escalation_target(comment_text: str) -> str | None:
         target = comment_text[len(prefix):].split(":", 1)[0].strip()
         return target or None
     return None
+
+
+BUSINESS_DAY_KEYS = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
+BUSINESS_GROUP_LABELS = {
+    BusinessHours.GROUP_ALL: "All Technicians",
+    Technician.SKILL_NETWORK: Technician.SKILL_NETWORK,
+    Technician.SKILL_SOFTWARE: Technician.SKILL_SOFTWARE,
+    Technician.SKILL_HARDWARE: Technician.SKILL_HARDWARE,
+    Technician.SKILL_SECURITY: Technician.SKILL_SECURITY,
+}
+BUSINESS_LEAVE_TYPE_LABELS = {value: label for value, label in BusinessLeave.TYPE_CHOICES}
+BUSINESS_TIMEZONE = "Africa/Maseru"
+
+
+def _default_business_schedule() -> dict[str, dict[str, str | bool]]:
+    return {
+        "monday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "tuesday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "wednesday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "thursday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "friday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "saturday": {"enabled": False, "start": "08:00", "end": "17:00"},
+        "sunday": {"enabled": False, "start": "08:00", "end": "17:00"},
+    }
+
+
+def _safe_zoneinfo(timezone_name: str | None) -> ZoneInfo | None:
+    candidate = str(timezone_name or "").strip() or BUSINESS_TIMEZONE
+    try:
+        return ZoneInfo(candidate)
+    except ZoneInfoNotFoundError:
+        return None
+
+
+def _normalize_business_group_value(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    lowered = normalized.lower()
+    if lowered == BusinessHours.GROUP_ALL:
+        return BusinessHours.GROUP_ALL
+    if lowered == Technician.SKILL_NETWORK.lower():
+        return Technician.SKILL_NETWORK
+    if lowered == Technician.SKILL_SOFTWARE.lower():
+        return Technician.SKILL_SOFTWARE
+    if lowered == Technician.SKILL_HARDWARE.lower():
+        return Technician.SKILL_HARDWARE
+    if lowered == Technician.SKILL_SECURITY.lower():
+        return Technician.SKILL_SECURITY
+    return ""
+
+
+def _normalize_business_groups(raw_groups) -> tuple[list[str], str | None]:
+    if raw_groups in (None, ""):
+        return [BusinessHours.GROUP_ALL], None
+    if not isinstance(raw_groups, list):
+        return [], "groups must be an array."
+
+    normalized: list[str] = []
+    for raw_value in raw_groups:
+        group_value = _normalize_business_group_value(raw_value)
+        if not group_value:
+            return [], "groups contains an invalid value."
+        if group_value == BusinessHours.GROUP_ALL:
+            return [BusinessHours.GROUP_ALL], None
+        if group_value not in normalized:
+            normalized.append(group_value)
+
+    if not normalized:
+        return [BusinessHours.GROUP_ALL], None
+    return normalized, None
+
+
+def _normalize_business_schedule(raw_schedule) -> tuple[dict[str, dict[str, str | bool]], str | None]:
+    defaults = _default_business_schedule()
+
+    if raw_schedule in (None, ""):
+        return defaults, None
+    if not isinstance(raw_schedule, dict):
+        return defaults, "schedule must be an object keyed by weekday."
+
+    normalized: dict[str, dict[str, str | bool]] = {}
+    for day in BUSINESS_DAY_KEYS:
+        default_window = defaults[day]
+        day_value = raw_schedule.get(day, default_window)
+        if not isinstance(day_value, dict):
+            return defaults, f"schedule.{day} must be an object."
+
+        enabled = bool(day_value.get("enabled", default_window["enabled"]))
+        start_text = str(day_value.get("start", default_window["start"])).strip()
+        end_text = str(day_value.get("end", default_window["end"])).strip()
+
+        try:
+            start_time = datetime.strptime(start_text, "%H:%M").time()
+            end_time = datetime.strptime(end_text, "%H:%M").time()
+        except ValueError:
+            return defaults, f"schedule.{day} times must use HH:MM format."
+
+        if enabled and start_time >= end_time:
+            return defaults, f"schedule.{day} start time must be before end time."
+
+        normalized[day] = {
+            "enabled": enabled,
+            "start": start_time.strftime("%H:%M"),
+            "end": end_time.strftime("%H:%M"),
+        }
+
+    return normalized, None
+
+
+def _normalize_business_holidays(raw_holidays) -> tuple[list[dict], str | None]:
+    if raw_holidays in (None, ""):
+        return [], None
+    if not isinstance(raw_holidays, list):
+        return [], "holidays must be an array."
+
+    normalized: list[dict] = []
+    seen_dates: set[date] = set()
+    for index, raw_value in enumerate(raw_holidays):
+        if not isinstance(raw_value, dict):
+            return [], f"holidays[{index}] must be an object."
+
+        name = str(raw_value.get("name", "")).strip()
+        parsed_date = _parse_iso_date(raw_value.get("date"))
+
+        if not name or not parsed_date:
+            return [], f"holidays[{index}] requires valid name and date."
+        if parsed_date in seen_dates:
+            return [], "Duplicate holiday dates are not allowed."
+        seen_dates.add(parsed_date)
+
+        holiday_id = raw_value.get("id")
+        holiday_id_int = None
+        if holiday_id not in (None, "", "null"):
+            try:
+                holiday_id_int = int(holiday_id)
+            except (TypeError, ValueError):
+                return [], f"holidays[{index}].id must be a number when provided."
+
+        normalized.append(
+            {
+                "id": holiday_id_int,
+                "name": name[:120],
+                "date": parsed_date,
+            }
+        )
+
+    return normalized, None
+
+
+def _normalize_leave_type(value: str | None) -> str:
+    lowered = str(value or "").strip().lower()
+    if lowered in BUSINESS_LEAVE_TYPE_LABELS:
+        return lowered
+    return ""
+
+
+def _normalize_business_leaves(raw_leaves, *, business_hours: BusinessHours) -> tuple[list[dict], str | None]:
+    if raw_leaves in (None, ""):
+        return [], None
+    if not isinstance(raw_leaves, list):
+        return [], "leaves must be an array."
+
+    normalized: list[dict] = []
+    seen_ranges: set[tuple[int, date, date, str]] = set()
+    for index, raw_value in enumerate(raw_leaves):
+        if not isinstance(raw_value, dict):
+            return [], f"leaves[{index}] must be an object."
+
+        leave_id = raw_value.get("id")
+        leave_id_int = None
+        if leave_id not in (None, "", "null"):
+            try:
+                leave_id_int = int(leave_id)
+            except (TypeError, ValueError):
+                return [], f"leaves[{index}].id must be a number when provided."
+
+        technician_id = raw_value.get("technician_id")
+        try:
+            technician_id_int = int(technician_id)
+        except (TypeError, ValueError):
+            return [], f"leaves[{index}].technician_id must be a number."
+
+        technician = Technician.objects.select_related("user").filter(id=technician_id_int, user__is_active=True).first()
+        if not technician:
+            return [], f"leaves[{index}] references an unknown technician."
+
+        leave_type = _normalize_leave_type(raw_value.get("leave_type"))
+        if not leave_type:
+            return [], f"leaves[{index}].leave_type is invalid."
+
+        start_date = _parse_iso_date(raw_value.get("start_date"))
+        end_date = _parse_iso_date(raw_value.get("end_date"))
+        if not start_date or not end_date:
+            return [], f"leaves[{index}] requires valid start_date and end_date."
+        if start_date > end_date:
+            return [], f"leaves[{index}] start_date cannot be after end_date."
+
+        signature = (technician.id, start_date, end_date, leave_type)
+        if signature in seen_ranges:
+            return [], "Duplicate leave entries are not allowed."
+        seen_ranges.add(signature)
+
+        normalized.append(
+            {
+                "id": leave_id_int,
+                "technician_id": technician.id,
+                "technician_name": technician.user.name,
+                "leave_type": leave_type,
+                "start_date": start_date,
+                "end_date": end_date,
+                "business_hours_id": business_hours.id,
+            }
+        )
+
+    return normalized, None
+
+
+def _ensure_default_business_hours() -> BusinessHours:
+    existing = BusinessHours.objects.filter(is_default=True).order_by("id").first()
+    if existing:
+        if existing.timezone_name != BUSINESS_TIMEZONE:
+            existing.timezone_name = BUSINESS_TIMEZONE
+            existing.save(update_fields=["timezone_name", "updated_at"])
+        return existing
+    return BusinessHours.objects.create(
+        name="Default Business Hours",
+        description="Default support desk hours for automated routing.",
+        timezone_name=BUSINESS_TIMEZONE,
+        groups=[BusinessHours.GROUP_ALL],
+        weekly_schedule=_default_business_schedule(),
+        is_default=True,
+    )
+
+
+def _current_business_datetime(timezone_name: str) -> datetime:
+    reference = timezone.now()
+    zone = _safe_zoneinfo(timezone_name)
+    if zone:
+        return reference.astimezone(zone)
+    return timezone.localtime(reference)
+
+
+def _is_business_hours_open_now(business_hours: BusinessHours) -> bool:
+    local_now = _current_business_datetime(business_hours.timezone_name)
+    if BusinessHoliday.objects.filter(business_hours=business_hours, date=local_now.date()).exists():
+        return False
+
+    schedule, schedule_error = _normalize_business_schedule(business_hours.weekly_schedule)
+    if schedule_error:
+        schedule = _default_business_schedule()
+
+    day_key = BUSINESS_DAY_KEYS[local_now.weekday()]
+    day_config = schedule.get(day_key, {"enabled": False, "start": "08:00", "end": "17:00"})
+    if not bool(day_config.get("enabled")):
+        return False
+
+    try:
+        start_time = datetime.strptime(str(day_config.get("start", "08:00")), "%H:%M").time()
+        end_time = datetime.strptime(str(day_config.get("end", "17:00")), "%H:%M").time()
+    except ValueError:
+        return False
+
+    now_time = time(hour=local_now.hour, minute=local_now.minute)
+    return start_time <= now_time < end_time
+
+
+def _is_technician_targeted_by_business_hours(technician: Technician, business_hours: BusinessHours) -> bool:
+    groups, groups_error = _normalize_business_groups(business_hours.groups)
+    if groups_error:
+        return True
+    if BusinessHours.GROUP_ALL in groups:
+        return True
+    return technician.skillset in groups
+
+
+def _is_technician_within_business_hours(
+    technician: Technician,
+    business_hours: BusinessHours,
+    hours_open_now: bool,
+    technicians_on_leave: set[int] | None = None,
+) -> bool:
+    if technicians_on_leave and technician.id in technicians_on_leave:
+        return False
+    if not _is_technician_targeted_by_business_hours(technician, business_hours):
+        return True
+    return hours_open_now
+
+
+def _business_hours_to_dict(config: BusinessHours) -> dict:
+    schedule, schedule_error = _normalize_business_schedule(config.weekly_schedule)
+    if schedule_error:
+        schedule = _default_business_schedule()
+
+    groups, groups_error = _normalize_business_groups(config.groups)
+    if groups_error:
+        groups = [BusinessHours.GROUP_ALL]
+
+    leaves_payload = [
+        {
+            "id": leave.id,
+            "technician_id": leave.technician_id,
+            "technician_name": leave.technician.user.name,
+            "leave_type": leave.leave_type,
+            "leave_type_label": BUSINESS_LEAVE_TYPE_LABELS.get(leave.leave_type, leave.leave_type.title()),
+            "start_date": leave.start_date.isoformat(),
+            "end_date": leave.end_date.isoformat(),
+        }
+        for leave in config.leaves.select_related("technician__user").order_by("start_date", "end_date", "id")
+    ]
+
+    return {
+        "id": config.id,
+        "name": config.name,
+        "description": config.description,
+        "timezone": config.timezone_name,
+        "groups": groups,
+        "group_options": [
+            {"value": value, "label": label}
+            for value, label in BUSINESS_GROUP_LABELS.items()
+        ],
+        "leave_type_options": [
+            {"value": value, "label": label}
+            for value, label in BUSINESS_LEAVE_TYPE_LABELS.items()
+        ],
+        "schedule": schedule,
+        "holidays": [
+            {
+                "id": holiday.id,
+                "name": holiday.name,
+                "date": holiday.date.isoformat(),
+            }
+            for holiday in config.holidays.order_by("date", "id")
+        ],
+        "leaves": leaves_payload,
+        "is_open_now": _is_business_hours_open_now(config),
+        "updated_at": config.updated_at.isoformat(),
+    }
 
 
 SKILL_DOMAIN_NETWORK = "network"
@@ -456,11 +806,40 @@ def _pick_best_technician_for_ticket(
     if not all_active_technicians:
         return None, False, None
 
-    available_technicians = [item for item in all_active_technicians if item.is_available]
+    business_hours = _ensure_default_business_hours()
+    business_hours_open_now = _is_business_hours_open_now(business_hours)
+    local_business_day = _current_business_datetime(business_hours.timezone_name).date()
+    technicians_on_leave = set(
+        BusinessLeave.objects.filter(
+            business_hours=business_hours,
+            start_date__lte=local_business_day,
+            end_date__gte=local_business_day,
+        ).values_list("technician_id", flat=True)
+    )
+    technicians_within_business_hours = [
+        item
+        for item in all_active_technicians
+        if _is_technician_within_business_hours(
+            item,
+            business_hours,
+            business_hours_open_now,
+            technicians_on_leave=technicians_on_leave,
+        )
+    ]
+    fallback_not_on_leave = [item for item in all_active_technicians if item.id not in technicians_on_leave]
+    candidate_pool = (
+        technicians_within_business_hours
+        if technicians_within_business_hours
+        else (fallback_not_on_leave if allow_unavailable_fallback else [])
+    )
+    if not candidate_pool:
+        return None, False, None
+
+    available_technicians = [item for item in candidate_pool if item.is_available]
     technicians = (
         available_technicians
         if available_technicians
-        else (all_active_technicians if allow_unavailable_fallback else [])
+        else (candidate_pool if allow_unavailable_fallback else [])
     )
     if not technicians:
         return None, False, None
@@ -1107,6 +1486,154 @@ def reset_password_view(request):
     return Response({"message": "Password reset successfully. You can now login."}, status=status.HTTP_200_OK)
 
 
+@api_view(["GET", "PUT"])
+def business_hours_default_view(request):
+    config = _ensure_default_business_hours()
+    if request.method == "GET":
+        return Response(_business_hours_to_dict(config), status=status.HTTP_200_OK)
+
+    name = str(request.data.get("name", config.name)).strip() or "Default Business Hours"
+    description = str(request.data.get("description", config.description)).strip()
+    timezone_name = BUSINESS_TIMEZONE
+
+    groups, groups_error = _normalize_business_groups(request.data.get("groups", config.groups))
+    if groups_error:
+        return Response({"message": groups_error}, status=status.HTTP_400_BAD_REQUEST)
+
+    schedule, schedule_error = _normalize_business_schedule(request.data.get("schedule", config.weekly_schedule))
+    if schedule_error:
+        return Response({"message": schedule_error}, status=status.HTTP_400_BAD_REQUEST)
+
+    if "holidays" in request.data:
+        holidays, holidays_error = _normalize_business_holidays(request.data.get("holidays"))
+        if holidays_error:
+            return Response({"message": holidays_error}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        holidays = [
+            {
+                "id": holiday.id,
+                "name": holiday.name,
+                "date": holiday.date,
+            }
+            for holiday in config.holidays.all()
+        ]
+
+    if "leaves" in request.data:
+        leaves, leaves_error = _normalize_business_leaves(request.data.get("leaves"), business_hours=config)
+        if leaves_error:
+            return Response({"message": leaves_error}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        leaves = [
+            {
+                "id": leave.id,
+                "technician_id": leave.technician_id,
+                "leave_type": leave.leave_type,
+                "start_date": leave.start_date,
+                "end_date": leave.end_date,
+            }
+            for leave in config.leaves.all()
+        ]
+
+    existing_holiday_ids = set(config.holidays.values_list("id", flat=True))
+    for item in holidays:
+        holiday_id = item.get("id")
+        if holiday_id and holiday_id not in existing_holiday_ids:
+            return Response(
+                {"message": "One or more holidays do not belong to the default business hours profile."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    existing_leave_ids = set(config.leaves.values_list("id", flat=True))
+    for item in leaves:
+        leave_id = item.get("id")
+        if leave_id and leave_id not in existing_leave_ids:
+            return Response(
+                {"message": "One or more leave records do not belong to the default business hours profile."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    try:
+        with transaction.atomic():
+            locked_config = BusinessHours.objects.select_for_update().filter(id=config.id).first()
+            if not locked_config:
+                return Response({"message": "Business hours profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            locked_config.name = name
+            locked_config.description = description
+            locked_config.timezone_name = timezone_name
+            locked_config.groups = groups
+            locked_config.weekly_schedule = schedule
+            locked_config.save(
+                update_fields=[
+                    "name",
+                    "description",
+                    "timezone_name",
+                    "groups",
+                    "weekly_schedule",
+                    "updated_at",
+                ]
+            )
+
+            locked_holidays = {
+                holiday.id: holiday
+                for holiday in BusinessHoliday.objects.select_for_update().filter(business_hours=locked_config)
+            }
+            retained_holiday_ids: set[int] = set()
+            for item in holidays:
+                holiday_id = item["id"]
+                if holiday_id and holiday_id in locked_holidays:
+                    holiday = locked_holidays[holiday_id]
+                    holiday.name = item["name"]
+                    holiday.date = item["date"]
+                    holiday.save(update_fields=["name", "date"])
+                    retained_holiday_ids.add(holiday.id)
+                else:
+                    holiday, _ = BusinessHoliday.objects.update_or_create(
+                        business_hours=locked_config,
+                        date=item["date"],
+                        defaults={"name": item["name"]},
+                    )
+                    retained_holiday_ids.add(holiday.id)
+
+            BusinessHoliday.objects.filter(business_hours=locked_config).exclude(id__in=retained_holiday_ids).delete()
+
+            locked_leaves = {
+                leave.id: leave
+                for leave in BusinessLeave.objects.select_for_update().filter(business_hours=locked_config)
+            }
+            retained_leave_ids: set[int] = set()
+            for item in leaves:
+                leave_id = item.get("id")
+                if leave_id and leave_id in locked_leaves:
+                    leave = locked_leaves[leave_id]
+                    leave.technician_id = item["technician_id"]
+                    leave.leave_type = item["leave_type"]
+                    leave.start_date = item["start_date"]
+                    leave.end_date = item["end_date"]
+                    leave.save(update_fields=["technician", "leave_type", "start_date", "end_date"])
+                    retained_leave_ids.add(leave.id)
+                else:
+                    leave = BusinessLeave.objects.create(
+                        business_hours=locked_config,
+                        technician_id=item["technician_id"],
+                        leave_type=item["leave_type"],
+                        start_date=item["start_date"],
+                        end_date=item["end_date"],
+                    )
+                    retained_leave_ids.add(leave.id)
+
+            BusinessLeave.objects.filter(business_hours=locked_config).exclude(id__in=retained_leave_ids).delete()
+    except IntegrityError:
+        return Response(
+            {"message": "Duplicate holiday dates are not allowed."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    refreshed = BusinessHours.objects.filter(id=config.id).first()
+    if not refreshed:
+        return Response({"message": "Business hours profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    return Response(_business_hours_to_dict(refreshed), status=status.HTTP_200_OK)
+
+
 @api_view(["GET", "POST"])
 def tickets_collection_view(request):
     if request.method == "GET":
@@ -1165,7 +1692,7 @@ def tickets_collection_view(request):
         category=auto_category,
         title=title,
         description=description,
-        allow_unavailable_fallback=True,
+        allow_unavailable_fallback=False,
     )
 
     ticket = Ticket.objects.create(
@@ -1223,9 +1750,16 @@ def tickets_collection_view(request):
                 "using availability/workload balancing and awaits technician acceptance."
             )
     else:
-        payload["routing_note"] = (
-            f"{triage_note} No active technician profile found. Ticket routed to Admin Fault queue for assignment."
-        )
+        current_business_hours = _ensure_default_business_hours()
+        if not _is_business_hours_open_now(current_business_hours):
+            payload["routing_note"] = (
+                f"{triage_note} Support desk is currently outside configured business hours. "
+                "Ticket routed to Admin Fault queue for assignment."
+            )
+        else:
+            payload["routing_note"] = (
+                f"{triage_note} No active technician profile found. Ticket routed to Admin Fault queue for assignment."
+            )
     return Response(payload, status=status.HTTP_201_CREATED)
 
 
@@ -2145,6 +2679,7 @@ def performance_metrics_view(request):
     by_priority: dict[str, int] = {}
     by_category: dict[str, int] = {}
     by_technician: dict[str, int] = {}
+    technician_breakdown_map: dict[str, dict[str, int]] = {}
     by_month: dict[str, int] = {}
     by_season: dict[str, int] = {season: 0 for season in SEASON_ORDER}
     created_counts: dict[str, int] = {}
@@ -2167,9 +2702,30 @@ def performance_metrics_view(request):
     sla_at_risk = 0
     sla_breached = 0
     stale_open_tickets = 0
+    escalated_ticket_ids: set[int] = set()
+
+    for technician in Technician.objects.select_related("user").all():
+        technician_breakdown_map[technician.user.name] = {
+            "assigned": 0,
+            "solved": 0,
+            "pending": 0,
+            "escalated": 0,
+        }
+
+    ticket_ids = [item.id for item in tickets]
+    if ticket_ids:
+        escalated_ticket_ids = set(
+            TicketComment.objects.filter(
+                ticket_id__in=ticket_ids,
+                comment__istartswith="Escalated",
+            )
+            .values_list("ticket_id", flat=True)
+            .distinct()
+        )
 
     for item in tickets:
         normalized_status = _normalize_ticket_status(item.status)
+        technician_breakdown = None
 
         created_day = _to_local_date(item.created_at)
         created_bucket_key = _bucket_key_for_day(created_day, bucket_mode)
@@ -2183,6 +2739,19 @@ def performance_metrics_view(request):
         by_status[normalized_status] = by_status.get(normalized_status, 0) + 1
         by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
         by_category[item.category] = by_category.get(item.category, 0) + 1
+
+        if item.technician_id:
+            technician_name = item.technician.user.name
+            technician_breakdown = technician_breakdown_map.setdefault(
+                technician_name,
+                {
+                    "assigned": 0,
+                    "solved": 0,
+                    "pending": 0,
+                    "escalated": 0,
+                },
+            )
+            technician_breakdown["assigned"] += 1
 
         age_hours = max((now - item.created_at).total_seconds() / 3600.0, 0.0)
         sla_limit_hours = _sla_target_hours(item.priority)
@@ -2215,6 +2784,16 @@ def performance_metrics_view(request):
 
             technician_label = item.technician.user.name if item.technician_id else "Unassigned"
             by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+        if technician_breakdown is not None:
+            if status_is_solved:
+                technician_breakdown["solved"] += 1
+            elif normalized_status == Ticket.STATUS_PENDING:
+                technician_breakdown["pending"] += 1
+
+            raw_status = str(item.status or "").strip().lower()
+            if raw_status == "escalated" or item.id in escalated_ticket_ids:
+                technician_breakdown["escalated"] += 1
 
         if effective_hours > sla_limit_hours:
             sla_breached += 1
@@ -2276,6 +2855,16 @@ def performance_metrics_view(request):
         "by_month": [{"name": _bucket_label(key, "month"), "count": value} for key, value in sorted(by_month.items())],
         "by_season": [{"name": season, "count": by_season.get(season, 0)} for season in SEASON_ORDER],
         "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
+        "technician_breakdown": [
+            {
+                "name": name,
+                "assigned": values["assigned"],
+                "solved": values["solved"],
+                "pending": values["pending"],
+                "escalated": values["escalated"],
+            }
+            for name, values in sorted(technician_breakdown_map.items())
+        ],
         "created_vs_resolved": created_vs_resolved,
         "backlog_aging": [{"name": key, "count": value} for key, value in backlog_aging.items()],
         "sla_summary": {
@@ -2789,7 +3378,6 @@ def consumable_requests_collection_view(request):
     department = str(request.data.get("department", "")).strip()
     notes = str(request.data.get("notes", "")).strip()
     employee_id = request.data.get("employee_id")
-
     if not item_name or not quantity or not employee_id:
         return Response(
             {"message": "itemName, quantity, and employee_id are required."},

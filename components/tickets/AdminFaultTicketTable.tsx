@@ -1,7 +1,6 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { useEffect, useState, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Building2,
   Check,
@@ -17,7 +16,6 @@ import {
   X,
 } from "lucide-react"
 
-import { TicketQueueFab } from "@/components/tickets/TicketQueueFab"
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,6 +48,7 @@ import {
   updateTicketStatus,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type TicketRecord = {
@@ -138,7 +137,6 @@ function toRow(ticket: Ticket): TicketRecord {
 }
 
 export function AdminFaultTicketTable() {
-  const router = useRouter()
   const [query, setQuery] = useState("")
   const [rows, setRows] = useState<TicketRecord[]>([])
   const [priorityFilter, setPriorityFilter] = useState("All")
@@ -167,7 +165,6 @@ export function AdminFaultTicketTable() {
   const [commentSaving, setCommentSaving] = useState(false)
   const [commentError, setCommentError] = useState("")
   const [commentSuccess, setCommentSuccess] = useState("")
-  const [conversationPickerOpen, setConversationPickerOpen] = useState(false)
 
   const showActionFeedback = (status: "success" | "error", message: string) => {
     setResultDialog({
@@ -177,37 +174,34 @@ export function AdminFaultTicketTable() {
     })
   }
 
+  const loadTickets = useCallback(async () => {
+    try {
+      const data = await getAllTickets()
+      setRows(data.map(toRow))
+      setLoadError("")
+    } catch (fetchError) {
+      setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
+    }
+  }, [])
+
   useEffect(() => {
     const run = async () => {
-      try {
-        const data = await getAllTickets()
-        setRows(data.map(toRow))
-      } catch (fetchError) {
-        setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
-      } finally {
-        setLoading(false)
-      }
+      await loadTickets()
+      setLoading(false)
     }
     void run()
-  }, [])
+  }, [loadTickets])
+
+  useAutoRefresh(loadTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
 
   useEffect(() => {
     setCommentDraft("")
     setCommentError("")
     setCommentSuccess("")
   }, [viewTicket?.id])
-
-  const openTicketWorkspace = (ticketId: number) => {
-    router.push(`/admin-fault/tickets/${ticketId}`)
-  }
-
-  const handleTicketRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, ticketId: number) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return
-    }
-    event.preventDefault()
-    openTicketWorkspace(ticketId)
-  }
 
   const filteredRows = rows.filter((ticket) => {
     const search = query.toLowerCase()
@@ -227,31 +221,6 @@ export function AdminFaultTicketTable() {
     assigned: rows.filter((row) => row.technician_id !== null).length,
     unassigned: rows.filter((row) => row.technician_id === null).length,
     highPriority: rows.filter((row) => row.priority === "High" || row.priority === "Critical").length,
-  }
-
-  const openConversationQueue = () => {
-    if (filteredRows.length === 1) {
-      router.push(`/admin-fault/tickets/${filteredRows[0].id}#conversation-section`)
-      return
-    }
-    if (filteredRows.length > 1) {
-      setConversationPickerOpen(true)
-      return
-    }
-
-    if (typeof window === "undefined") {
-      return
-    }
-    const queueSection = document.getElementById("admin-fault-tickets-interface")
-    queueSection?.scrollIntoView({ behavior: "smooth", block: "start" })
-    if (queueSection instanceof HTMLElement) {
-      queueSection.focus()
-    }
-  }
-
-  const openConversationForTicket = (ticketId: number) => {
-    setConversationPickerOpen(false)
-    router.push(`/admin-fault/tickets/${ticketId}#conversation-section`)
   }
 
   const refreshRow = async (ticketId: number) => {
@@ -380,13 +349,8 @@ export function AdminFaultTicketTable() {
   }
 
   return (
-    <>
-      <Card
-        id="admin-fault-tickets-interface"
-        tabIndex={-1}
-        className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm outline-none"
-      >
-        <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
+    <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
+      <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">Open tickets {summary.open}</span>
           <span className="inline-flex items-center rounded border border-[#C89A4D] bg-[#FFF2DE] px-2 py-1 text-xs font-semibold text-[#8B5A12]">Pending Review {summary.pendingReview}</span>
@@ -416,113 +380,106 @@ export function AdminFaultTicketTable() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        </CardHeader>
+      </CardHeader>
 
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                  <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
-                  <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
-                  <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Name</TableHead>
-                  <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
-                  <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-                  <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Last Replier</TableHead>
-                  <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
-                  <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
+                <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Name</TableHead>
+                <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Last Replier</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading tickets...</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading tickets...</TableCell>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">{loadError}</TableCell>
+                </TableRow>
+              ) : filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">No tickets found.</TableCell>
+                </TableRow>
+              ) : (
+                filteredRows.map((ticket) => (
+                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                    <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">{ticket.tracking_id}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.created_at)}</TableCell>
+                    <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.requester}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#2A5D8D] underline underline-offset-2">{ticket.title}</TableCell>
+                    <TableCell className={cn("py-3 text-xs font-semibold", statusTextStyles[ticket.status] ?? "text-[#345F85]")}>{ticket.status}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#1F4469]">{ticket.technician}</TableCell>
+                    <TableCell className="py-3">
+                      <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]")}>{ticket.priority}</Badge>
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
+                            Actions
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Ticket #{ticket.id}</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setViewTicket(ticket)}>
+                            Open Ticket
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setPriorityTicket(ticket)
+                              setNextPriority(ticket.priority)
+                            }}
+                          >
+                            Change Priority
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={ticket.status !== "In Progress"}
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  await handleSendForReview(ticket.id)
+                                  showActionFeedback("success", `Ticket #${ticket.id} moved to Pending Review.`)
+                                } catch (actionError) {
+                                  showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
+                                }
+                              })()
+                            }}
+                          >
+                            Send For Review
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-[#2E6EA0] focus:text-[#2E6EA0]"
+                            disabled={ticket.status === "Pending"}
+                            onClick={() => {
+                              setEscalationTicket(ticket)
+                              setEscalationComment("")
+                            }}
+                          >
+                            Escalate
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
-                ) : loadError ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">{loadError}</TableCell>
-                  </TableRow>
-                ) : filteredRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">No tickets found.</TableCell>
-                  </TableRow>
-                ) : (
-                  filteredRows.map((ticket) => (
-                    <TableRow
-                      key={ticket.id}
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => openTicketWorkspace(ticket.id)}
-                      onKeyDown={(event) => handleTicketRowKeyDown(event, ticket.id)}
-                      className="cursor-pointer border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA] focus-visible:bg-[#EAF2FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E6EA0]"
-                    >
-                      <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">{ticket.tracking_id}</TableCell>
-                      <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.created_at)}</TableCell>
-                      <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.requester}</TableCell>
-                      <TableCell className="py-3 text-xs text-[#2A5D8D] underline underline-offset-2">{ticket.title}</TableCell>
-                      <TableCell className={cn("py-3 text-xs font-semibold", statusTextStyles[ticket.status] ?? "text-[#345F85]")}>{ticket.status}</TableCell>
-                      <TableCell className="py-3 text-xs text-[#1F4469]">{ticket.technician}</TableCell>
-                      <TableCell className="py-3">
-                        <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]")}>{ticket.priority}</Badge>
-                      </TableCell>
-                      <TableCell className="py-2" onClick={(event) => event.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
-                              Actions
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Ticket #{ticket.id}</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => router.push(`/admin-fault/tickets/${ticket.id}`)}>
-                              Open Ticket
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setPriorityTicket(ticket)
-                                setNextPriority(ticket.priority)
-                              }}
-                            >
-                              Change Priority
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={ticket.status !== "In Progress"}
-                              onClick={() => {
-                                void (async () => {
-                                  try {
-                                    await handleSendForReview(ticket.id)
-                                    showActionFeedback("success", `Ticket #${ticket.id} moved to Pending Review.`)
-                                  } catch (actionError) {
-                                    showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
-                                  }
-                                })()
-                              }}
-                            >
-                              Send For Review
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-[#2E6EA0] focus:text-[#2E6EA0]"
-                              disabled={ticket.status === "Pending"}
-                              onClick={() => {
-                                setEscalationTicket(ticket)
-                                setEscalationComment("")
-                              }}
-                            >
-                              Escalate
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
 
       <Dialog open={Boolean(viewTicket)} onOpenChange={(open) => !open && setViewTicket(null)}>
         <DialogContent className="flex max-h-[88vh] w-[calc(100vw-1.5rem)] flex-col overflow-hidden border-[#AFC6DF] bg-[#EAF1F8] p-0 sm:max-w-5xl">
@@ -758,55 +715,13 @@ export function AdminFaultTicketTable() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={conversationPickerOpen} onOpenChange={setConversationPickerOpen}>
-        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF] sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-[#1D3F63]">Choose Ticket Discussion</DialogTitle>
-            <DialogDescription className="text-[#4A6887]">
-              Each ticket keeps its own internal discussion. Pick the ticket you want to open.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {filteredRows.map((ticket) => (
-              <button
-                key={ticket.id}
-                type="button"
-                onClick={() => openConversationForTicket(ticket.id)}
-                className="w-full rounded-xl border border-[#C8DAEC] bg-white px-4 py-3 text-left transition hover:border-[#7FA9D1] hover:bg-[#F4F9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E6EA0]"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-[#1D3F63]">{ticket.title}</p>
-                  <span className="text-xs font-semibold text-[#2A5D8D]">{ticket.tracking_id}</span>
-                </div>
-                <p className="mt-1 text-xs text-[#4A6887]">
-                  {ticket.requester} · {ticket.status} · {ticket.priority}
-                </p>
-              </button>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-[#93AECA] bg-white text-[#20466D]"
-              onClick={() => setConversationPickerOpen(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-        <ActionFeedbackDialog
-          open={resultDialog.open}
-          status={resultDialog.status}
-          message={resultDialog.message}
-          onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
-        />
-      </Card>
-
-      <TicketQueueFab label="Open all ticket conversations" onClick={openConversationQueue} />
-    </>
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
+    </Card>
   )
 }
 

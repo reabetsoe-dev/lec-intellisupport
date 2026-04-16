@@ -1,8 +1,6 @@
 "use client"
 
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect, useState, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Filter,
   ChevronDown,
@@ -32,6 +30,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getTicketById, getUserTickets, submitTicketProblemReview, type Ticket, type TicketDetail } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type TicketRecord = {
@@ -169,7 +168,6 @@ function toRow(ticket: Ticket): TicketRecord {
 }
 
 export function EmployeeTicketHistoryTable() {
-  const router = useRouter()
   const currentUserName = getStoredUserSession()?.name ?? ""
   const [rows, setRows] = useState<TicketRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -201,34 +199,57 @@ export function EmployeeTicketHistoryTable() {
     })
   }
 
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     const user = getStoredUserSession()
     if (!user) {
       setError("Session expired. Please login again.")
       return
     }
 
-    const tickets = await getUserTickets(user.id)
-    setRows(
-      tickets
-        .map(toRow)
-        .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
-    )
-  }
+    try {
+      const tickets = await getUserTickets(user.id)
+      setRows(
+        tickets
+          .map(toRow)
+          .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
+      )
+      setError("")
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
+    }
+  }, [])
 
   useEffect(() => {
     const run = async () => {
-      try {
-        await loadTickets()
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
-      } finally {
-        setLoading(false)
-      }
+      await loadTickets()
+      setLoading(false)
     }
 
     void run()
-  }, [])
+  }, [loadTickets])
+
+  useAutoRefresh(loadTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
+
+  const refreshOpenTicketDetail = useCallback(async () => {
+    if (!selectedRow) {
+      return
+    }
+    try {
+      const detail = await getTicketById(selectedRow.id)
+      setTicketDetail(detail)
+      setDetailError("")
+    } catch (loadError) {
+      setDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+    }
+  }, [selectedRow])
+
+  useAutoRefresh(refreshOpenTicketDetail, {
+    enabled: Boolean(selectedRow) && !detailLoading && !reviewSubmitting,
+    intervalMs: 10000,
+  })
 
   const filteredRows = rows.filter((ticket) => {
     const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter
@@ -268,18 +289,6 @@ export function EmployeeTicketHistoryTable() {
     setDetailLoading(false)
     setReviewComment("")
     setReviewRating("")
-  }
-
-  const openTicketWorkspace = (ticketId: number) => {
-    router.push(`/employee/tickets/${ticketId}`)
-  }
-
-  const handleTicketRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, ticketId: number) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return
-    }
-    event.preventDefault()
-    openTicketWorkspace(ticketId)
   }
 
   const detailStatus = ticketDetail ? normalizeEmployeeStatus(ticketDetail.status) : selectedRow?.status ?? "Pending"
@@ -467,14 +476,7 @@ export function EmployeeTicketHistoryTable() {
                 </TableRow>
               ) : (
                 filteredRows.map((ticket) => (
-                  <TableRow
-                    key={ticket.id}
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => openTicketWorkspace(ticket.id)}
-                    onKeyDown={(event) => handleTicketRowKeyDown(event, ticket.id)}
-                    className="cursor-pointer border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA] focus-visible:bg-[#EAF2FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E6EA0]"
-                  >
+                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
                     <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
                       {ticket.trackingId}
                     </TableCell>
@@ -507,8 +509,8 @@ export function EmployeeTicketHistoryTable() {
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2">
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={`/employee/tickets/${ticket.id}`} onClick={(event) => event.stopPropagation()}>View</Link>
+                      <Button size="sm" variant="outline" onClick={() => void openTicketDetails(ticket)}>
+                        View
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -24,7 +24,6 @@ import {
 
 const REFRESH_INTERVAL_MS = 15_000
 const metricCardClass = "rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm"
-const panelCardClass = "rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm"
 const compactFieldClass =
   "h-8 rounded-md border border-[#9FBAD6] bg-white px-2 text-xs text-[#1E3A6D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
 const noteFieldClass =
@@ -413,126 +412,135 @@ export function AdminConsumableRequestApprovalPanel({
           </CardHeader>
           <CardContent className="p-0">
             {error ? <p className="px-6 py-4 text-sm text-rose-600">{error}</p> : null}
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Request</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Department</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Item</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Qty</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Decision Notes</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {requests.map((request) => {
-                  const availableStock = stockByName.get(normalizeItemName(request.itemName)) ?? 0
-                  const canApprove = request.status === "pending" && request.quantity <= availableStock
-
-                  return (
-                    <TableRow key={request.id}>
-                      <TableCell className="px-6">
-                        <p className="font-medium text-slate-800">{request.id}</p>
-                        <p className="text-xs text-slate-500">{formatDate(request.requestedAt)}</p>
-                      </TableCell>
-                      <TableCell className="text-slate-700">{request.requestedBy}</TableCell>
-                      <TableCell className="text-slate-700">{request.department}</TableCell>
-                      <TableCell className="text-slate-700">{toDisplayItemName(request.itemName)}</TableCell>
-                      <TableCell className="text-slate-700">{request.quantity}</TableCell>
-                      <TableCell className="text-slate-700">
-                        {request.status === "pending" ? (
-                          <select
-                            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
-                            value={assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"}
-                            onChange={(event) =>
-                              setAssignmentTypeByRequestId((current) => ({
-                                ...current,
-                                [request.id]: event.target.value as "new" | "loan" | "exchange",
-                              }))
-                            }
-                          >
-                            <option value="new">New</option>
-                            <option value="loan">Loan</option>
-                            <option value="exchange">Exchange</option>
-                          </select>
-                        ) : (
-                          <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">
-                            {request.assignmentType}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            request.status === "approved"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : request.status === "rejected"
-                                ? "border-rose-200 bg-rose-50 text-rose-700"
-                                : "border-amber-200 bg-amber-50 text-amber-700"
-                          }
-                        >
-                          {request.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        {request.status === "approved" ? (
-                          <span>
-                            Approved by {request.approvedBy ?? "Admin"} on {formatDate(request.approvedAt ?? request.requestedAt)}
-                          </span>
-                        ) : request.status === "rejected" ? (
-                          <span>
-                            Rejected by {request.rejectedBy ?? "Admin"} on {formatDate(request.rejectedAt ?? request.requestedAt)}.
-                            {" "}
-                            Reason: {request.rejectionReason ?? "No reason provided."}
-                          </span>
-                        ) : (
-                          <textarea
-                            className="min-h-20 w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
-                            placeholder="Reason for not providing this consumable"
-                            value={rejectReasons[request.id] ?? ""}
-                            onChange={(event) =>
-                              setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
-                            }
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {request.status === "approved" || request.status === "rejected" ? (
-                          <p className="text-xs text-slate-500">Decision completed</p>
-                        ) : (
-                          <div className="space-y-2">
-                            <Button
-                              size="sm"
-                              className="bg-slate-900 text-white hover:bg-slate-800"
-                              disabled={!canApprove || processingId === request.id}
-                              onClick={() => void handleApprove(request.id)}
-                            >
-                              {processingId === request.id ? "Approving..." : "Approve"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-rose-300 text-rose-700 hover:bg-rose-50"
-                              disabled={processingId === request.id}
-                              onClick={() => handleReject(request.id)}
-                            >
-                              Reject
-                            </Button>
-                            {!canApprove ? (
-                              <p className="text-xs text-red-600">Insufficient stock. Available: {availableStock}</p>
-                            ) : null}
-                          </div>
-                        )}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                    <TableHead className="w-[130px] px-6 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Request</TableHead>
+                    <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Employee</TableHead>
+                    <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Department</TableHead>
+                    <TableHead className="min-w-[210px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Item</TableHead>
+                    <TableHead className="w-[70px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Qty</TableHead>
+                    <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
+                    <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                    <TableHead className="min-w-[260px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Decision Notes</TableHead>
+                    <TableHead className="w-[140px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {requests.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                        No consumable requests found.
                       </TableCell>
                     </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+                  ) : (
+                    requests.map((request) => {
+                      const availableStock = stockByName.get(normalizeItemName(request.itemName)) ?? 0
+                      const canApprove = request.status === "pending" && request.quantity <= availableStock
+
+                      return (
+                        <TableRow key={request.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                          <TableCell className="px-6 py-3">
+                            <p className="text-xs font-semibold text-[#2A5D8D]">REQ-{request.id}</p>
+                            <p className="text-xs text-[#4E7298]">{formatDate(request.requestedAt)}</p>
+                          </TableCell>
+                          <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{request.requestedBy}</TableCell>
+                          <TableCell className="py-3 text-xs text-[#234A71]">{request.department}</TableCell>
+                          <TableCell className="py-3 text-xs text-[#234A71]">{toDisplayItemName(request.itemName)}</TableCell>
+                          <TableCell className="py-3 text-xs text-[#234A71]">{request.quantity}</TableCell>
+                          <TableCell className="py-3">
+                            {request.status === "pending" ? (
+                              <select
+                                className={compactFieldClass}
+                                value={assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"}
+                                onChange={(event) =>
+                                  setAssignmentTypeByRequestId((current) => ({
+                                    ...current,
+                                    [request.id]: event.target.value as "new" | "loan" | "exchange",
+                                  }))
+                                }
+                              >
+                                <option value="new">New</option>
+                                <option value="loan">Loan</option>
+                                <option value="exchange">Exchange</option>
+                              </select>
+                            ) : (
+                              <Badge variant="outline" className="border-[#9CC4EA] bg-[#EAF3FF] text-[#2E6092]">
+                                {request.assignmentType}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <Badge
+                              variant="outline"
+                              className={
+                                request.status === "approved"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : request.status === "rejected"
+                                    ? "border-rose-200 bg-rose-50 text-rose-700"
+                                    : "border-amber-200 bg-amber-50 text-amber-700"
+                              }
+                            >
+                              {request.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-3 text-xs text-[#234A71]">
+                            {request.status === "approved" ? (
+                              <span>
+                                Approved by {request.approvedBy ?? "Admin"} on {formatDate(request.approvedAt ?? request.requestedAt)}
+                              </span>
+                            ) : request.status === "rejected" ? (
+                              <span>
+                                Rejected by {request.rejectedBy ?? "Admin"} on {formatDate(request.rejectedAt ?? request.requestedAt)}.{" "}
+                                Reason: {request.rejectionReason ?? "No reason provided."}
+                              </span>
+                            ) : (
+                              <textarea
+                                className={noteFieldClass}
+                                placeholder="Reason for not providing this consumable"
+                                value={rejectReasons[request.id] ?? ""}
+                                onChange={(event) =>
+                                  setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
+                                }
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            {request.status === "approved" || request.status === "rejected" ? (
+                              <p className="text-xs text-[#4E7298]">Decision completed</p>
+                            ) : (
+                              <div className="space-y-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-slate-900 text-white hover:bg-slate-800"
+                                  disabled={!canApprove || processingId === request.id}
+                                  onClick={() => void handleApprove(request.id)}
+                                >
+                                  {processingId === request.id ? "Approving..." : "Approve"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                                  disabled={processingId === request.id}
+                                  onClick={() => handleReject(request.id)}
+                                >
+                                  Reject
+                                </Button>
+                                {!canApprove ? (
+                                  <p className="text-xs text-red-600">Insufficient stock. Available: {availableStock}</p>
+                                ) : null}
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       ) : null}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Download, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import {
   type Ticket,
 } from "@/lib/api"
 import { escapeHtml, openPrintablePdfReport } from "@/lib/pdf-export"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 
 function normalizeTicketStatus(status: string): string {
   const normalized = status.trim().toLowerCase()
@@ -38,28 +39,36 @@ export function ManagerDashboardOverview() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const loadOverview = useCallback(async () => {
+    try {
+      const [metricsData, ticketsData, requestsData, returnsData] = await Promise.all([
+        getPerformanceMetrics(),
+        getAllTickets(),
+        getConsumableRequests(),
+        getConsumableReturns(),
+      ])
+      setMetrics(metricsData)
+      setTickets(ticketsData)
+      setPendingRequestCount(requestsData.filter((item) => item.status === "pending").length)
+      setPendingReturnCount(returnsData.filter((item) => item.status === "pending").length)
+      setError("")
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load manager overview metrics.")
+    }
+  }, [])
+
   useEffect(() => {
     const run = async () => {
-      try {
-        const [metricsData, ticketsData, requestsData, returnsData] = await Promise.all([
-          getPerformanceMetrics(),
-          getAllTickets(),
-          getConsumableRequests(),
-          getConsumableReturns(),
-        ])
-        setMetrics(metricsData)
-        setTickets(ticketsData)
-        setPendingRequestCount(requestsData.filter((item) => item.status === "pending").length)
-        setPendingReturnCount(returnsData.filter((item) => item.status === "pending").length)
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load manager overview metrics.")
-      } finally {
-        setLoading(false)
-      }
+      await loadOverview()
+      setLoading(false)
     }
-
     void run()
-  }, [])
+  }, [loadOverview])
+
+  useAutoRefresh(loadOverview, {
+    enabled: !loading,
+    intervalMs: 15000,
+  })
 
   const statusCounts = useMemo(() => {
     const initial = { pending: 0, inProcess: 0, solved: 0 }

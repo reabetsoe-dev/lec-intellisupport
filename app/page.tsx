@@ -2,25 +2,18 @@
 import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
-import {
-  BarChart3,
-  BookOpenText,
-  Bot,
-  Facebook,
-  Gauge,
-  LayoutDashboard,
-  Ticket,
-  Twitter,
-  type LucideIcon,
-  Workflow,
-} from "lucide-react"
+import { BarChart3, BookOpenText, Bot, Gauge, LayoutDashboard, Ticket, type LucideIcon, Workflow } from "lucide-react"
 
 import { LandingReveal } from "@/components/landing/LandingReveal"
 
 export const metadata: Metadata = {
   title: "LEC IntelliSupport",
-  description: "Smarter IT service management for the modern enterprise.",
+  description: "Smarter IT service management for Lesotho Electricity Company.",
 }
+
+const sectionTitleClass =
+  "landing-display text-[26px] md:text-[32px] lg:text-[40px] font-bold leading-[1.12] tracking-[-0.02em] text-[#12275f]"
+const sectionSubtitleClass = "mx-auto mt-4 max-w-3xl text-[18px] leading-[1.6] text-[#5f7196]"
 
 const featureCards: Array<{
   title: string
@@ -30,19 +23,19 @@ const featureCards: Array<{
 }> = [
   {
     title: "Automated Ticketing",
-    description: "Prioritize and assign tickets automatically",
+    description: "Prioritize and assign faults automatically using configurable routing logic.",
     icon: Ticket,
     iconClassName: "bg-[linear-gradient(135deg,#f3162d_0%,#c91124_100%)]",
   },
   {
     title: "AI Insights",
-    description: "Get actionable analytics and trends",
+    description: "Surface recurring outage patterns and actionable operational recommendations.",
     icon: BarChart3,
     iconClassName: "bg-[linear-gradient(135deg,#0f1f5c_0%,#005fcc_100%)]",
   },
   {
     title: "24/7 Virtual Agent",
-    description: "AI-powered support, always on",
+    description: "Provide always-on guidance for staff and customers during critical incidents.",
     icon: Bot,
     iconClassName: "bg-[linear-gradient(135deg,#005fcc_0%,#2f8dff_100%)]",
   },
@@ -53,63 +46,59 @@ const solutionCards: Array<{
   description: string
   icon: LucideIcon
   iconClassName: string
-  cardClassName?: string
 }> = [
   {
     title: "Real-Time Dashboard",
-    description: "Monitor performance metrics",
+    description: "Monitor system health and fault queues in one executive view.",
     icon: LayoutDashboard,
     iconClassName: "bg-[#005fcc]",
   },
   {
     title: "SLA Management",
-    description: "Track and meet SLA efficiently",
+    description: "Track response windows and escalations with timeline visibility.",
     icon: Gauge,
     iconClassName: "bg-[#11225a]",
   },
   {
     title: "Knowledge Base",
-    description: "Access and manage solutions easily",
+    description: "Preserve proven fixes and institutional knowledge for faster resolution.",
     icon: BookOpenText,
     iconClassName: "bg-[#f3162d]",
-    cardClassName: "border-[#f6c0c8] shadow-[0_18px_44px_rgba(243,22,45,0.1)]",
   },
   {
     title: "Custom Workflows",
-    description: "Tailor processes to your needs",
+    description: "Adapt assignment and approval flows to utility operations.",
     icon: Workflow,
     iconClassName: "bg-[#005fcc]",
   },
 ] as const
 
-const footerLinks = ["About", "Blog", "Support", "Privacy Policy", "Terms of Service"] as const
-
 const powerBackdropStyle: CSSProperties = {
   backgroundImage:
-    "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,244,250,0.9) 100%), url('/power-infrastructure.jpg')",
+    "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(242,246,252,0.94) 100%), url('/power-infrastructure.jpg')",
   backgroundSize: "cover",
   backgroundPosition: "center",
 }
 
 const demoBackdropStyle: CSSProperties = {
   backgroundImage:
-    "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(238,242,249,0.88) 100%), url('/power-infrastructure.jpg')",
+    "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(239,244,251,0.92) 100%), url('/power-infrastructure.jpg')",
   backgroundSize: "cover",
   backgroundPosition: "center bottom",
 }
 
 function BrandMark() {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       <Image
         src="/logo2.jpg"
         alt="LEC logo"
-        width={40}
-        height={40}
-        className="h-10 w-10 rounded-full object-cover shadow-[0_8px_18px_rgba(10,25,67,0.3)]"
+        width={56}
+        height={56}
+        className="h-12 w-12 rounded-full border border-white/30 object-cover shadow-[0_10px_24px_rgba(6,20,63,0.42)] md:h-14 md:w-14"
         priority
       />
-      <span className="landing-display text-[22px] font-semibold tracking-[-0.03em] text-white">LEC IntelliSupport</span>
+      <span className="landing-display text-[20px] font-semibold tracking-[-0.015em] text-white md:text-[22px]">LEC IntelliSupport</span>
     </div>
   )
 }
@@ -127,23 +116,11 @@ function HeroLaptop() {
   ] as const
 
   return (
-    <div className="landing-laptop-bob relative mx-auto w-full max-w-[600px]">
-      <div className="landing-float-slow absolute left-[3%] top-[50%] hidden rounded-[16px] border border-white/16 bg-white/10 px-4 py-3 shadow-[0_18px_40px_rgba(10,26,66,0.2)] backdrop-blur-sm md:block">
-        <div className="space-y-2.5">
-          <div className="h-2 w-12 rounded-full bg-white/55" />
-          <div className="h-2 w-20 rounded-full bg-white/35" />
-          <div className="h-2 w-14 rounded-full bg-white/35" />
+    <div className="relative mx-auto w-full max-w-[620px]">
+      <div className="landing-float-fast absolute -right-3 top-[18%] z-20 hidden rounded-2xl border border-[#d6e0f3] bg-white/95 p-3 shadow-[0_18px_38px_rgba(10,26,66,0.2)] md:block">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#f3162d_0%,#005fcc_100%)] text-white">
+          <Bot className="h-6 w-6" />
         </div>
-      </div>
-
-      <div className="landing-float-fast absolute right-[-2%] top-[34%] z-20 rounded-[20px] bg-white p-4 shadow-[0_22px_48px_rgba(10,26,66,0.22)]">
-        <div className="flex h-16 w-16 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#f3162d_0%,#005fcc_100%)] text-white">
-          <Bot className="h-8 w-8" />
-        </div>
-      </div>
-
-      <div className="landing-float-fast absolute left-[9%] top-[35%] hidden h-8 w-8 items-center justify-center rounded-full bg-white/12 text-xs font-bold text-white md:flex">
-        &#9654;
       </div>
 
       <div className="relative pt-4">
@@ -161,14 +138,14 @@ function HeroLaptop() {
             <div className="space-y-4 p-5">
               <div className="grid gap-3 sm:grid-cols-4">
                 {[
-                  { label: "Ticket", value: "Ticketing", icon: Ticket },
-                  { label: "SLA", value: "Compliance", icon: Gauge },
+                  { label: "Ticket", value: "Queue", icon: Ticket },
+                  { label: "SLA", value: "Alerts", icon: Gauge },
                   { label: "Support", value: "Teams", icon: LayoutDashboard },
                   { label: "Insights", value: "Reports", icon: BarChart3 },
                 ].map((item) => {
                   const Icon = item.icon
                   return (
-                    <div key={item.label} className="landing-surface rounded-[16px] p-3">
+                    <div key={item.label} className="landing-surface rounded-2xl p-3">
                       <div className="flex items-center gap-3">
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#edf3ff] text-[#005fcc]">
                           <Icon className="h-4 w-4" />
@@ -204,7 +181,7 @@ function HeroLaptop() {
                     <span className="h-2 w-2 rounded-full bg-[#005fcc]" />
                   </div>
                   <div className="mt-5 flex items-center gap-4">
-                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-[conic-gradient(#f3162d_0_28%,#005fcc_28%_58%,#11225a_58%_82%,#d8e3f6_82%_100%)] p-4">
+                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[conic-gradient(#f3162d_0_28%,#005fcc_28%_58%,#11225a_58%_82%,#d8e3f6_82%_100%)] p-4">
                       <div className="h-full w-full rounded-full bg-white" />
                     </div>
                     <div className="flex-1 space-y-3">
@@ -222,15 +199,6 @@ function HeroLaptop() {
 
         <div className="landing-laptop-base absolute bottom-1 left-1/2 h-[18px] w-[112%] -translate-x-1/2 rounded-b-[999px]" />
         <div className="absolute bottom-0 left-1/2 h-[8px] w-28 -translate-x-1/2 rounded-b-[999px] bg-[#9aa9c2]" />
-
-        <div className="landing-float-slow absolute bottom-[12px] left-[33%] hidden md:block">
-          <div className="relative">
-            <div className="mx-auto h-9 w-11 rounded-t-[18px] bg-white shadow-[0_12px_24px_rgba(31,55,100,0.16)]" />
-            <div className="absolute left-[-8px] top-[-18px] h-11 w-8 rounded-full bg-[#f3162d]" />
-            <div className="absolute left-[5px] top-[-26px] h-14 w-8 rotate-[16deg] rounded-full bg-[#005fcc]" />
-            <div className="absolute right-[-3px] top-[-22px] h-12 w-7 -rotate-[12deg] rounded-full bg-[#183372]" />
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -246,7 +214,7 @@ function DemoLaptop() {
   ] as const
 
   return (
-    <div className="relative mx-auto w-full max-w-[520px] pb-8">
+    <div className="relative mx-auto w-full max-w-[540px] pb-8">
       <div className="landing-monitor-shell rounded-[24px] p-3">
         <div className="overflow-hidden rounded-[18px] bg-white">
           <div className="flex items-center justify-between bg-[#101c56] px-4 py-3">
@@ -297,55 +265,54 @@ function DemoLaptop() {
 function SectionEnergyBackdrop({ style }: { style: CSSProperties }) {
   return (
     <>
-      <div className="absolute inset-0 opacity-[0.34]" style={style} />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(46,134,255,0.16)_0%,rgba(46,134,255,0)_26%),radial-gradient(circle_at_12%_74%,rgba(243,22,45,0.14)_0%,rgba(243,22,45,0)_24%)]" />
-      <div className="landing-light-wave absolute left-0 right-0 top-[24%] h-16 opacity-70" />
-      <div className="landing-light-wave absolute bottom-[18%] left-[-10%] right-[-10%] h-20 opacity-65" />
+      <div className="absolute inset-0 opacity-[0.45]" style={style} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(46,134,255,0.13)_0%,rgba(46,134,255,0)_30%),radial-gradient(circle_at_12%_74%,rgba(243,22,45,0.11)_0%,rgba(243,22,45,0)_28%)]" />
+      <div className="landing-light-wave absolute left-0 right-0 top-[16%] h-14 opacity-55" />
+      <div className="landing-light-wave absolute bottom-[10%] left-[-10%] right-[-10%] h-16 opacity-45" />
     </>
   )
 }
 
 export default function Home() {
   return (
-    <main className="landing-copy bg-[#f6f7fb] text-[#14255d]">
+    <main className="landing-copy overflow-x-hidden bg-[#f5f8fd] text-[#14255d]">
       <section className="relative overflow-hidden text-white">
         <div
           className="absolute inset-0"
           style={{
             backgroundImage:
-              "linear-gradient(128deg, rgba(8,19,60,0.95) 0%, rgba(17,33,90,0.92) 36%, rgba(0,95,204,0.72) 74%, rgba(243,22,45,0.2) 100%), url('/power-infrastructure.jpg')",
+              "linear-gradient(112deg, rgba(5,12,36,0.94) 0%, rgba(10,24,72,0.88) 38%, rgba(10,40,110,0.66) 72%, rgba(243,22,45,0.2) 100%), url('/power-infrastructure.jpg')",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
         />
         <div className="landing-hero-fade absolute inset-0" />
-        <div className="absolute inset-x-0 top-[94px] h-[2px] bg-white/10" />
-        <div className="landing-energy-line absolute left-[26%] right-[4%] top-[93px] h-[4px]" />
-        <div
-          className="absolute inset-x-0 bottom-0 h-[42%] bg-[linear-gradient(145deg,rgba(7,18,44,0.68)_0%,rgba(7,18,44,0)_100%)]"
-          style={{ clipPath: "polygon(0 16%, 42% 0, 100% 70%, 100% 100%, 0 100%)" }}
-        />
+        <div className="absolute inset-x-0 top-[94px] h-px bg-white/20" />
+        <div className="landing-energy-line absolute left-[24%] right-0 top-[93px] h-[3px] opacity-80" />
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-[#f5f8fd]" />
 
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
-          <header className="flex items-center justify-between gap-6 py-5">
+        <div className="relative mx-auto w-full max-w-[1240px] px-5 md:px-8">
+          <header className="flex items-center justify-between gap-4 py-6 md:py-7">
             <BrandMark />
 
             <Link
               href="/login"
-              className="inline-flex h-12 items-center justify-center rounded-[10px] bg-[#f3162d] px-6 text-base font-semibold text-white shadow-[0_12px_24px_rgba(243,22,45,0.28)] transition hover:bg-[#d61126]"
+              className="inline-flex h-11 items-center justify-center rounded-[12px] bg-[#f3162d] px-5 text-[15px] font-semibold text-white shadow-[0_14px_28px_rgba(243,22,45,0.28)] transition hover:bg-[#d61126] md:h-12 md:px-6 md:text-[16px]"
             >
-              Login
+              Get Started
             </Link>
           </header>
 
-          <div className="grid items-center gap-14 pb-16 pt-12 lg:grid-cols-[0.9fr_1.1fr] lg:pb-20 lg:pt-16">
-            <LandingReveal variant="left" className="max-w-[520px]">
-              <h1 className="landing-display text-5xl font-semibold leading-[1.14] tracking-[-0.05em] text-white lg:text-[62px]">
-                Smarter IT Service Management for the Modern Enterprise
+          <div className="grid items-center gap-12 pb-16 pt-8 md:gap-14 md:pb-20 md:pt-10 lg:grid-cols-[1fr_1.02fr] lg:gap-16 lg:pb-24 lg:pt-12">
+            <LandingReveal variant="left" className="max-w-[620px]">
+              <h1 className="landing-display text-[34px] font-bold leading-[1.1] tracking-[-0.03em] text-white md:text-[44px] lg:text-[60px]">
+                Smarter IT Service Management for Lesotho Electricity Company
               </h1>
-              <p className="mt-6 max-w-[430px] text-2xl leading-10 text-white/82">
-                AI-powered solutions to streamline your IT support and boost productivity.
+
+              <p className="mt-6 max-w-[580px] text-[16px] leading-[1.5] text-white/88 md:text-[18px] lg:text-[20px]">
+                AI-powered tools to help LEC resolve incidents faster, keep teams aligned, and improve reliability across utility operations.
               </p>
+
             </LandingReveal>
 
             <LandingReveal variant="right" delay={120}>
@@ -355,30 +322,29 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="features" className="relative overflow-hidden py-16 sm:py-20">
+      <section id="features" className="relative overflow-hidden py-16 md:py-20 lg:py-24">
         <SectionEnergyBackdrop style={powerBackdropStyle} />
 
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="relative mx-auto w-full max-w-[1240px] px-5 md:px-8">
           <LandingReveal className="text-center">
-            <h2 className="landing-display text-4xl font-semibold tracking-[-0.04em] text-[#12235a] sm:text-5xl">
-              Transform Your IT Support Operations
-            </h2>
-            <p className="mt-4 text-xl text-[#617198]">Empowering your team with intelligent tools</p>
+            <h2 className={sectionTitleClass}>Transform Your IT Support Operations</h2>
+            <p className={sectionSubtitleClass}>Empowering your teams with dependable, intelligent service workflows.</p>
           </LandingReveal>
 
           <div className="mt-12 grid gap-6 lg:grid-cols-3">
             {featureCards.map((card, index) => {
               const Icon = card.icon
+
               return (
-                <LandingReveal key={card.title} delay={index * 120}>
-                  <article className="landing-surface landing-card-shadow landing-hover-card rounded-[18px] px-8 py-10 text-center transition hover:-translate-y-1">
-                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[radial-gradient(circle,rgba(243,22,45,0.12)_0%,rgba(243,22,45,0)_72%)]">
-                      <span className={`landing-icon-bob flex h-16 w-16 items-center justify-center rounded-[18px] text-white shadow-[0_16px_28px_rgba(16,28,86,0.16)] ${card.iconClassName}`}>
-                        <Icon className="h-8 w-8" />
+                <LandingReveal key={card.title} delay={index * 110}>
+                  <article className="landing-surface landing-card-shadow landing-hover-card rounded-2xl px-7 py-8 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[16px] text-white shadow-[0_14px_26px_rgba(16,28,86,0.16)]">
+                      <span className={`flex h-16 w-16 items-center justify-center rounded-[16px] ${card.iconClassName}`}>
+                        <Icon className="h-7 w-7" />
                       </span>
                     </div>
-                    <h3 className="landing-display mt-6 text-[31px] font-semibold tracking-[-0.04em] text-[#14255d]">{card.title}</h3>
-                    <p className="mt-4 text-lg leading-8 text-[#617198]">{card.description}</p>
+                    <h3 className="landing-display mt-6 text-[24px] font-semibold leading-[1.25] tracking-[-0.02em] text-[#132a63]">{card.title}</h3>
+                    <p className="mt-3 text-[17px] leading-[1.6] text-[#5f7196]">{card.description}</p>
                   </article>
                 </LandingReveal>
               )
@@ -387,31 +353,28 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="solutions" className="relative overflow-hidden py-16 sm:py-20">
+      <section id="solutions" className="relative overflow-hidden border-y border-[#dbe6f6] py-16 md:py-20 lg:py-24">
         <SectionEnergyBackdrop style={powerBackdropStyle} />
 
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="relative mx-auto w-full max-w-[1240px] px-5 md:px-8">
           <LandingReveal className="text-center">
-            <h2 className="landing-display text-4xl font-semibold tracking-[-0.04em] text-[#12235a] sm:text-5xl">
-              Why Choose LEC IntelliSupport?
-            </h2>
-            <p className="mt-4 text-xl text-[#617198]">Streamline your IT operations with ease</p>
+            <h2 className={sectionTitleClass}>Built for Utility-Scale Service Teams</h2>
+            <p className={sectionSubtitleClass}>Designed for accountability, fast decisions, and smooth cross-team execution.</p>
           </LandingReveal>
 
           <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {solutionCards.map((card, index) => {
               const Icon = card.icon
+
               return (
-                <LandingReveal key={card.title} delay={index * 100}>
-                  <article
-                    className={`landing-surface landing-card-shadow landing-hover-card flex gap-4 rounded-[16px] px-6 py-6 transition hover:-translate-y-1 ${card.cardClassName ?? ""}`}
-                  >
-                    <span className={`landing-icon-bob mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-white ${card.iconClassName}`}>
+                <LandingReveal key={card.title} delay={index * 95}>
+                  <article className="landing-surface landing-card-shadow landing-hover-card flex h-full gap-4 rounded-[18px] px-5 py-6">
+                    <span className={`mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-white ${card.iconClassName}`}>
                       <Icon className="h-5 w-5" />
                     </span>
                     <div>
-                      <h3 className="landing-display text-[24px] font-semibold tracking-[-0.03em] text-[#14255d]">{card.title}</h3>
-                      <p className="mt-2 text-base leading-7 text-[#617198]">{card.description}</p>
+                      <h3 className="landing-display text-[22px] font-semibold leading-[1.25] tracking-[-0.02em] text-[#132a63]">{card.title}</h3>
+                      <p className="mt-2 text-[16px] leading-[1.55] text-[#5f7196]">{card.description}</p>
                     </div>
                   </article>
                 </LandingReveal>
@@ -421,15 +384,13 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="demo" className="relative overflow-hidden py-16 sm:py-20">
+      <section id="demo" className="relative overflow-hidden py-16 md:py-20 lg:py-24">
         <SectionEnergyBackdrop style={demoBackdropStyle} />
 
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="relative mx-auto w-full max-w-[1240px] px-5 md:px-8">
           <LandingReveal className="text-center">
-            <h2 className="landing-display text-4xl font-semibold tracking-[-0.04em] text-[#12235a] sm:text-5xl">
-              See IntelliSupport in Action
-            </h2>
-            <p className="mt-4 text-xl text-[#617198]">Streamline your IT operations with ease</p>
+            <h2 className={sectionTitleClass}>See IntelliSupport in Action</h2>
+            <p className={sectionSubtitleClass}>A clear operational view for administrators, supervisors, and support teams.</p>
           </LandingReveal>
 
           <div className="mt-14 grid items-center gap-10 lg:grid-cols-[1.02fr_0.98fr]">
@@ -438,69 +399,79 @@ export default function Home() {
             </LandingReveal>
 
             <LandingReveal variant="right" delay={160}>
-              <article className="landing-card-shadow landing-hover-card relative rounded-[24px] border border-[#e1e7f1] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(244,247,252,0.96)_100%)] px-8 py-10">
-                <p className="landing-display text-[33px] font-semibold italic leading-[1.7] tracking-[-0.03em] text-[#14255d]">
-                  LEC IntelliSupport has revolutionized our IT support.
-                  <br />
-                  Our response times have been faster.
+              <article className="landing-card-shadow landing-hover-card relative rounded-[22px] border border-[#e2e9f4] bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(244,248,253,0.97)_100%)] px-7 py-8 md:px-8 md:py-10">
+                <p className="landing-display text-[26px] font-semibold leading-[1.45] tracking-[-0.02em] text-[#142b63] md:text-[30px]">
+                  LEC IntelliSupport improved how we triage and resolve faults, with better team coordination and faster response times.
                 </p>
 
-                <div className="mt-10 flex items-center gap-5">
-                  <div className="landing-soft-pulse flex h-24 w-24 items-center justify-center rounded-full bg-[linear-gradient(135deg,#fbd6dc_0%,#ffffff_56%,#d8e7ff_100%)] text-2xl font-bold text-[#14255d] shadow-[0_14px_26px_rgba(16,28,86,0.14)]">
+                <div className="mt-8 flex items-center gap-4">
+                  <div className="landing-soft-pulse flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,#fbd6dc_0%,#ffffff_56%,#d8e7ff_100%)] text-lg font-bold text-[#14255d] shadow-[0_12px_24px_rgba(16,28,86,0.14)]">
                     BM
                   </div>
                   <div>
-                    <p className="landing-display text-[28px] font-semibold tracking-[-0.03em] text-[#14255d]">Boithatelo Motelle</p>
-                    <p className="text-2xl italic text-[#617198]">IT Manager</p>
+                    <p className="landing-display text-[24px] font-semibold tracking-[-0.02em] text-[#14255d]">Boithatelo Motelle</p>
+                    <p className="text-[18px] text-[#617198]">IT Manager</p>
                   </div>
                 </div>
-
-                <div className="absolute bottom-6 right-8 text-6xl font-black leading-none text-[#b6c8eb]">&rdquo;</div>
               </article>
             </LandingReveal>
           </div>
         </div>
       </section>
 
-      <section id="pricing" className="relative overflow-hidden py-16 text-white">
+      <section id="pricing" className="relative overflow-hidden py-16 text-white md:py-20">
         <div
           className="absolute inset-0"
           style={{
             backgroundImage:
-              "linear-gradient(180deg, rgba(9,20,58,0.92) 0%, rgba(16,28,86,0.92) 58%, rgba(0,95,204,0.78) 100%), url('/power-infrastructure.jpg')",
+              "linear-gradient(180deg, rgba(8,20,58,0.94) 0%, rgba(12,26,78,0.92) 56%, rgba(0,95,204,0.78) 100%), url('/power-infrastructure.jpg')",
             backgroundSize: "cover",
             backgroundPosition: "center bottom",
           }}
         />
         <div className="landing-bottom-glow absolute inset-0" />
 
-        <LandingReveal className="relative mx-auto max-w-7xl px-6 text-center lg:px-8">
-          <h2 className="landing-display text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-            Ready to Elevate Your IT Support?
+        <LandingReveal className="relative mx-auto w-full max-w-[1240px] px-5 md:px-8">
+          <h2 className="landing-display text-center text-[26px] font-bold leading-[1.14] tracking-[-0.02em] text-white md:text-[32px] lg:text-[40px]">
+            Enterprise-ready reliability for every support shift
           </h2>
+          <p className="mx-auto mt-4 max-w-3xl text-center text-[18px] leading-[1.6] text-white/82">
+            Secure workflows, role-based operations, and clear performance reporting for stakeholder confidence.
+          </p>
 
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            <article className="rounded-2xl border border-white/16 bg-white/8 px-5 py-5 backdrop-blur-sm">
+              <p className="text-sm uppercase tracking-[0.16em] text-white/66">Fault Visibility</p>
+              <p className="mt-2 text-[22px] font-semibold">Real-time queue insights</p>
+            </article>
+            <article className="rounded-2xl border border-white/16 bg-white/8 px-5 py-5 backdrop-blur-sm">
+              <p className="text-sm uppercase tracking-[0.16em] text-white/66">Operational Control</p>
+              <p className="mt-2 text-[22px] font-semibold">SLA-aware prioritization</p>
+            </article>
+            <article className="rounded-2xl border border-white/16 bg-white/8 px-5 py-5 backdrop-blur-sm">
+              <p className="text-sm uppercase tracking-[0.16em] text-white/66">Decision Support</p>
+              <p className="mt-2 text-[22px] font-semibold">Data-backed improvements</p>
+            </article>
+          </div>
         </LandingReveal>
       </section>
 
-      <footer id="contact" className="border-t border-white/10 bg-[linear-gradient(135deg,#0b1640_0%,#11225a_52%,#005fcc_100%)] py-8 text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <BrandMark />
-
-          <div className="flex flex-wrap items-center justify-center gap-6 text-lg text-white/86">
-            {footerLinks.map((link) => (
-              <Link key={link} href="#contact" className="transition hover:text-white/70">
-                {link}
-              </Link>
-            ))}
+      <footer id="contact" className="border-t border-[#d7e2f4] bg-white py-8 md:py-10">
+        <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-5 px-5 md:px-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo2.jpg"
+              alt="LEC logo"
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-full object-cover shadow-[0_6px_14px_rgba(10,25,67,0.2)]"
+            />
+            <span className="landing-display text-[18px] font-semibold tracking-[-0.015em] text-[#14275f]">LEC IntelliSupport</span>
           </div>
 
-          <div className="flex items-center gap-3 text-white">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-[#f3162d]/85">
-              <Facebook className="h-4 w-4" />
-            </span>
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-[#0d1d55]/70">
-              <Twitter className="h-4 w-4" />
-            </span>
+          <div className="flex flex-col gap-2 text-sm text-[#5f7196] md:flex-row md:items-center md:gap-6">
+            <p className="font-medium text-[#14275f]">Call us now: <span className="text-[#cf1128]">+266 5210 0000</span></p>
+            <p className="font-medium text-[#14275f]">WhatsApp: <span className="text-[#cf1128]">+266 6227 4000</span></p>
           </div>
         </div>
       </footer>

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { BarChart3, type LucideIcon, PhoneCall, UsersRound } from "lucide-react"
+import { BarChart3, Clock3, type LucideIcon, PhoneCall, UsersRound } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,6 +27,12 @@ const quickActions: Array<{
     title: "Performance Analytics",
     description: "Track technician throughput and response trends by fault category.",
     icon: BarChart3,
+  },
+  {
+    href: "/admin-fault/business-hours",
+    title: "Business Hours",
+    description: "Set support schedules, holidays, and group coverage for automated routing.",
+    icon: Clock3,
   },
   {
     href: "/admin-fault/log-call",

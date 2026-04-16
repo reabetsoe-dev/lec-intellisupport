@@ -1,6 +1,22 @@
 from django.db import models
 
 
+def default_business_hours_schedule() -> dict[str, dict[str, str | bool]]:
+    return {
+        "monday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "tuesday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "wednesday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "thursday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "friday": {"enabled": True, "start": "08:00", "end": "17:00"},
+        "saturday": {"enabled": False, "start": "08:00", "end": "17:00"},
+        "sunday": {"enabled": False, "start": "08:00", "end": "17:00"},
+    }
+
+
+def default_business_hours_groups() -> list[str]:
+    return ["all"]
+
+
 class User(models.Model):
     ROLE_EMPLOYEE = "employee"
     ROLE_TECHNICIAN = "technician"
@@ -97,6 +113,82 @@ class Technician(models.Model):
 
     def __str__(self) -> str:
         return f"Technician: {self.user.name}"
+
+
+class BusinessHours(models.Model):
+    GROUP_ALL = "all"
+    GROUP_NETWORK = Technician.SKILL_NETWORK
+    GROUP_SOFTWARE = Technician.SKILL_SOFTWARE
+    GROUP_HARDWARE = Technician.SKILL_HARDWARE
+    GROUP_SECURITY = Technician.SKILL_SECURITY
+
+    GROUP_CHOICES = [
+        (GROUP_ALL, "All Technicians"),
+        (GROUP_NETWORK, "Network"),
+        (GROUP_SOFTWARE, "Software"),
+        (GROUP_HARDWARE, "Hardware"),
+        (GROUP_SECURITY, "Security"),
+    ]
+
+    name = models.CharField(max_length=120, default="Default Business Hours")
+    description = models.CharField(max_length=255, blank=True, default="")
+    timezone_name = models.CharField(max_length=64, default="Africa/Maseru")
+    groups = models.JSONField(default=default_business_hours_groups)
+    weekly_schedule = models.JSONField(default=default_business_hours_schedule)
+    is_default = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "business_hours"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class BusinessHoliday(models.Model):
+    business_hours = models.ForeignKey(BusinessHours, on_delete=models.CASCADE, related_name="holidays")
+    name = models.CharField(max_length=120)
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "business_holidays"
+        constraints = [
+            models.UniqueConstraint(fields=["business_hours", "date"], name="unique_business_holiday_per_day"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.date.isoformat()})"
+
+
+class BusinessLeave(models.Model):
+    TYPE_ANNUAL = "annual"
+    TYPE_SICK = "sick"
+    TYPE_STUDY = "study"
+    TYPE_UNPAID = "unpaid"
+    TYPE_OTHER = "other"
+
+    TYPE_CHOICES = [
+        (TYPE_ANNUAL, "Annual Leave"),
+        (TYPE_SICK, "Sick Leave"),
+        (TYPE_STUDY, "Study Leave"),
+        (TYPE_UNPAID, "Unpaid Leave"),
+        (TYPE_OTHER, "Other"),
+    ]
+
+    business_hours = models.ForeignKey(BusinessHours, on_delete=models.CASCADE, related_name="leaves")
+    technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name="business_leaves")
+    leave_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_ANNUAL)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "business_leaves"
+
+    def __str__(self) -> str:
+        return f"{self.technician.user.name} - {self.leave_type} ({self.start_date} to {self.end_date})"
 
 
 class Ticket(models.Model):

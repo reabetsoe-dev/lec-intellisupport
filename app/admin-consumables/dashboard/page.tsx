@@ -86,7 +86,7 @@ export default function AdminConsumablesDashboardPage() {
               <History className="h-5 w-5" />
             </span>
             <span className="space-y-1">
-              <span className={getInterfaceCardTitleClassName(showReturnQueue)}>Returns</span>
+              <span className={getInterfaceCardTitleClassName(showReturnQueue)}>Process Returns</span>
               <span className={getInterfaceCardDescriptionClassName(showReturnQueue)}>
                 Open the consumable return queue and process hand-back requests.
               </span>
