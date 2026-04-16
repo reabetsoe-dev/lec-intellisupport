@@ -21,10 +21,10 @@ import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const REFRESH_INTERVAL_MS = 15_000
+const DEFAULT_REQUEST_QUANTITY = 1
 
 function toDisplayItemName(value: string): string {
   return value
@@ -36,7 +36,6 @@ function toDisplayItemName(value: string): string {
 export function EmployeeConsumableRequestPanel() {
   const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
-  const [quantity, setQuantity] = useState("")
   const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
@@ -118,13 +117,6 @@ export function EmployeeConsumableRequestPanel() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const parsedQuantity = Number(quantity)
-    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-      const nextMessage = "Quantity must be at least 1."
-      showResultDialog("error", nextMessage)
-      return
-    }
-
     if (!itemName) {
       const nextMessage = "No consumable item available."
       showResultDialog("error", nextMessage)
@@ -165,14 +157,13 @@ export function EmployeeConsumableRequestPanel() {
     try {
       await createConsumableRequestApi({
         itemName,
-        quantity: parsedQuantity,
+        quantity: DEFAULT_REQUEST_QUANTITY,
         assignment_type: assignmentType,
         department,
         notes: composedNotes,
         employee_id: user.id,
       })
       setItemName("")
-      setQuantity("")
       setAssignmentType("")
       setBranch("")
       setDepartment("")
@@ -263,22 +254,6 @@ export function EmployeeConsumableRequestPanel() {
               </div>
 
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label htmlFor="quantity" className="text-xs font-semibold text-[#0B1F3A]">
-                    Quantity
-                  </label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min={1}
-                    value={quantity}
-                    onChange={(event) => setQuantity(event.target.value)}
-                    placeholder="Enter quantity"
-                    autoComplete="off"
-                    className="h-8 border-[#0072CE]/30 px-2.5 text-sm text-[#0B1F3A]"
-                  />
-                </div>
-
                 <div className="space-y-1">
                   <label htmlFor="assignment-type" className="text-xs font-semibold text-[#0B1F3A]">
                     Assignment Type

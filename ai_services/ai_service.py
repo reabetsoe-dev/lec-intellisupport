@@ -18,6 +18,8 @@ from pathlib import Path
 import json
 import re
 
+from severity_rules import upgrade_severity_for_work_stoppage
+
 app = FastAPI(title="LEC IntelliSupport AI")
 app.add_middleware(
     CORSMiddleware,
@@ -593,6 +595,7 @@ def classify_issue(data: ClassifyRequest):
         category = "SOFTWARE"
 
     severity = str(severity_model.predict(vector)[0]).strip().lower()
+    severity = upgrade_severity_for_work_stoppage(text, severity)
     service_type = str(service_type_model.predict(vector)[0]).strip().lower()
 
     confidence = None

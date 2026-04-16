@@ -12,12 +12,17 @@ import {
   getTechnicians,
   type Employee,
   type Technician,
+  updateEmployeeDetails,
+  updateEmployeeStatus,
+  updateTechnicianDetails,
+  updateTechnicianStatus,
 } from "@/lib/api"
 import { ActionConfirmationDialog } from "@/components/ui/action-confirmation-dialog"
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { BRANCH_OPTIONS } from "@/lib/organization-options"
 import {
@@ -37,6 +42,18 @@ const TECHNICIAN_BRANCH = "Maseru HQ"
 const TECHNICIAN_DEPARTMENT = "IT"
 
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
+type EditableEmployee = {
+  id: number
+  name: string
+  email: string
+  branch: string
+}
+type EditableTechnician = {
+  id: number
+  name: string
+  email: string
+  skillset: string
+}
 
 export function TechnicianManagementPanel() {
   const [technicians, setTechnicians] = useState<Technician[]>([])
@@ -44,15 +61,19 @@ export function TechnicianManagementPanel() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [skillset, setSkillset] = useState("")
-  const [isAvailable, setIsAvailable] = useState(true)
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
-  const [employeeActive, setEmployeeActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
   const [deletingTechnicianId, setDeletingTechnicianId] = useState<number | null>(null)
+  const [updatingEmployeeId, setUpdatingEmployeeId] = useState<number | null>(null)
+  const [updatingTechnicianId, setUpdatingTechnicianId] = useState<number | null>(null)
+  const [editingEmployee, setEditingEmployee] = useState<EditableEmployee | null>(null)
+  const [savingEditedEmployee, setSavingEditedEmployee] = useState(false)
+  const [editingTechnician, setEditingTechnician] = useState<EditableTechnician | null>(null)
+  const [savingEditedTechnician, setSavingEditedTechnician] = useState(false)
   const [loadError, setLoadError] = useState("")
   const [activeSection, setActiveSection] = useState<ManagementSection | null>(null)
   const [resultDialog, setResultDialog] = useState<{
@@ -64,9 +85,10 @@ export function TechnicianManagementPanel() {
     status: "success",
     message: "",
   })
-  const [pendingDeletion, setPendingDeletion] = useState<
+  const [pendingAction, setPendingAction] = useState<
     | {
         kind: "employee" | "technician"
+        action: "activate" | "deactivate" | "delete"
         id: number
         name: string
       }
@@ -98,41 +120,181 @@ export function TechnicianManagementPanel() {
   }, [])
 
   const handleDeleteEmployee = (employee: Employee) => {
-    setPendingDeletion({ kind: "employee", id: employee.id, name: employee.name })
+    setPendingAction({ kind: "employee", action: "delete", id: employee.id, name: employee.name })
   }
 
   const handleDeleteTechnician = (technician: Technician) => {
-    setPendingDeletion({ kind: "technician", id: technician.id, name: technician.name })
+    setPendingAction({ kind: "technician", action: "delete", id: technician.id, name: technician.name })
   }
 
-  const confirmDeletion = async () => {
-    if (!pendingDeletion) return
+  const handleToggleEmployeeStatus = (employee: Employee) => {
+    setPendingAction({
+      kind: "employee",
+      action: employee.is_active ? "deactivate" : "activate",
+      id: employee.id,
+      name: employee.name,
+    })
+  }
+
+  const handleToggleTechnicianStatus = (technician: Technician) => {
+    setPendingAction({
+      kind: "technician",
+      action: technician.is_active ? "deactivate" : "activate",
+      id: technician.id,
+      name: technician.name,
+    })
+  }
+
+  const handleEditEmployee = (employee: Employee) => {
+    setEditingEmployee({
+      id: employee.id,
+      name: employee.name,
+      email: employee.email,
+      branch: employee.branch ?? "",
+    })
+  }
+
+  const handleEditTechnician = (technician: Technician) => {
+    setEditingTechnician({
+      id: technician.id,
+      name: technician.name,
+      email: technician.email,
+      skillset: technician.skillset,
+    })
+  }
+
+  const handleEditEmployeeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingEmployee) return
+
+    const trimmedName = editingEmployee.name.trim()
+    const trimmedEmail = editingEmployee.email.trim()
+    const trimmedBranch = editingEmployee.branch.trim()
+
+    if (!trimmedName) {
+      showResultDialog("error", "Employee name is required.")
+      return
+    }
+
+    if (!trimmedEmail) {
+      showResultDialog("error", "Employee email is required.")
+      return
+    }
 
     try {
-      if (pendingDeletion.kind === "employee") {
-        setDeletingEmployeeId(pendingDeletion.id)
-        await deleteEmployee(pendingDeletion.id)
-        await loadEmployees()
-        showResultDialog("success", `Employee ${pendingDeletion.name} deleted.`)
-      } else {
-        setDeletingTechnicianId(pendingDeletion.id)
-        await deleteTechnician(pendingDeletion.id)
-        await loadTechnicians()
-        showResultDialog("success", `Technician ${pendingDeletion.name} deleted.`)
-      }
-    } catch (deleteError) {
+      setSavingEditedEmployee(true)
+      await updateEmployeeDetails(editingEmployee.id, {
+        name: trimmedName,
+        email: trimmedEmail,
+        branch: trimmedBranch,
+      })
+      await loadEmployees()
+      setEditingEmployee(null)
+      showResultDialog("success", `Employee ${trimmedName} updated.`)
+    } catch (editError) {
       showResultDialog(
         "error",
-        deleteError instanceof Error
-          ? deleteError.message
-          : pendingDeletion.kind === "employee"
-            ? "Failed to delete employee."
-            : "Failed to delete technician."
+        editError instanceof Error ? editError.message : "Failed to update employee."
       )
     } finally {
-      setPendingDeletion(null)
+      setSavingEditedEmployee(false)
+    }
+  }
+
+  const handleEditTechnicianSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingTechnician) return
+
+    const trimmedName = editingTechnician.name.trim()
+    const trimmedEmail = editingTechnician.email.trim()
+    const trimmedSkillset = editingTechnician.skillset.trim()
+
+    if (!trimmedName) {
+      showResultDialog("error", "Technician name is required.")
+      return
+    }
+
+    if (!trimmedEmail) {
+      showResultDialog("error", "Technician email is required.")
+      return
+    }
+
+    if (!trimmedSkillset) {
+      showResultDialog("error", "Technician skill is required.")
+      return
+    }
+
+    try {
+      setSavingEditedTechnician(true)
+      await updateTechnicianDetails(editingTechnician.id, {
+        name: trimmedName,
+        email: trimmedEmail,
+        skillset: trimmedSkillset,
+      })
+      await loadTechnicians()
+      setEditingTechnician(null)
+      showResultDialog("success", `Technician ${trimmedName} updated.`)
+    } catch (editError) {
+      showResultDialog(
+        "error",
+        editError instanceof Error ? editError.message : "Failed to update technician."
+      )
+    } finally {
+      setSavingEditedTechnician(false)
+    }
+  }
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return
+
+    const actionLabel =
+      pendingAction.action === "activate"
+        ? "activated"
+        : pendingAction.action === "deactivate"
+          ? "deactivated"
+          : "deleted"
+
+    try {
+      if (pendingAction.kind === "employee") {
+        if (pendingAction.action === "delete") {
+          setDeletingEmployeeId(pendingAction.id)
+          await deleteEmployee(pendingAction.id)
+        } else {
+          setUpdatingEmployeeId(pendingAction.id)
+          await updateEmployeeStatus(pendingAction.id, pendingAction.action === "activate")
+        }
+        await loadEmployees()
+        showResultDialog("success", `Employee ${pendingAction.name} ${actionLabel}.`)
+      } else {
+        if (pendingAction.action === "delete") {
+          setDeletingTechnicianId(pendingAction.id)
+          await deleteTechnician(pendingAction.id)
+        } else {
+          setUpdatingTechnicianId(pendingAction.id)
+          await updateTechnicianStatus(pendingAction.id, pendingAction.action === "activate")
+        }
+        await loadTechnicians()
+        showResultDialog("success", `Technician ${pendingAction.name} ${actionLabel}.`)
+      }
+    } catch (actionError) {
+      showResultDialog(
+        "error",
+        actionError instanceof Error
+          ? actionError.message
+          : pendingAction.kind === "employee"
+            ? pendingAction.action === "delete"
+              ? "Failed to delete employee."
+              : "Failed to update employee status."
+            : pendingAction.action === "delete"
+              ? "Failed to delete technician."
+              : "Failed to update technician status."
+      )
+    } finally {
+      setPendingAction(null)
       setDeletingEmployeeId(null)
       setDeletingTechnicianId(null)
+      setUpdatingEmployeeId(null)
+      setUpdatingTechnicianId(null)
     }
   }
 
@@ -149,12 +311,10 @@ export function TechnicianManagementPanel() {
         name: name.trim(),
         email: email.trim(),
         skillset: skillset.trim(),
-        is_available: isAvailable,
       })
       setName("")
       setEmail("")
       setSkillset("")
-      setIsAvailable(true)
       await loadTechnicians()
       showResultDialog("success", "Technician created. Setup link sent to their email.")
     } catch (submitError) {
@@ -172,12 +332,11 @@ export function TechnicianManagementPanel() {
         name: employeeName.trim(),
         email: employeeEmail.trim(),
         branch: employeeBranch,
-        is_active: employeeActive,
+        is_active: true,
       })
       setEmployeeName("")
       setEmployeeEmail("")
       setEmployeeBranch("")
-      setEmployeeActive(true)
       await loadEmployees()
       showResultDialog("success", "Employee created. Setup link sent to their email.")
     } catch (submitError) {
@@ -301,20 +460,6 @@ export function TechnicianManagementPanel() {
               ))}
             </select>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="employee-status" className="text-sm font-medium text-[#1E3A6D]">
-              Employee Status
-            </label>
-            <select
-              id="employee-status"
-              className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-              value={employeeActive ? "active" : "inactive"}
-              onChange={(event) => setEmployeeActive(event.target.value === "active")}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
           <div className="md:col-span-2">
             <Button type="submit" disabled={savingEmployee} className="bg-[#0072CE] text-white hover:bg-[#005EA8]">
               {savingEmployee ? "Creating..." : "Add Employee"}
@@ -400,21 +545,6 @@ export function TechnicianManagementPanel() {
             </select>
           </div>
 
-          <div className="space-y-2 md:col-span-2">
-            <label htmlFor="technician-availability" className="text-sm font-medium text-[#1E3A6D]">
-              Availability
-            </label>
-            <select
-              id="technician-availability"
-              className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-              value={isAvailable ? "available" : "unavailable"}
-              onChange={(event) => setIsAvailable(event.target.value === "available")}
-            >
-              <option value="available">Available</option>
-              <option value="unavailable">Unavailable</option>
-            </select>
-          </div>
-
           <div className="md:col-span-2">
             <Button type="submit" disabled={saving} className="bg-[#0072CE] text-white hover:bg-[#005EA8]">
               {saving ? "Creating..." : "Add Technician"}
@@ -456,8 +586,42 @@ export function TechnicianManagementPanel() {
                           type="button"
                           size="sm"
                           variant="outline"
+                          className="border-[#0072CE]/30 text-[#0B1F3A] hover:bg-[#EAF3FF] hover:text-[#0B1F3A]"
+                          disabled={
+                            deletingEmployeeId === employee.id ||
+                            updatingEmployeeId === employee.id ||
+                            savingEditedEmployee
+                          }
+                          onClick={() => handleEditEmployee(employee)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={
+                            employee.is_active
+                              ? "border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                              : "border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          }
+                          disabled={deletingEmployeeId === employee.id || updatingEmployeeId === employee.id}
+                          onClick={() => handleToggleEmployeeStatus(employee)}
+                        >
+                          {updatingEmployeeId === employee.id
+                            ? employee.is_active
+                              ? "Deactivating..."
+                              : "Activating..."
+                            : employee.is_active
+                              ? "Deactivate"
+                              : "Activate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
                           className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                          disabled={deletingEmployeeId === employee.id}
+                          disabled={deletingEmployeeId === employee.id || updatingEmployeeId === employee.id}
                           onClick={() => handleDeleteEmployee(employee)}
                         >
                           {deletingEmployeeId === employee.id ? "Deleting..." : "Delete"}
@@ -508,23 +672,56 @@ export function TechnicianManagementPanel() {
                         </div>
                       </div>
                       <div className="mt-2 flex items-center justify-end gap-2 border-t border-[#D6E5F4] pt-2">
-                        <span className="text-[11px] font-medium text-[#5F7FA4]">Status</span>
                         <Badge
                           variant="outline"
                           className={
-                            technician.is_available
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                              : "border-amber-300 bg-amber-50 text-amber-700"
+                            technician.is_active
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-[#0072CE]/25 bg-white text-[#1E3A6D]"
                           }
                         >
-                          {technician.is_available ? "Available" : "Unavailable"}
+                          {technician.is_active ? "Active" : "Inactive"}
                         </Badge>
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
+                          className="h-8 border-[#0072CE]/30 bg-white px-2.5 text-xs text-[#0B1F3A] hover:bg-[#EAF3FF] hover:text-[#0B1F3A]"
+                          disabled={
+                            deletingTechnicianId === technician.id ||
+                            updatingTechnicianId === technician.id ||
+                            savingEditedTechnician
+                          }
+                          onClick={() => handleEditTechnician(technician)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={
+                            technician.is_active
+                              ? "h-8 border-amber-200 bg-white px-2.5 text-xs text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                              : "h-8 border-emerald-200 bg-white px-2.5 text-xs text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          }
+                          disabled={deletingTechnicianId === technician.id || updatingTechnicianId === technician.id}
+                          onClick={() => handleToggleTechnicianStatus(technician)}
+                        >
+                          {updatingTechnicianId === technician.id
+                            ? technician.is_active
+                              ? "Deactivating..."
+                              : "Activating..."
+                            : technician.is_active
+                              ? "Deactivate"
+                              : "Activate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
                           className="h-8 border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                          disabled={deletingTechnicianId === technician.id}
+                          disabled={deletingTechnicianId === technician.id || updatingTechnicianId === technician.id}
                           onClick={() => handleDeleteTechnician(technician)}
                         >
                           {deletingTechnicianId === technician.id ? "Deleting..." : "Delete"}
@@ -546,21 +743,235 @@ export function TechnicianManagementPanel() {
         onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
       />
 
+      <Dialog open={Boolean(editingEmployee)} onOpenChange={(open) => {
+        if (!open && !savingEditedEmployee) {
+          setEditingEmployee(null)
+        }
+      }}>
+        <DialogContent className="max-w-lg border-[#0072CE]/25">
+          <DialogHeader>
+            <DialogTitle className="text-[#0B1F3A]">Edit Employee</DialogTitle>
+            <DialogDescription className="text-[#1E3A6D]">
+              Update the selected employee&apos;s current details.
+            </DialogDescription>
+          </DialogHeader>
+          {editingEmployee ? (
+            <form className="space-y-4" onSubmit={handleEditEmployeeSubmit}>
+              <div className="space-y-2">
+                <label htmlFor="edit-employee-name" className="text-sm font-medium text-[#1E3A6D]">
+                  Employee Name
+                </label>
+                <Input
+                  id="edit-employee-name"
+                  value={editingEmployee.name}
+                  onChange={(event) =>
+                    setEditingEmployee((current) =>
+                      current ? { ...current, name: event.target.value } : current
+                    )
+                  }
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-employee-email" className="text-sm font-medium text-[#1E3A6D]">
+                  Employee Email
+                </label>
+                <Input
+                  id="edit-employee-email"
+                  type="email"
+                  value={editingEmployee.email}
+                  onChange={(event) =>
+                    setEditingEmployee((current) =>
+                      current ? { ...current, email: event.target.value } : current
+                    )
+                  }
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-employee-branch" className="text-sm font-medium text-[#1E3A6D]">
+                  Employee Branch
+                </label>
+                <select
+                  id="edit-employee-branch"
+                  className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
+                  value={editingEmployee.branch}
+                  onChange={(event) =>
+                    setEditingEmployee((current) =>
+                      current ? { ...current, branch: event.target.value } : current
+                    )
+                  }
+                >
+                  <option value="">Not set</option>
+                  {BRANCH_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-[#0072CE]/30 text-[#0B1F3A] hover:bg-[#F4FAFF]"
+                  disabled={savingEditedEmployee}
+                  onClick={() => setEditingEmployee(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#0072CE] text-white hover:bg-[#005DA8]"
+                  disabled={savingEditedEmployee}
+                >
+                  {savingEditedEmployee ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingTechnician)} onOpenChange={(open) => {
+        if (!open && !savingEditedTechnician) {
+          setEditingTechnician(null)
+        }
+      }}>
+        <DialogContent className="max-w-lg border-[#0072CE]/25">
+          <DialogHeader>
+            <DialogTitle className="text-[#0B1F3A]">Edit Technician</DialogTitle>
+            <DialogDescription className="text-[#1E3A6D]">
+              Update the selected technician&apos;s current details.
+            </DialogDescription>
+          </DialogHeader>
+          {editingTechnician ? (
+            <form className="space-y-4" onSubmit={handleEditTechnicianSubmit}>
+              <div className="space-y-2">
+                <label htmlFor="edit-technician-name" className="text-sm font-medium text-[#1E3A6D]">
+                  Technician Name
+                </label>
+                <Input
+                  id="edit-technician-name"
+                  value={editingTechnician.name}
+                  onChange={(event) =>
+                    setEditingTechnician((current) =>
+                      current ? { ...current, name: event.target.value } : current
+                    )
+                  }
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-technician-email" className="text-sm font-medium text-[#1E3A6D]">
+                  Technician Email
+                </label>
+                <Input
+                  id="edit-technician-email"
+                  type="email"
+                  value={editingTechnician.email}
+                  onChange={(event) =>
+                    setEditingTechnician((current) =>
+                      current ? { ...current, email: event.target.value } : current
+                    )
+                  }
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="edit-technician-branch" className="text-sm font-medium text-[#1E3A6D]">
+                    Branch
+                  </label>
+                  <Input id="edit-technician-branch" value={TECHNICIAN_BRANCH} readOnly disabled />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-technician-department" className="text-sm font-medium text-[#1E3A6D]">
+                    Department
+                  </label>
+                  <Input id="edit-technician-department" value={TECHNICIAN_DEPARTMENT} readOnly disabled />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-technician-skillset" className="text-sm font-medium text-[#1E3A6D]">
+                  Skill
+                </label>
+                <select
+                  id="edit-technician-skillset"
+                  className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
+                  value={editingTechnician.skillset}
+                  onChange={(event) =>
+                    setEditingTechnician((current) =>
+                      current ? { ...current, skillset: event.target.value } : current
+                    )
+                  }
+                  required
+                >
+                  <option value="">Select skill</option>
+                  {skillsetOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-[#0072CE]/30 text-[#0B1F3A] hover:bg-[#F4FAFF]"
+                  disabled={savingEditedTechnician}
+                  onClick={() => setEditingTechnician(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#0072CE] text-white hover:bg-[#005DA8]"
+                  disabled={savingEditedTechnician}
+                >
+                  {savingEditedTechnician ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <ActionConfirmationDialog
-        open={Boolean(pendingDeletion)}
-        title={pendingDeletion?.kind === "employee" ? "Delete Employee" : "Delete Technician"}
-        description={
-          pendingDeletion
-            ? `Delete ${pendingDeletion.kind} ${pendingDeletion.name}? This action cannot be undone.`
+        open={Boolean(pendingAction)}
+        title={
+          pendingAction
+            ? `${pendingAction.action.charAt(0).toUpperCase()}${pendingAction.action.slice(1)} ${
+                pendingAction.kind === "employee" ? "Employee" : "Technician"
+              }`
             : ""
         }
-        confirmLabel="Delete"
-        confirmVariant="destructive"
-        confirmDisabled={deletingEmployeeId !== null || deletingTechnicianId !== null}
-        onConfirm={() => void confirmDeletion()}
+        description={
+          pendingAction
+            ? pendingAction.action === "delete"
+              ? `Delete ${pendingAction.kind} ${pendingAction.name}? This action cannot be undone.`
+              : `${pendingAction.action === "activate" ? "Activate" : "Deactivate"} ${
+                  pendingAction.kind
+                } ${pendingAction.name}?`
+            : ""
+        }
+        confirmLabel={
+          pendingAction
+            ? `${pendingAction.action.charAt(0).toUpperCase()}${pendingAction.action.slice(1)}`
+            : "Confirm"
+        }
+        confirmVariant={pendingAction?.action === "delete" ? "destructive" : "default"}
+        confirmDisabled={
+          deletingEmployeeId !== null ||
+          deletingTechnicianId !== null ||
+          updatingEmployeeId !== null ||
+          updatingTechnicianId !== null
+        }
+        onConfirm={() => void confirmPendingAction()}
         onOpenChange={(open) => {
           if (!open) {
-            setPendingDeletion(null)
+            setPendingAction(null)
           }
         }}
       />

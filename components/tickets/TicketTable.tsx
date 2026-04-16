@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useMemo, useState, type KeyboardEvent } from "react"
 import {
   Table,
   TableBody,
@@ -35,6 +36,7 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 
 export function TicketTable() {
+  const router = useRouter()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<TicketStatus | "All">("All")
   const [priority, setPriority] = useState<TicketPriority | "All">("All")
@@ -51,6 +53,18 @@ export function TicketTable() {
       return matchesQuery && matchesStatus && matchesPriority
     })
   }, [priority, query, status])
+
+  const openTicketWorkspace = (ticketId: number) => {
+    router.push(`/tickets/${ticketId}`)
+  }
+
+  const handleTicketRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, ticketId: number) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return
+    }
+    event.preventDefault()
+    openTicketWorkspace(ticketId)
+  }
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -119,11 +133,19 @@ export function TicketTable() {
         </TableHeader>
         <TableBody>
           {filteredTickets.map((ticket) => (
-            <TableRow key={ticket.id} className="cursor-pointer hover:bg-slate-50">
+            <TableRow
+              key={ticket.id}
+              role="link"
+              tabIndex={0}
+              onClick={() => openTicketWorkspace(ticket.id)}
+              onKeyDown={(event) => handleTicketRowKeyDown(event, ticket.id)}
+              className="cursor-pointer hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            >
               <TableCell className="px-6 font-medium text-slate-600">#{ticket.id}</TableCell>
               <TableCell>
                 <Link
                   href={`/tickets/${ticket.id}`}
+                  onClick={(event) => event.stopPropagation()}
                   className="font-medium text-slate-800 transition-colors hover:text-slate-950 hover:underline"
                 >
                   {ticket.title}

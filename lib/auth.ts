@@ -24,6 +24,22 @@ export function getDashboardPathByRole(role: UserRole): string {
   return dashboardByRole[role]
 }
 
+export function getTicketDetailPathByRole(role: UserRole, ticketId: number): string {
+  if (role === "employee") {
+    return `/employee/tickets/${ticketId}`
+  }
+  if (role === "technician") {
+    return `/technician/tickets/${ticketId}`
+  }
+  if (role === "admin_fault") {
+    return `/admin-fault/tickets/${ticketId}`
+  }
+  if (role === "admin_consumables") {
+    return `/admin-consumables/tickets/${ticketId}`
+  }
+  return `/manager/tickets/${ticketId}`
+}
+
 export function getRoleLabel(role: UserRole): string {
   if (role === "admin_fault") {
     return "Admin Fault"

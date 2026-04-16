@@ -1,5 +1,12 @@
 from django.urls import path
 
+from .communication_views import (
+    notification_mark_read_view,
+    notifications_view,
+    ticket_detail_view,
+    ticket_messages_view,
+    ticket_participants_view,
+)
 from .views import (
     ai_service_chat_proxy_view,
     assigned_tickets_view,
@@ -19,14 +26,11 @@ from .views import (
     forgot_password_view,
     performance_metrics_view,
     login_view,
-    notifications_mark_read_view,
-    notifications_view,
     reset_password_view,
     setup_password_view,
     technician_detail_view,
     technicians_collection_view,
     escalate_ticket_view,
-    ticket_detail_view,
     ticket_comments_view,
     ticket_material_requests_view,
     ticket_problem_review_view,
@@ -45,6 +49,8 @@ urlpatterns = [
     path("tickets", tickets_collection_view),
     path("tickets/assigned/<int:technician_id>", assigned_tickets_view),
     path("tickets/<int:ticket_id>", ticket_detail_view),
+    path("tickets/<int:ticket_id>/messages", ticket_messages_view),
+    path("tickets/<int:ticket_id>/participants", ticket_participants_view),
     path("tickets/<int:ticket_id>/comments", ticket_comments_view),
     path("tickets/<int:ticket_id>/assign", assign_technician_view),
     path("tickets/<int:ticket_id>/escalate", escalate_ticket_view),
@@ -58,7 +64,7 @@ urlpatterns = [
     path("employees/<int:employee_id>", employee_detail_view),
     path("performance", performance_metrics_view),
     path("notifications", notifications_view),
-    path("notifications/mark-read", notifications_mark_read_view),
+    path("notifications/<int:notification_id>/read", notification_mark_read_view),
     path("consumables", consumables_collection_view),
     path("consumables/<int:consumable_id>", consumable_detail_view),
     path("consumables/<int:consumable_id>/adjust", consumable_quantity_adjust_view),

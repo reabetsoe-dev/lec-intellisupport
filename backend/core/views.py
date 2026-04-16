@@ -23,6 +23,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .authentication import issue_auth_token
 from .models import (
     Consumable,
     ConsumableReturn,
@@ -709,6 +710,7 @@ def _technician_to_dict(technician: Technician) -> dict:
         "branch": TECHNICIAN_FIXED_BRANCH,
         "department": TECHNICIAN_FIXED_DEPARTMENT,
         "skillset": technician.skillset,
+        "is_active": technician.user.is_active,
         "is_available": technician.is_available,
     }
 
@@ -731,15 +733,22 @@ def _notification_to_dict(item: Notification) -> dict:
     return {
         "id": item.id,
         "message": item.message,
+        "type": item.type,
         "is_read": item.is_read,
         "ticket_id": item.ticket_id,
+        "ticket_message_id": item.ticket_message_id,
         "created_at": item.created_at.isoformat(),
         "read_at": item.read_at.isoformat() if item.read_at else None,
     }
 
 
 def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) -> None:
-    Notification.objects.create(recipient=recipient, message=message[:255], ticket=ticket)
+    Notification.objects.create(
+        user=recipient,
+        message=message,
+        type=Notification.TYPE_SYSTEM,
+        ticket=ticket,
+    )
 
 
 FORGOT_PASSWORD_GENERIC_MESSAGE = (
@@ -958,7 +967,7 @@ def login_view(request):
             "name": user.name,
             "role": user.role,
             "must_change_password": user.must_change_password,
-            "token": secrets.token_urlsafe(32),
+            "token": issue_auth_token(user),
         },
         status=status.HTTP_200_OK,
     )
@@ -1617,11 +1626,67 @@ def technicians_collection_view(request):
     return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
 
 
-@api_view(["DELETE"])
+@api_view(["PATCH", "DELETE"])
 def technician_detail_view(request, technician_id: int):
     technician = Technician.objects.select_related("user").filter(id=technician_id).first()
     if not technician:
         return Response({"message": "Technician not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "PATCH":
+        updated_user_fields: list[str] = []
+        updated_technician_fields: list[str] = []
+
+        if "name" in request.data:
+            name = str(request.data.get("name", "")).strip()
+            if not name:
+                return Response({"message": "name is required."}, status=status.HTTP_400_BAD_REQUEST)
+            technician.user.name = name
+            updated_user_fields.append("name")
+
+        if "email" in request.data:
+            email = str(request.data.get("email", "")).strip().lower()
+            if not email:
+                return Response({"message": "email is required."}, status=status.HTTP_400_BAD_REQUEST)
+            if User.objects.exclude(id=technician.user_id).filter(email=email).exists():
+                return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            technician.user.email = email
+            updated_user_fields.append("email")
+
+        if "skillset" in request.data:
+            skillset = _normalize_skillset_value(str(request.data.get("skillset", "")))
+            if not skillset:
+                return Response(
+                    {"message": "skillset must be one of: Network, Software, Hardware, Security."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if skillset not in ALLOWED_TECHNICIAN_SKILLSETS:
+                return Response(
+                    {"message": "skillset must be one of: Network, Software, Hardware, Security."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            technician.skillset = skillset
+            updated_technician_fields.append("skillset")
+
+        if "is_active" in request.data:
+            raw_is_active = request.data.get("is_active")
+            if isinstance(raw_is_active, str):
+                is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
+            else:
+                is_active = bool(raw_is_active)
+            technician.user.is_active = is_active
+            updated_user_fields.append("is_active")
+
+        if not updated_user_fields and not updated_technician_fields:
+            return Response(
+                {"message": "Provide at least one field to update."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if updated_user_fields:
+            technician.user.save(update_fields=[*updated_user_fields, "updated_at"])
+        if updated_technician_fields:
+            technician.save(update_fields=updated_technician_fields)
+        return Response(_technician_to_dict(technician), status=status.HTTP_200_OK)
 
     user = technician.user
     user.delete()
@@ -1677,8 +1742,53 @@ def employees_collection_view(request):
     return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
 
 
-@api_view(["DELETE"])
+@api_view(["PATCH", "DELETE"])
 def employee_detail_view(request, employee_id: int):
+    if request.method == "PATCH":
+        employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
+        if not employee:
+            return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        updated_fields: list[str] = []
+
+        if "name" in request.data:
+            name = str(request.data.get("name", "")).strip()
+            if not name:
+                return Response({"message": "name is required."}, status=status.HTTP_400_BAD_REQUEST)
+            employee.name = name
+            updated_fields.append("name")
+
+        if "email" in request.data:
+            email = str(request.data.get("email", "")).strip().lower()
+            if not email:
+                return Response({"message": "email is required."}, status=status.HTTP_400_BAD_REQUEST)
+            if User.objects.exclude(id=employee.id).filter(email=email).exists():
+                return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            employee.email = email
+            updated_fields.append("email")
+
+        if "branch" in request.data:
+            employee.branch = str(request.data.get("branch", "")).strip()
+            updated_fields.append("branch")
+
+        if "is_active" in request.data:
+            raw_is_active = request.data.get("is_active")
+            if isinstance(raw_is_active, str):
+                is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
+            else:
+                is_active = bool(raw_is_active)
+            employee.is_active = is_active
+            updated_fields.append("is_active")
+
+        if not updated_fields:
+            return Response(
+                {"message": "Provide at least one field to update."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        employee.save(update_fields=[*updated_fields, "updated_at"])
+        return Response(_user_to_dict(employee), status=status.HTTP_200_OK)
+
     employee = User.objects.filter(
         id=employee_id,
         role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
@@ -1713,7 +1823,7 @@ def notifications_view(request):
     if not user:
         return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    queryset = Notification.objects.filter(recipient=user).order_by("-created_at")
+    queryset = Notification.objects.filter(user=user).order_by("-created_at")
     unread_count = queryset.filter(is_read=False).count()
     recent = queryset[:25]
     return Response(
@@ -1736,12 +1846,12 @@ def notifications_mark_read_view(request):
         return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
     ids = request.data.get("notification_ids")
-    queryset = Notification.objects.filter(recipient=user, is_read=False)
+    queryset = Notification.objects.filter(user=user, is_read=False)
     if isinstance(ids, list) and ids:
         queryset = queryset.filter(id__in=ids)
 
     queryset.update(is_read=True, read_at=timezone.now())
-    unread_count = Notification.objects.filter(recipient=user, is_read=False).count()
+    unread_count = Notification.objects.filter(user=user, is_read=False).count()
     return Response({"unread_count": unread_count}, status=status.HTTP_200_OK)
 
 

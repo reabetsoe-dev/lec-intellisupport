@@ -6,20 +6,17 @@ import { usePathname, useRouter } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { type AuthUser } from "@/lib/auth"
+import { getTicketDetailPathByRole, type AuthUser } from "@/lib/auth"
 import {
   getNotifications,
-  getTicketById,
-  markNotificationsRead,
+  markNotificationRead,
   type AppNotification,
-  type TicketDetail,
 } from "@/lib/api"
 
 const topbarConfig: Array<{
@@ -39,6 +36,12 @@ const topbarConfig: Array<{
     parent: "Employee",
     current: "Report Fault",
     title: "Employee Fault Reporting",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/employee/tickets/"),
+    parent: "Employee",
+    current: "Ticket Detail",
+    title: "Ticket Conversation",
   },
   {
     match: (pathname) => pathname.startsWith("/employee/tickets"),
@@ -89,6 +92,12 @@ const topbarConfig: Array<{
     title: "Technician Overview",
   },
   {
+    match: (pathname) => pathname.startsWith("/admin-fault/tickets/"),
+    parent: "Admin Fault",
+    current: "Ticket Detail",
+    title: "Fault Ticket Workspace",
+  },
+  {
     match: (pathname) => pathname.startsWith("/admin-fault/tickets"),
     parent: "Admin Fault",
     current: "All Tickets",
@@ -119,6 +128,12 @@ const topbarConfig: Array<{
     title: "Fault Management Console",
   },
   {
+    match: (pathname) => pathname.startsWith("/manager/tickets/"),
+    parent: "Manager",
+    current: "Ticket Detail",
+    title: "Manager Ticket Conversation",
+  },
+  {
     match: (pathname) => pathname.startsWith("/manager/tickets"),
     parent: "Manager",
     current: "Ticket Oversight",
@@ -141,6 +156,12 @@ const topbarConfig: Array<{
     parent: "Manager",
     current: "Dashboard",
     title: "Manager Command Center",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/admin-consumables/tickets/"),
+    parent: "Admin Consumables",
+    current: "Ticket Detail",
+    title: "Ticket Collaboration",
   },
   {
     match: (pathname) => pathname.startsWith("/admin-consumables/inventory"),
@@ -178,61 +199,30 @@ type TopbarProps = {
   user: AuthUser
 }
 
-function extractEscalationReason(commentText: string): string {
-  const separatorIndex = commentText.indexOf(":")
-  if (separatorIndex < 0) {
-    return ""
+function formatNotificationType(type: AppNotification["type"]): string {
+  if (type === "MENTION") {
+    return "Mention"
   }
-  return commentText.slice(separatorIndex + 1).trim()
+  if (type === "REPLY") {
+    return "Reply"
+  }
+  if (type === "DISCUSSION") {
+    return "Discussion"
+  }
+  return "System"
 }
 
-function normalizeName(value?: string | null): string {
-  return (value || "").trim().toLowerCase()
-}
-
-function formatTicketCommentText(
-  commentText: string,
-  authorName: string,
-  viewer?: Pick<AuthUser, "name" | "role">
-): string {
-  const trimmed = commentText.trim()
-  const normalized = trimmed.toLowerCase()
-  if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
-    const reason = extractEscalationReason(trimmed)
-    return reason ? `Escalated by ${authorName}: ${reason}` : `Escalated by ${authorName}`
+function notificationBadgeClass(type: AppNotification["type"]): string {
+  if (type === "MENTION") {
+    return "border-[#9FC5EA] bg-[#EAF5FF] text-[#1F4E7A]"
   }
-
-  const isEmployeeViewer = viewer?.role === "employee"
-  const isReporterSelf = normalizeName(authorName) !== "" && normalizeName(authorName) === normalizeName(viewer?.name)
-  if (!isEmployeeViewer || !isReporterSelf) {
-    return commentText
+  if (type === "REPLY") {
+    return "border-[#9CD8C2] bg-[#EAF8F0] text-[#176B4A]"
   }
-
-  const approvedMatch = trimmed.match(/^Reporter problem review approved \(rating (\d)\/5\):\s*(.*)$/i)
-  if (approvedMatch) {
-    const rating = approvedMatch[1]
-    const detail = (approvedMatch[2] || "")
-      .replace(/^Reporter\s+approved\s+the\s+fix\s+and\s+confirmed\s+resolution\.?/i, "")
-      .replace(/^Reporter\s+/i, "")
-      .trim()
-    return detail
-      ? `You approved the final review (rating ${rating}/5). ${detail}`
-      : `You approved the final review (rating ${rating}/5).`
+  if (type === "DISCUSSION") {
+    return "border-[#E5D2AB] bg-[#FFF9EC] text-[#7A5700]"
   }
-
-  const rejectedMatch = trimmed.match(/^Reporter problem review rejected \(rating (\d)\/5\):\s*(.*)$/i)
-  if (rejectedMatch) {
-    const rating = rejectedMatch[1]
-    const detail = (rejectedMatch[2] || "")
-      .replace(/^Reporter\s+requested\s+additional\s+work\s+before\s+closure\.?/i, "")
-      .replace(/^Reporter\s+/i, "")
-      .trim()
-    return detail
-      ? `You requested more work (rating ${rating}/5). ${detail}`
-      : `You requested more work (rating ${rating}/5).`
-  }
-
-  return commentText
+  return "border-slate-200 bg-slate-50 text-slate-700"
 }
 
 export function Topbar({ user }: TopbarProps) {
@@ -240,75 +230,66 @@ export function Topbar({ user }: TopbarProps) {
   const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const [ticketDetailOpen, setTicketDetailOpen] = useState(false)
-  const [ticketDetailLoading, setTicketDetailLoading] = useState(false)
-  const [ticketDetailError, setTicketDetailError] = useState("")
-  const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null)
+
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
-    user.role === "employee" || user.role === "technician" || user.role === "admin_fault" || user.role === "manager"
+    user.role === "employee" ||
+    user.role === "technician" ||
+    user.role === "admin_fault" ||
+    user.role === "admin_consumables" ||
+    user.role === "manager"
 
-  useEffect(() => {
-    if (!supportsNotifications) {
-      return
-    }
-
-    const load = async () => {
-      try {
-        const payload = await getNotifications(user.id)
-        setNotifications(payload.notifications)
-        setUnreadCount(payload.unread_count)
-      } catch {
-        // Keep topbar resilient if notifications API is temporarily unavailable.
-      }
-    }
-
-    void load()
-    const intervalId = window.setInterval(() => {
-      void load()
-    }, 10000)
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [supportsNotifications, user.id])
-
-  const handleOpenNotifications = async () => {
+  const loadNotifications = async () => {
     if (!supportsNotifications) {
       return
     }
     try {
-      const payload = await getNotifications(user.id)
+      const payload = await getNotifications()
       setNotifications(payload.notifications)
       setUnreadCount(payload.unread_count)
-      if (payload.unread_count > 0) {
-        const markResult = await markNotificationsRead(user.id)
-        setUnreadCount(markResult.unread_count)
-        setNotifications((currentItems) => currentItems.map((item) => ({ ...item, is_read: true })))
-      }
     } catch {
-      // Ignore transient errors from notifications refresh.
+      // Keep topbar resilient if notifications API is temporarily unavailable.
     }
   }
 
-  const openTicketDetailsFromNotification = async (ticketId: number) => {
-    setTicketDetailOpen(true)
-    setTicketDetailLoading(true)
-    setTicketDetailError("")
-    setSelectedTicket(null)
-    try {
-      if (user.role === "technician") {
-        const ticketPayload = await getTicketById(ticketId, { technicianUserId: user.id })
-        setSelectedTicket(ticketPayload)
-      } else {
-        const payload = await getTicketById(ticketId)
-        setSelectedTicket(payload)
+  useEffect(() => {
+    void loadNotifications()
+    if (!supportsNotifications) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadNotifications()
+    }, 10000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [supportsNotifications, user.role])
+
+  const handleNotificationSelect = async (item: AppNotification) => {
+    if (!item.is_read) {
+      setNotifications((currentItems) =>
+        currentItems.map((currentItem) =>
+          currentItem.id === item.id ? { ...currentItem, is_read: true } : currentItem
+        )
+      )
+      setUnreadCount((currentValue) => Math.max(currentValue - 1, 0))
+
+      try {
+        await markNotificationRead(item.id)
+      } catch {
+        void loadNotifications()
       }
-    } catch (loadError) {
-      setTicketDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
-    } finally {
-      setTicketDetailLoading(false)
+    }
+
+    if (item.ticket_id) {
+      const ticketPath = getTicketDetailPathByRole(user.role, item.ticket_id)
+      const shouldOpenConversation =
+        Boolean(item.ticket_message_id) || item.type === "MENTION" || item.type === "REPLY" || item.type === "DISCUSSION"
+      router.push(shouldOpenConversation ? `${ticketPath}#conversation-section` : ticketPath)
     }
   }
 
@@ -326,7 +307,7 @@ export function Topbar({ user }: TopbarProps) {
 
       <div className="flex items-center gap-3">
         {supportsNotifications ? (
-          <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
+          <DropdownMenu onOpenChange={(open) => (open ? void loadNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
@@ -341,23 +322,37 @@ export function Topbar({ user }: TopbarProps) {
                 ) : null}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuContent align="end" className="w-[22rem] max-w-[92vw]">
               {notifications.length === 0 ? (
                 <DropdownMenuItem disabled>No notifications yet.</DropdownMenuItem>
               ) : (
                 notifications.map((item) => (
                   <DropdownMenuItem
                     key={item.id}
-                    className={`group block whitespace-normal rounded-md transition-colors hover:bg-[#0B1F3A] hover:text-white focus:bg-[#0B1F3A] focus:text-white data-[highlighted]:bg-[#0B1F3A] data-[highlighted]:text-white data-[highlighted]:outline-none ${item.ticket_id ? "cursor-pointer" : "cursor-default"}`}
-                    onClick={() => {
-                      if (item.ticket_id) {
-                        void openTicketDetailsFromNotification(item.ticket_id)
-                      }
+                    className="block cursor-pointer whitespace-normal rounded-md px-3 py-3"
+                    onSelect={() => {
+                      void handleNotificationSelect(item)
                     }}
                   >
-                    <p className="text-sm text-slate-800 group-data-[highlighted]:text-white">{item.message}</p>
-                    <p className="mt-1 text-xs text-slate-500 group-data-[highlighted]:text-[#D5E8FF]">{new Date(item.created_at).toLocaleString()}</p>
-                    {item.ticket_id ? <p className="mt-1 text-xs text-[#005DA8] group-data-[highlighted]:text-[#B5D7FF]">Click to view full ticket details</p> : null}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge className={notificationBadgeClass(item.type)}>
+                          {formatNotificationType(item.type)}
+                        </Badge>
+                        {!item.is_read ? (
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-[#0A63B8]">
+                            New
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-sm leading-6 text-slate-800">{item.message}</p>
+                      <p className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+                      {item.ticket_id ? (
+                        <p className="text-xs font-medium text-[#0A63B8]">
+                          Open ticket conversation
+                        </p>
+                      ) : null}
+                    </div>
                   </DropdownMenuItem>
                 ))
               )}
@@ -365,76 +360,6 @@ export function Topbar({ user }: TopbarProps) {
           </DropdownMenu>
         ) : null}
       </div>
-
-      <Dialog open={ticketDetailOpen} onOpenChange={setTicketDetailOpen}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedTicket ? `Ticket #${selectedTicket.id} Details` : "Ticket Details"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {ticketDetailLoading ? (
-            <p className="text-sm text-slate-500">Loading ticket details...</p>
-          ) : ticketDetailError ? (
-            <p className="text-sm text-rose-600">{ticketDetailError}</p>
-          ) : selectedTicket ? (
-            <div className="space-y-4 text-sm">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">{selectedTicket.title}</h3>
-                <p className="mt-1 text-slate-700">{selectedTicket.description}</p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">Category: {selectedTicket.category}</Badge>
-                <Badge variant="outline">Priority: {selectedTicket.priority}</Badge>
-                <Badge variant="outline">Status: {selectedTicket.status}</Badge>
-                <Badge variant="outline">Reporter: {selectedTicket.employee_name ?? selectedTicket.employee_id}</Badge>
-                <Badge variant="outline">Assigned: {selectedTicket.technician_name ?? "Admin Fault Queue"}</Badge>
-                <Badge variant="outline">Branch: {selectedTicket.location || "N/A"}</Badge>
-                <Badge variant="outline">Reported: {selectedTicket.created_at ? new Date(selectedTicket.created_at).toLocaleString() : "N/A"}</Badge>
-                <Badge variant="outline">Updated: {selectedTicket.updated_at ? new Date(selectedTicket.updated_at).toLocaleString() : "N/A"}</Badge>
-              </div>
-
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-sm font-semibold text-slate-800">Comments</p>
-                {selectedTicket.comments.length === 0 ? (
-                  <p className="text-xs text-slate-500">No comments yet.</p>
-                ) : (
-                  selectedTicket.comments.map((comment) => (
-                    <div key={comment.id} className="rounded-md border border-slate-200 bg-white p-2">
-                      <p className="text-xs font-semibold text-slate-800">{comment.author_name}</p>
-                      <p className="text-xs text-slate-700">{formatTicketCommentText(comment.comment, comment.author_name, user)}</p>
-                      <p className="text-[11px] text-slate-500">{new Date(comment.created_at).toLocaleString()}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {user.role === "technician" ? (
-                <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
-                  Manual technician actions are disabled. Admin Fault manages ticket updates and escalations.
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">Select a ticket notification to view details.</p>
-          )}
-
-          <DialogFooter>
-            {selectedTicket && user.role === "technician" ? (
-              <Button onClick={() => router.push(`/technician/tickets/${selectedTicket.id}`)}>
-                Open Technician Workbench
-              </Button>
-            ) : null}
-            {selectedTicket && user.role === "admin_fault" ? (
-              <Button variant="outline" onClick={() => router.push("/admin-fault/tickets")}>
-                Open Admin Ticket Queue
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </header>
   )
 }

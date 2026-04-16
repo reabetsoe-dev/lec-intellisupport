@@ -32,6 +32,14 @@ class User(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.role})"
 
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
 
 class UserInvite(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="invites")
@@ -164,19 +172,107 @@ class TicketComment(models.Model):
         return f"Comment #{self.pk} on Ticket #{self.ticket_id}"
 
 
+class TicketMessage(models.Model):
+    TYPE_REPLY = "REPLY"
+    TYPE_INTERNAL_NOTE = "INTERNAL_NOTE"
+    TYPE_DISCUSSION = "DISCUSSION"
+
+    TYPE_CHOICES = [
+        (TYPE_REPLY, "Reply"),
+        (TYPE_INTERNAL_NOTE, "Internal Note"),
+        (TYPE_DISCUSSION, "Discussion"),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(User, on_delete=models.PROTECT, related_name="ticket_messages")
+    message_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_REPLY)
+    content = models.TextField()
+    parent_message = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="child_messages",
+    )
+    is_internal = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "ticket_messages"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["ticket", "created_at"], name="ticket_mess_ticket__80bcb6_idx"),
+            models.Index(fields=["ticket", "message_type", "created_at"], name="ticket_mess_ticket__b735e3_idx"),
+            models.Index(fields=["parent_message", "created_at"], name="ticket_mess_parent__efbca8_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.is_internal = self.message_type != self.TYPE_REPLY
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"TicketMessage #{self.pk} ({self.message_type})"
+
+
+class DiscussionParticipant(models.Model):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="discussion_participants")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="discussion_participations")
+    added_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="discussion_participants_added")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "discussion_participants"
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["ticket", "user"], name="unique_ticket_discussion_participant"),
+        ]
+        indexes = [
+            models.Index(fields=["ticket", "created_at"], name="discussion__ticket__fa37be_idx"),
+            models.Index(fields=["user", "created_at"], name="discussion__user_id_abf2cc_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"DiscussionParticipant #{self.pk} Ticket #{self.ticket_id}"
+
+
 class Notification(models.Model):
-    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    TYPE_MENTION = "MENTION"
+    TYPE_REPLY = "REPLY"
+    TYPE_DISCUSSION = "DISCUSSION"
+    TYPE_SYSTEM = "SYSTEM"
+
+    TYPE_CHOICES = [
+        (TYPE_MENTION, "Mention"),
+        (TYPE_REPLY, "Reply"),
+        (TYPE_DISCUSSION, "Discussion"),
+        (TYPE_SYSTEM, "System"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
-    message = models.CharField(max_length=255)
+    ticket_message = models.ForeignKey(
+        TicketMessage,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    message = models.TextField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_SYSTEM)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "notifications"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "is_read", "created_at"], name="notificatio_user_id_5cf777_idx"),
+            models.Index(fields=["type", "created_at"], name="notificatio_type_cb6908_idx"),
+        ]
 
     def __str__(self) -> str:
-        return f"Notification #{self.pk} for User #{self.recipient_id}"
+        return f"Notification #{self.pk} for User #{self.user_id}"
 
 
 class TicketMaterialRequest(models.Model):

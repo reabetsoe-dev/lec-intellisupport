@@ -5,9 +5,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 
+from severity_rules import upgrade_severity_for_work_stoppage
 
 
-DATA_PATH = "data/tickets_advanced.csv"
+
+DATA_PATH = os.getenv("TICKETS_DATA_PATH", "data/tickets_advanced.csv")
 MODEL_DIR = "models"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -37,6 +39,10 @@ data["text"] = (
     .str.replace(r"\s+", " ", regex=True)
     .str.strip()
 )
+data["severity"] = [
+    upgrade_severity_for_work_stoppage(text, severity)
+    for text, severity in zip(data["text"], data["severity"], strict=False)
+]
 
 # Collapse any extra categories into the supported core classes.
 CATEGORY_COLLAPSE = {

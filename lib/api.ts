@@ -58,6 +58,53 @@ export type TicketComment = {
 
 export type TicketDetail = Ticket & {
   comments: TicketComment[]
+  can_view_internal_messages?: boolean
+  can_manage_discussion_participants?: boolean
+}
+
+export type TicketMessageType = "REPLY" | "INTERNAL_NOTE" | "DISCUSSION"
+
+export type MentionableUser = {
+  id: number
+  name: string
+  email: string
+  role: UserRole
+  mention_handle: string
+}
+
+export type DiscussionParticipant = {
+  id: number
+  ticket_id: number
+  user: MentionableUser
+  added_by: MentionableUser
+  created_at: string
+}
+
+export type TicketMessage = {
+  id: number
+  ticket_id: number
+  sender: MentionableUser
+  message_type: TicketMessageType
+  content: string
+  parent_message_id: number | null
+  is_internal: boolean
+  created_at: string
+  mention_tokens: string[]
+  children: TicketMessage[]
+}
+
+export type TicketMessagesResponse = {
+  main_thread: TicketMessage[]
+  discussion_thread: TicketMessage[]
+  participants: DiscussionParticipant[]
+  mentionable_users: MentionableUser[]
+  permissions: {
+    can_view_internal_messages: boolean
+    can_manage_discussion_participants: boolean
+    can_post_discussion: boolean
+    can_post_internal_note: boolean
+    can_post_reply: boolean
+  }
 }
 
 export type TicketMaterialRequest = {
@@ -81,6 +128,7 @@ export type Technician = {
   branch: string
   department: string
   skillset: string
+  is_active: boolean
   is_available: boolean
 }
 
@@ -151,8 +199,10 @@ export type PerformanceMetrics = {
 export type AppNotification = {
   id: number
   message: string
+  type: "MENTION" | "REPLY" | "DISCUSSION" | "SYSTEM"
   is_read: boolean
   ticket_id?: number | null
+  ticket_message_id?: number | null
   created_at: string
   read_at?: string | null
 }
@@ -464,6 +514,37 @@ export async function getTicketById(
   return requestJson<TicketDetail>(BACKEND_BASE_URL, `/api/tickets/${ticketId}${query}`)
 }
 
+export async function getTicketMessages(ticketId: number): Promise<TicketMessagesResponse> {
+  return requestJson<TicketMessagesResponse>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/messages`)
+}
+
+export async function createTicketMessage(
+  ticketId: number,
+  payload: {
+    message_type: TicketMessageType
+    content: string
+    parent_message_id?: number | null
+  }
+): Promise<TicketMessage> {
+  return requestJson<TicketMessage>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/messages`, {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function addDiscussionParticipant(
+  ticketId: number,
+  payload: { userId?: number; email?: string }
+): Promise<DiscussionParticipant> {
+  return requestJson<DiscussionParticipant>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/participants`, {
+    method: "POST",
+    body: {
+      user_id: payload.userId,
+      email: payload.email,
+    },
+  })
+}
+
 export async function assignTechnician(
   ticketId: number,
   technicianId: number | null,
@@ -583,6 +664,27 @@ export async function deleteTechnician(technicianId: number): Promise<void> {
   })
 }
 
+export async function updateTechnicianStatus(technicianId: number, isActive: boolean): Promise<Technician> {
+  return requestJson<Technician>(BACKEND_BASE_URL, `/api/technicians/${technicianId}`, {
+    method: "PATCH",
+    body: { is_active: isActive },
+  })
+}
+
+export async function updateTechnicianDetails(
+  technicianId: number,
+  payload: {
+    name: string
+    email: string
+    skillset: string
+  }
+): Promise<Technician> {
+  return requestJson<Technician>(BACKEND_BASE_URL, `/api/technicians/${technicianId}`, {
+    method: "PATCH",
+    body: payload,
+  })
+}
+
 export async function getEmployees(): Promise<Employee[]> {
   return requestJson<Employee[]>(BACKEND_BASE_URL, "/api/employees")
 }
@@ -602,6 +704,27 @@ export async function createEmployee(payload: {
 export async function deleteEmployee(employeeId: number): Promise<void> {
   await requestJson<void>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {
     method: "DELETE",
+  })
+}
+
+export async function updateEmployeeStatus(employeeId: number, isActive: boolean): Promise<Employee> {
+  return requestJson<Employee>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {
+    method: "PATCH",
+    body: { is_active: isActive },
+  })
+}
+
+export async function updateEmployeeDetails(
+  employeeId: number,
+  payload: {
+    name: string
+    email: string
+    branch?: string
+  }
+): Promise<Employee> {
+  return requestJson<Employee>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {
+    method: "PATCH",
+    body: payload,
   })
 }
 
@@ -649,15 +772,22 @@ export async function createTicketMaterialRequest(
   })
 }
 
-export async function getNotifications(userId: number): Promise<NotificationsResponse> {
-  return requestJson<NotificationsResponse>(BACKEND_BASE_URL, `/api/notifications?user_id=${userId}`)
+export async function getNotifications(_userId?: number): Promise<NotificationsResponse> {
+  return requestJson<NotificationsResponse>(BACKEND_BASE_URL, "/api/notifications")
 }
 
-export async function markNotificationsRead(userId: number, notificationIds?: number[]): Promise<{ unread_count: number }> {
-  return requestJson<{ unread_count: number }>(BACKEND_BASE_URL, "/api/notifications/mark-read", {
-    method: "PUT",
-    body: { user_id: userId, notification_ids: notificationIds },
+export async function markNotificationRead(notificationId: number): Promise<AppNotification> {
+  return requestJson<AppNotification>(BACKEND_BASE_URL, `/api/notifications/${notificationId}/read`, {
+    method: "PATCH",
   })
+}
+
+export async function markNotificationsRead(_userId?: number, notificationIds?: number[]): Promise<{ unread_count: number }> {
+  if (Array.isArray(notificationIds) && notificationIds.length > 0) {
+    await Promise.all(notificationIds.map((notificationId) => markNotificationRead(notificationId)))
+  }
+  const payload = await getNotifications()
+  return { unread_count: payload.unread_count }
 }
 
 export async function getConsumables(): Promise<Consumable[]> {

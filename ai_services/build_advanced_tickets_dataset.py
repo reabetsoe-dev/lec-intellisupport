@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from severity_rules import upgrade_severity_for_work_stoppage
+
 
 INPUT_PATH = Path("data/tickets.csv")
 OUTPUT_PATH = Path("data/tickets_advanced.csv")
@@ -84,6 +86,12 @@ def main() -> None:
     data["text"] = data["text"].astype(str).map(normalize_text)
     data = data[data["text"].str.len() >= 8].copy()
 
+    original_input_severity = data["severity"].astype(str).copy()
+    data["severity"] = [
+        upgrade_severity_for_work_stoppage(text, severity)
+        for text, severity in zip(data["text"], data["severity"], strict=False)
+    ]
+
     base_rows = data.to_dict(orient="records")
     augmented_rows = list(base_rows)
 
@@ -106,6 +114,17 @@ def main() -> None:
         idx += 1
 
     advanced_df = pd.DataFrame(augmented_rows)
+    original_output_severity = advanced_df["severity"].astype(str).copy()
+    advanced_df["severity"] = [
+        upgrade_severity_for_work_stoppage(text, severity)
+        for text, severity in zip(advanced_df["text"], advanced_df["severity"], strict=False)
+    ]
+    output_upgrades = int(
+        (
+            original_output_severity.astype(str).str.strip().str.lower()
+            != advanced_df["severity"].astype(str).str.strip().str.lower()
+        ).sum()
+    )
     advanced_df = advanced_df.drop_duplicates(
         subset=["text", "category", "severity", "service_type"]
     ).reset_index(drop=True)
@@ -121,8 +140,17 @@ def main() -> None:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     advanced_df.to_csv(OUTPUT_PATH, index=False)
 
+    input_upgrades = int(
+        (
+            original_input_severity.astype(str).str.strip().str.lower()
+            != data["severity"].astype(str).str.strip().str.lower()
+        ).sum()
+    )
+
     print(f"Input rows: {len(data)}")
     print(f"Advanced rows: {len(advanced_df)}")
+    print(f"Input rows upgraded to high for work stoppage: {input_upgrades}")
+    print(f"Advanced rows upgraded to high for work stoppage: {output_upgrades}")
     print(f"Saved to: {OUTPUT_PATH}")
 
 

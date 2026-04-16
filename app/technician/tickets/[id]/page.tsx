@@ -1,5 +1,5 @@
 import { TechnicianBackButton } from "@/components/layout/TechnicianBackButton"
-import { TechnicianTicketDetailWorkspace } from "@/components/tickets/TechnicianTicketDetailWorkspace"
+import { TicketConversationWorkspace } from "@/components/tickets/TicketConversationWorkspace"
 
 type TechnicianTicketDetailPageProps = {
   params: Promise<{ id: string }>
@@ -19,7 +19,7 @@ export default async function TechnicianTicketDetailPage({ params }: TechnicianT
         ariaLabel="Return to assigned tickets"
         title="Return to assigned tickets"
       />
-      <TechnicianTicketDetailWorkspace ticketId={ticketId} />
+      <TicketConversationWorkspace ticketId={ticketId} viewerRole="technician" />
     </div>
   )
 }
