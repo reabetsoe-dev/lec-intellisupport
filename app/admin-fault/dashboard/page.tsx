@@ -29,6 +29,12 @@ const quickActions: Array<{
     icon: BarChart3,
   },
   {
+    href: "/admin-fault/sla",
+    title: "SLA Tracking",
+    description: "Watch acceptance delays, breach exposure, and live escalation pressure in one place.",
+    icon: Clock3,
+  },
+  {
     href: "/admin-fault/business-hours",
     title: "Business Hours",
     description: "Set support schedules, holidays, and group coverage for automated routing.",

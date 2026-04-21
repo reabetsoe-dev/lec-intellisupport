@@ -14,6 +14,10 @@ export type CreateTicketPayload = {
   category?: string
   location: string
   priority?: string
+  department?: string
+  asset?: string
+  impact?: string
+  ai_confidence?: number
   employee_id: number
   reporter_reviewed_problem: boolean
   caller_name?: string
@@ -46,6 +50,11 @@ export type Ticket = {
   latest_escalation_by?: string | null
   latest_escalation_at?: string | null
   latest_escalation_target?: string | null
+  assigned_at?: string | null
+  accepted_at?: string | null
+  last_activity_at?: string | null
+  escalation_level?: number
+  reassign_count?: number
 }
 
 export type TicketComment = {
@@ -196,6 +205,47 @@ export type PerformanceMetrics = {
     at_risk: number
     breached: number
   }
+  sla_config?: {
+    acceptance_sla_minutes: number
+    reassign_threshold_minutes: number
+    escalation_threshold_minutes: number
+  }
+  sla_operational?: {
+    awaiting_acceptance: number
+    acceptance_overdue: number
+    inactivity_breached: number
+    auto_reassigned: number
+    escalated_tickets: number
+    avg_acceptance_minutes: number
+  }
+  sla_by_technician?: Array<{
+    name: string
+    assigned: number
+    awaiting_acceptance: number
+    at_risk: number
+    breached: number
+    auto_reassigned: number
+    escalated: number
+    avg_acceptance_minutes: number
+  }>
+  technician_performance_scores?: Array<{
+    name: string
+    skillset: string
+    total_assigned: number
+    completed: number
+    success_rate: number
+    success_rate_percent: number
+    resolution_score: number
+    resolution_score_percent: number
+    avg_resolution_hours: number
+    performance_score: number
+    performance_score_percent: number
+    pending_acceptance_count: number
+    overdue_acceptance_count: number
+    recent_assignment_count: number
+    reassignment_readiness_score: number
+    reassignment_readiness_score_percent: number
+  }>
   filters?: {
     range: string
     start_date?: string | null
@@ -368,6 +418,31 @@ export type ChatbotResponse = {
   intent?: string
 }
 
+export type TicketIntakeDraft = {
+  title: string
+  description: string
+  category: string
+  priority: string
+  asset?: string
+  impact?: string
+  branch?: string
+  department?: string
+}
+
+export type TicketIntakeMode = "direct" | "follow_up" | "manual"
+
+export type TicketIntakeDraftResponse = {
+  draft: TicketIntakeDraft
+  confidence: number
+  follow_up_questions: string[]
+  intake_mode: TicketIntakeMode
+}
+
+export type VoiceTicketDraftResponse = TicketIntakeDraftResponse & {
+  transcript: string
+  transcription_source?: string
+}
+
 type AddConsumablePayload = {
   asset_tag?: string
   item_name: string
@@ -411,16 +486,136 @@ type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   body?: unknown
   token?: string
+  authMode?: "session" | "none"
+  headers?: Record<string, string>
+  timeoutMs?: number
+  service?: "backend" | "ai"
+}
+
+export type ApiErrorCode =
+  | "CONFIGURATION_ERROR"
+  | "NETWORK_ERROR"
+  | "TIMEOUT"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "RATE_LIMITED"
+  | "SERVER_ERROR"
+  | "INVALID_RESPONSE"
+  | "UNKNOWN"
+
+export class ApiError extends Error {
+  readonly code: ApiErrorCode
+  readonly status?: number
+  readonly service: "backend" | "ai" | "unknown"
+  readonly details?: unknown
+  readonly retryable: boolean
+
+  constructor(
+    message: string,
+    options: {
+      code: ApiErrorCode
+      status?: number
+      service?: "backend" | "ai" | "unknown"
+      details?: unknown
+      retryable?: boolean
+    }
+  ) {
+    super(message)
+    this.name = "ApiError"
+    this.code = options.code
+    this.status = options.status
+    this.service = options.service ?? "unknown"
+    this.details = options.details
+    this.retryable = Boolean(options.retryable)
+  }
+}
+
+const AUTH_SESSION_STORAGE_KEY = "lec_intellisupport_user"
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+const MAX_ERROR_MESSAGE_LENGTH = 240
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function clampErrorMessage(message: string): string {
+  const trimmed = message.trim()
+  if (trimmed.length <= MAX_ERROR_MESSAGE_LENGTH) {
+    return trimmed
+  }
+  return `${trimmed.slice(0, MAX_ERROR_MESSAGE_LENGTH - 3).trimEnd()}...`
+}
+
+function normalizeLoopbackHostname(hostname: string): string {
+  if (hostname === "localhost") {
+    return "127.0.0.1"
+  }
+  return hostname
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(hostname.toLowerCase())
+}
+
+function normalizeConfiguredBaseUrl(envName: string, envUrl: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(envUrl)
+  } catch {
+    throw new ApiError(`Invalid ${envName}. Expected an absolute http(s) URL.`, {
+      code: "CONFIGURATION_ERROR",
+      service: "unknown",
+    })
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new ApiError(`${envName} must use http or https.`, {
+      code: "CONFIGURATION_ERROR",
+      service: "unknown",
+    })
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new ApiError(`${envName} must not include embedded credentials.`, {
+      code: "CONFIGURATION_ERROR",
+      service: "unknown",
+    })
+  }
+
+  if (parsed.search || parsed.hash) {
+    throw new ApiError(`${envName} must not include query strings or hashes.`, {
+      code: "CONFIGURATION_ERROR",
+      service: "unknown",
+    })
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    parsed.protocol !== "https:" &&
+    !isLoopbackHostname(parsed.hostname)
+  ) {
+    throw new ApiError(`${envName} must use https when the app is served over https.`, {
+      code: "CONFIGURATION_ERROR",
+      service: "unknown",
+    })
+  }
+
+  const normalizedPathname = parsed.pathname.replace(/\/$/, "")
+  return `${parsed.origin}${normalizedPathname}`
 }
 
 function resolveServiceBaseUrl(envUrl: string | undefined, fallbackPort: number): string {
   if (envUrl && envUrl.trim()) {
-    return envUrl.replace(/\/$/, "")
+    const envName = fallbackPort === 8000 ? "NEXT_PUBLIC_BACKEND_URL" : "NEXT_PUBLIC_AI_SERVICE_URL"
+    return normalizeConfiguredBaseUrl(envName, envUrl.trim())
   }
 
   if (typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "https:" : "http:"
-    const host = window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname
+    const host = normalizeLoopbackHostname(window.location.hostname)
     return `${protocol}//${host}:${fallbackPort}`
   }
 
@@ -439,12 +634,16 @@ function getStoredToken(): string | null {
     return null
   }
   try {
-    const raw = window.localStorage.getItem("lec_intellisupport_user")
+    const raw = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
     if (!raw) {
       return null
     }
-    const parsed = JSON.parse(raw) as { token?: string }
-    return typeof parsed.token === "string" ? parsed.token : null
+    const parsed = JSON.parse(raw) as { token?: unknown }
+    if (!isRecord(parsed) || typeof parsed.token !== "string") {
+      return null
+    }
+    const token = parsed.token.trim()
+    return token.length > 0 ? token : null
   } catch {
     return null
   }
@@ -457,63 +656,294 @@ function unwrapApiData<T>(payload: unknown): T {
   return payload as T
 }
 
-async function requestJson<T>(baseUrl: string, path: string, options: RequestOptions = {}): Promise<T> {
-  const token = options.token ?? getStoredToken()
-  const requestInit: RequestInit = {
-    method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
+function getDefaultErrorMessage(status?: number): string {
+  if (status === 400) {
+    return "The request was invalid. Please review your input and try again."
+  }
+  if (status === 401) {
+    return "Your session has expired. Please sign in again."
+  }
+  if (status === 403) {
+    return "You do not have permission to perform this action."
+  }
+  if (status === 404) {
+    return "The requested resource could not be found."
+  }
+  if (status === 408) {
+    return "The request timed out. Please try again."
+  }
+  if (status === 429) {
+    return "Too many requests were sent. Please wait a moment and try again."
+  }
+  if (typeof status === "number" && status >= 500) {
+    return "The server encountered an error. Please try again shortly."
+  }
+  return "The request could not be completed."
+}
+
+function mapStatusToErrorCode(status?: number): ApiErrorCode {
+  if (status === 401) {
+    return "UNAUTHORIZED"
+  }
+  if (status === 403) {
+    return "FORBIDDEN"
+  }
+  if (status === 404) {
+    return "NOT_FOUND"
+  }
+  if (status === 408 || status === 504) {
+    return "TIMEOUT"
+  }
+  if (status === 429) {
+    return "RATE_LIMITED"
+  }
+  if (typeof status === "number" && status >= 500) {
+    return "SERVER_ERROR"
+  }
+  return "UNKNOWN"
+}
+
+function extractMessageFromPayload(payload: unknown): string | null {
+  if (typeof payload === "string") {
+    const trimmed = payload.trim()
+    return trimmed.length > 0 ? clampErrorMessage(trimmed) : null
   }
 
-  let response: Response
-  try {
-    response = await fetch(`${baseUrl}${path}`, requestInit)
-  } catch {
-    const fallbackBaseUrl = baseUrl.includes("://localhost") ? toIpv4Localhost(baseUrl) : null
-    if (!fallbackBaseUrl || fallbackBaseUrl === baseUrl) {
-      throw new Error(`Cannot reach service at ${baseUrl}. Ensure backend/AI server is running.`)
-    }
-
-    try {
-      response = await fetch(`${fallbackBaseUrl}${path}`, requestInit)
-    } catch {
-      throw new Error(`Cannot reach service at ${baseUrl}. Ensure backend/AI server is running.`)
-    }
+  if (Array.isArray(payload)) {
+    const messages = payload
+      .map((item) => extractMessageFromPayload(item))
+      .filter((item): item is string => Boolean(item))
+    return messages.length > 0 ? clampErrorMessage(messages.join(" ")) : null
   }
 
-  if (!response.ok) {
-    let message = `Request failed: ${response.status}`
-    const errorText = await response.text()
-    if (errorText) {
-      try {
-        const errorPayload = JSON.parse(errorText) as { message?: unknown }
-        if (errorPayload && typeof errorPayload === "object" && "message" in errorPayload) {
-          message = String(errorPayload.message)
-        } else {
-          message = errorText
-        }
-      } catch {
-        message = errorText
+  if (!isRecord(payload)) {
+    return null
+  }
+
+  const preferredKeys = ["message", "detail", "error", "errors", "non_field_errors"]
+  for (const key of preferredKeys) {
+    if (key in payload) {
+      const message = extractMessageFromPayload(payload[key])
+      if (message) {
+        return message
       }
     }
-    throw new Error(message)
   }
 
+  const fieldMessages = Object.entries(payload)
+    .map(([field, value]) => {
+      const message = extractMessageFromPayload(value)
+      if (!message) {
+        return null
+      }
+      return field === "detail" || field === "message" ? message : `${field}: ${message}`
+    })
+    .filter((value): value is string => Boolean(value))
+
+  return fieldMessages.length > 0 ? clampErrorMessage(fieldMessages.join(" ")) : null
+}
+
+function parseResponseBody(rawBody: string, contentType: string): unknown {
+  if (!rawBody) {
+    return undefined
+  }
+
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(rawBody) as unknown
+    } catch {
+      throw new ApiError("The server returned malformed JSON.", {
+        code: "INVALID_RESPONSE",
+        retryable: false,
+      })
+    }
+  }
+
+  return rawBody
+}
+
+function buildRequestUrl(baseUrl: string, path: string): string {
+  if (!path.startsWith("/")) {
+    throw new ApiError(`API paths must start with '/'. Received '${path}'.`, {
+      code: "CONFIGURATION_ERROR",
+    })
+  }
+
+  const url = new URL(baseUrl)
+  return new URL(path, `${url.href.replace(/\/$/, "")}/`).toString()
+}
+
+function buildPathWithQuery(
+  path: string,
+  query?: Record<string, string | number | boolean | null | undefined>
+): string {
+  if (!query) {
+    return path
+  }
+
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "undefined" || value === null || value === "") {
+      continue
+    }
+    search.set(key, String(value))
+  }
+
+  const queryString = search.toString()
+  return queryString ? `${path}?${queryString}` : path
+}
+
+function shouldRetryWithIpv4Fallback(url: string): boolean {
+  return url.includes("://localhost")
+}
+
+function buildRequestInit(options: RequestOptions): RequestInit {
+  const authMode = options.authMode ?? "session"
+  const token = authMode === "session" ? options.token ?? getStoredToken() : null
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
+  const hasBody = typeof options.body !== "undefined"
+
+  return {
+    method: options.method ?? "GET",
+    headers: {
+      Accept: "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers ?? {}),
+    },
+    body: hasBody
+      ? isFormData
+        ? (options.body as FormData)
+        : JSON.stringify(options.body)
+      : undefined,
+    cache: "no-store",
+    credentials: "omit",
+    referrerPolicy: "strict-origin-when-cross-origin",
+  }
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  if (typeof AbortController === "undefined") {
+    return fetch(url, init)
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function handleResponse<T>(response: Response, service: "backend" | "ai" | "unknown"): Promise<T> {
   if (response.status === 204) {
     return undefined as T
   }
 
-  const payload = await response.json()
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? ""
+  const rawBody = await response.text()
+  let payload: unknown
+
+  try {
+    payload = parseResponseBody(rawBody, contentType)
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw new ApiError(error.message, {
+        code: error.code,
+        status: response.status,
+        service,
+        retryable: error.retryable,
+      })
+    }
+    throw error
+  }
+
+  if (!response.ok) {
+    const message = contentType.includes("text/html")
+      ? getDefaultErrorMessage(response.status)
+      : extractMessageFromPayload(payload) ?? getDefaultErrorMessage(response.status)
+    throw new ApiError(message, {
+      code: mapStatusToErrorCode(response.status),
+      status: response.status,
+      service,
+      details: payload,
+      retryable: response.status >= 500 || response.status === 429,
+    })
+  }
+
+  if (typeof payload === "undefined") {
+    return undefined as T
+  }
+
+  if (contentType.includes("text/html")) {
+    throw new ApiError("The server returned an unexpected HTML response.", {
+      code: "INVALID_RESPONSE",
+      status: response.status,
+      service,
+      retryable: false,
+    })
+  }
+
   return unwrapApiData<T>(payload)
+}
+
+function buildNetworkError(
+  baseUrl: string,
+  service: "backend" | "ai" | "unknown",
+  error: unknown
+): ApiError {
+  const message =
+    error instanceof DOMException && error.name === "AbortError"
+      ? "The request timed out. Please try again."
+      : `Cannot reach service at ${baseUrl}. Ensure the server is running and reachable.`
+
+  return new ApiError(message, {
+    code: error instanceof DOMException && error.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+    service,
+    retryable: true,
+  })
+}
+
+async function requestJson<T>(baseUrl: string, path: string, options: RequestOptions = {}): Promise<T> {
+  const timeoutMs =
+    typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : DEFAULT_REQUEST_TIMEOUT_MS
+  const service = options.service ?? (baseUrl === BACKEND_BASE_URL ? "backend" : baseUrl === AI_BASE_URL ? "ai" : "unknown")
+  const requestInit = buildRequestInit(options)
+  const primaryUrl = buildRequestUrl(baseUrl, path)
+  const candidateUrls = shouldRetryWithIpv4Fallback(primaryUrl) ? [primaryUrl, toIpv4Localhost(primaryUrl)] : [primaryUrl]
+  let lastError: unknown = null
+
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const response = await fetchWithTimeout(candidateUrl, requestInit, timeoutMs)
+      return await handleResponse<T>(response, service)
+    } catch (error) {
+      if (error instanceof ApiError && error.code !== "NETWORK_ERROR" && error.code !== "TIMEOUT") {
+        throw error
+      }
+      lastError = error
+    }
+  }
+
+  if (lastError instanceof ApiError) {
+    throw lastError
+  }
+
+  throw buildNetworkError(baseUrl, service, lastError)
 }
 
 export async function loginUser(email: string, password: string): Promise<LoginResponse> {
   return requestJson<LoginResponse>(BACKEND_BASE_URL, "/api/auth/login", {
     method: "POST",
     body: { email, password },
+    authMode: "none",
   })
 }
 
@@ -521,6 +951,7 @@ export async function forgotPassword(email: string): Promise<{ message: string }
   return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/forgot-password", {
     method: "POST",
     body: { email },
+    authMode: "none",
   })
 }
 
@@ -531,6 +962,7 @@ export async function resetPasswordWithToken(payload: {
   return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/reset-password", {
     method: "POST",
     body: payload,
+    authMode: "none",
   })
 }
 
@@ -553,7 +985,7 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
 }
 
 export async function getUserTickets(employeeId: number): Promise<Ticket[]> {
-  return requestJson<Ticket[]>(BACKEND_BASE_URL, `/api/tickets?employee_id=${employeeId}`)
+  return requestJson<Ticket[]>(BACKEND_BASE_URL, buildPathWithQuery("/api/tickets", { employee_id: employeeId }))
 }
 
 export async function getAssignedTickets(technicianId: number): Promise<Ticket[]> {
@@ -570,8 +1002,10 @@ export async function getTicketById(
     technicianUserId?: number
   }
 ): Promise<TicketDetail> {
-  const query = options?.technicianUserId ? `?technician_user_id=${options.technicianUserId}` : ""
-  return requestJson<TicketDetail>(BACKEND_BASE_URL, `/api/tickets/${ticketId}${query}`)
+  return requestJson<TicketDetail>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery(`/api/tickets/${ticketId}`, { technician_user_id: options?.technicianUserId })
+  )
 }
 
 export async function getTicketMessages(ticketId: number): Promise<TicketMessagesResponse> {
@@ -795,22 +1229,19 @@ export async function setupPasswordWithInvite(payload: {
   return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/setup-password", {
     method: "POST",
     body: payload,
+    authMode: "none",
   })
 }
 
 export async function getPerformanceMetrics(params: PerformanceMetricsQuery = {}): Promise<PerformanceMetrics> {
-  const search = new URLSearchParams()
-  if (params.range) {
-    search.set("range", params.range)
-  }
-  if (params.start_date) {
-    search.set("start_date", params.start_date)
-  }
-  if (params.end_date) {
-    search.set("end_date", params.end_date)
-  }
-  const suffix = search.toString() ? `?${search.toString()}` : ""
-  return requestJson<PerformanceMetrics>(BACKEND_BASE_URL, `/api/performance${suffix}`)
+  return requestJson<PerformanceMetrics>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery("/api/performance", {
+      range: params.range,
+      start_date: params.start_date,
+      end_date: params.end_date,
+    })
+  )
 }
 
 export async function getDefaultBusinessHours(): Promise<BusinessHoursConfig> {
@@ -861,7 +1292,8 @@ export async function createTicketMaterialRequest(
   })
 }
 
-export async function getNotifications(_userId?: number): Promise<NotificationsResponse> {
+export async function getNotifications(userId?: number): Promise<NotificationsResponse> {
+  void userId
   return requestJson<NotificationsResponse>(BACKEND_BASE_URL, "/api/notifications")
 }
 
@@ -871,7 +1303,8 @@ export async function markNotificationRead(notificationId: number): Promise<AppN
   })
 }
 
-export async function markNotificationsRead(_userId?: number, notificationIds?: number[]): Promise<{ unread_count: number }> {
+export async function markNotificationsRead(userId?: number, notificationIds?: number[]): Promise<{ unread_count: number }> {
+  void userId
   if (Array.isArray(notificationIds) && notificationIds.length > 0) {
     await Promise.all(notificationIds.map((notificationId) => markNotificationRead(notificationId)))
   }
@@ -909,13 +1342,64 @@ export async function sendChatMessage(message: string): Promise<ChatbotResponse>
     return await requestJson<ChatbotResponse>(AI_BASE_URL, "/ai-service/chat", {
       method: "POST",
       body: { message },
+      authMode: "none",
+      service: "ai",
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError && error.code !== "NETWORK_ERROR" && error.code !== "TIMEOUT") {
+      throw error
+    }
     return requestJson<ChatbotResponse>(BACKEND_BASE_URL, "/api/ai-service/chat", {
       method: "POST",
       body: { message },
+      service: "backend",
     })
   }
+}
+
+export async function createAiIntakeDraft(payload: {
+  message: string
+  user_id?: number
+  employee_id?: number
+  branch?: string
+  department?: string
+  caller_name?: string
+  channel?: string
+}): Promise<TicketIntakeDraftResponse> {
+  return requestJson<TicketIntakeDraftResponse>(BACKEND_BASE_URL, "/api/ai-intake/draft", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function createVoiceTicketDraft(payload: {
+  audio: Blob
+  employee_id: number
+  caller_name?: string
+  transcript_hint?: string
+  branch?: string
+  department?: string
+}): Promise<VoiceTicketDraftResponse> {
+  const formData = new FormData()
+  formData.append("audio", payload.audio, "call-recording.webm")
+  formData.append("employee_id", String(payload.employee_id))
+  if (payload.caller_name) {
+    formData.append("caller_name", payload.caller_name)
+  }
+  if (payload.transcript_hint) {
+    formData.append("transcript_hint", payload.transcript_hint)
+  }
+  if (payload.branch) {
+    formData.append("branch", payload.branch)
+  }
+  if (payload.department) {
+    formData.append("department", payload.department)
+  }
+
+  return requestJson<VoiceTicketDraftResponse>(BACKEND_BASE_URL, "/api/voice-to-ticket", {
+    method: "POST",
+    body: formData,
+  })
 }
 
 export async function createConsumableRequest(payload: {
@@ -933,8 +1417,10 @@ export async function createConsumableRequest(payload: {
 }
 
 export async function getConsumableRequests(employeeId?: number): Promise<ConsumableRequest[]> {
-  const query = employeeId ? `?employee_id=${employeeId}` : ""
-  return requestJson<ConsumableRequest[]>(BACKEND_BASE_URL, `/api/consumable-requests${query}`)
+  return requestJson<ConsumableRequest[]>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery("/api/consumable-requests", { employee_id: employeeId })
+  )
 }
 
 export async function approveConsumableRequestById(
@@ -963,8 +1449,10 @@ export async function rejectConsumableRequestById(
 }
 
 export async function getConsumableReturns(employeeId?: number): Promise<ConsumableReturn[]> {
-  const query = employeeId ? `?employee_id=${employeeId}` : ""
-  return requestJson<ConsumableReturn[]>(BACKEND_BASE_URL, `/api/consumable-returns${query}`)
+  return requestJson<ConsumableReturn[]>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery("/api/consumable-returns", { employee_id: employeeId })
+  )
 }
 
 export async function createConsumableReturnRequest(payload: {
@@ -996,3 +1484,4 @@ export async function rejectConsumableReturn(
     body: { reason, rejected_by_id: rejectedById },
   })
 }
+

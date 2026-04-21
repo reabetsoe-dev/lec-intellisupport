@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 def default_business_hours_schedule() -> dict[str, dict[str, str | bool]]:
@@ -240,6 +241,11 @@ class Ticket(models.Model):
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
     )
+    assigned_at = models.DateTimeField(default=timezone.now)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
+    escalation_level = models.PositiveIntegerField(default=0)
+    reassign_count = models.PositiveIntegerField(default=0)
     reporter_reviewed_problem = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -249,6 +255,40 @@ class Ticket(models.Model):
 
     def __str__(self) -> str:
         return f"Ticket #{self.pk} - {self.title}"
+
+
+class TicketAssignmentHistory(models.Model):
+    REASON_AUTO_ASSIGN = "auto_assign"
+    REASON_AUTO_REASSIGN = "auto_reassign"
+    REASON_ADMIN_ESCALATION = "admin_escalation"
+    REASON_TECHNICIAN_ESCALATION = "technician_escalation"
+    REASON_MANUAL = "manual"
+
+    REASON_CHOICES = [
+        (REASON_AUTO_ASSIGN, "Auto Assign"),
+        (REASON_AUTO_REASSIGN, "Auto Reassign"),
+        (REASON_ADMIN_ESCALATION, "Admin Escalation"),
+        (REASON_TECHNICIAN_ESCALATION, "Technician Escalation"),
+        (REASON_MANUAL, "Manual"),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="assignment_history")
+    technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name="assignment_history")
+    reason = models.CharField(max_length=32, choices=REASON_CHOICES, default=REASON_AUTO_ASSIGN)
+    note = models.CharField(max_length=255, blank=True, default="")
+    assigned_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "ticket_assignment_history"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["ticket", "assigned_at"], name="tasg_ticket_at_idx"),
+            models.Index(fields=["technician", "assigned_at"], name="tasg_tech_at_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Assignment #{self.pk} Ticket #{self.ticket_id} -> Technician #{self.technician_id}"
 
 
 class TicketComment(models.Model):

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { BarChart3, Boxes, ClipboardList, type LucideIcon } from "lucide-react"
+import { BarChart3, Boxes, ClipboardList, Clock3, type LucideIcon } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +21,12 @@ const quickActions: Array<{
     title: "Ticket Oversight",
     description: "Monitor live ticket flow, ownership, and unresolved workload across operations.",
     icon: ClipboardList,
+  },
+  {
+    href: "/manager/sla",
+    title: "SLA Tracking",
+    description: "See breach exposure, acceptance drift, and escalation pressure before service levels slip.",
+    icon: Clock3,
   },
   {
     href: "/manager/performance",

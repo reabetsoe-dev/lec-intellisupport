@@ -1,3 +1,5 @@
+import logging
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -28,6 +30,8 @@ from .ticket_communication import (
     visible_messages_for_ticket,
 )
 from .views import _ticket_detail_to_dict
+
+logger = logging.getLogger(__name__)
 
 
 def _ticket_queryset():
@@ -95,12 +99,28 @@ def ticket_messages_view(request, ticket_id: int):
             "can_view_internal": can_view_internal_messages(request.user),
         },
     )
-    serializer.is_valid(raise_exception=True)
+    if not serializer.is_valid():
+        logger.error(
+            "Ticket message validation failed",
+            extra={
+                "ticket_id": ticket_id,
+                "user_id": getattr(request.user, "id", None),
+                "errors": serializer.errors,
+                "payload_keys": sorted(list(getattr(request, "data", {}).keys())) if hasattr(request, "data") else None,
+            },
+        )
+        # Safe, stable error response shape for clients.
+        return Response(
+            {"message": "Invalid message payload.", "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     if can_view_internal_messages(request.user):
         bootstrap_discussion_participants(ticket, request.user)
 
     ticket_message = serializer.save()
+    ticket.last_activity_at = timezone.now()
+    ticket.save(update_fields=["last_activity_at", "updated_at"])
 
     mentioned_users: list[User] = []
     if can_view_internal_messages(request.user):

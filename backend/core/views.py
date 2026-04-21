@@ -1,3 +1,4 @@
+import logging
 import secrets
 import os
 import json
@@ -18,10 +19,12 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
+from django.db.utils import OperationalError
 from django.db.models.deletion import ProtectedError
 from django.db.models import Count, Q, Sum
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, parser_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from .authentication import issue_auth_token
@@ -37,11 +40,33 @@ from .models import (
     PasswordResetToken,
     Technician,
     Ticket,
+    TicketAssignmentHistory,
     TicketComment,
+    TicketMessage,
     TicketMaterialRequest,
     User,
     UserInvite,
 )
+from .sla_config import (
+    ACCEPTANCE_SLA_MINUTES,
+    ESCALATION_THRESHOLD_MINUTES,
+    REASSIGN_THRESHOLD_MINUTES,
+    REASSIGNMENT_RECENT_ASSIGNMENTS_WINDOW_MINUTES,
+)
+
+logger = logging.getLogger(__name__)
+
+AI_INTAKE_CONFIDENCE_DIRECT = 0.8
+AI_INTAKE_CONFIDENCE_FOLLOW_UP = 0.5
+DEPARTMENT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Department:\s*([^\n\r]+)", re.IGNORECASE)
+BUSINESS_IMPACT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Business Impact:\s*([^\n\r]+)", re.IGNORECASE)
+CORE_AI_CATEGORIES = {
+    Technician.SKILL_HARDWARE,
+    Technician.SKILL_SOFTWARE,
+    Technician.SKILL_NETWORK,
+    Technician.SKILL_SECURITY,
+}
+CORE_AI_PRIORITIES = {choice for choice, _label in Ticket.PRIORITY_CHOICES}
 
 
 def _to_optional_bool(value):
@@ -78,6 +103,304 @@ def _to_optional_decimal(value):
         return Decimal(text)
     except (InvalidOperation, ValueError):
         return None
+
+
+def _normalize_ai_ticket_category(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if normalized == Technician.SKILL_HARDWARE.lower():
+        return Technician.SKILL_HARDWARE
+    if normalized == Technician.SKILL_SOFTWARE.lower():
+        return Technician.SKILL_SOFTWARE
+    if normalized == Technician.SKILL_NETWORK.lower():
+        return Technician.SKILL_NETWORK
+    if normalized == Technician.SKILL_SECURITY.lower():
+        return Technician.SKILL_SECURITY
+    return None
+
+
+def _normalize_ai_ticket_priority(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if normalized == "critical" or normalized == "urgent":
+        return Ticket.PRIORITY_CRITICAL
+    if normalized == "high":
+        return Ticket.PRIORITY_HIGH
+    if normalized == "medium":
+        return Ticket.PRIORITY_MEDIUM
+    if normalized == "low":
+        return Ticket.PRIORITY_LOW
+    return None
+
+
+def _extract_department_from_text(text: str) -> str:
+    if not text:
+        return ""
+    match = DEPARTMENT_LINE_PATTERN.search(text)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _infer_user_department(user: User) -> str:
+    if not user:
+        return ""
+
+    latest_request = (
+        ConsumableRequest.objects.filter(employee=user)
+        .exclude(department="")
+        .order_by("-created_at")
+        .first()
+    )
+    if latest_request and latest_request.department:
+        return latest_request.department.strip()
+
+    recent_descriptions = (
+        Ticket.objects.filter(employee=user)
+        .exclude(description="")
+        .order_by("-created_at")
+        .values_list("description", flat=True)[:5]
+    )
+    for description in recent_descriptions:
+        department = _extract_department_from_text(str(description or ""))
+        if department:
+            return department
+
+    return ""
+
+
+def _recent_tickets_for_user(user: User, limit: int = 5) -> list[dict]:
+    recent_tickets = (
+        Ticket.objects.filter(employee=user)
+        .order_by("-created_at")[:limit]
+    )
+    return [
+        {
+            "id": ticket.id,
+            "title": ticket.title,
+            "category": ticket.category,
+            "priority": ticket.priority,
+            "status": ticket.status,
+            "location": ticket.location,
+            "created_at": ticket.created_at.isoformat(),
+        }
+        for ticket in recent_tickets
+    ]
+
+
+def _possible_asset_match_for_user(user: User, narrative: str) -> dict | None:
+    normalized_narrative = str(narrative or "").strip().lower()
+    if not normalized_narrative:
+        return None
+
+    assignments = (
+        InventoryAssignment.objects.select_related("consumable")
+        .filter(employee=user)
+        .order_by("-assigned_at")[:5]
+    )
+    for assignment in assignments:
+        consumable = assignment.consumable
+        searchable_terms = [
+            consumable.item_name,
+            consumable.asset_tag,
+            consumable.serial_number,
+            consumable.brand,
+            consumable.model_number,
+        ]
+        if any(term and term.strip().lower() in normalized_narrative for term in searchable_terms):
+            display_name = consumable.item_name
+            if consumable.asset_tag:
+                display_name = f"{display_name} ({consumable.asset_tag})"
+            return {
+                "id": consumable.id,
+                "display_name": display_name,
+                "item_name": consumable.item_name,
+            }
+
+    generic_keyword_map = {
+        "laptop": ("laptop", "notebook", "computer"),
+        "printer": ("printer", "toner", "paper jam"),
+        "monitor": ("monitor", "display", "screen"),
+        "mouse": ("mouse",),
+        "keyboard": ("keyboard",),
+    }
+    for assignment in assignments:
+        item_name = assignment.consumable.item_name.strip()
+        if not item_name:
+            continue
+        for keyword, aliases in generic_keyword_map.items():
+            if keyword in item_name.lower() and any(alias in normalized_narrative for alias in aliases):
+                display_name = item_name
+                if assignment.consumable.asset_tag:
+                    display_name = f"{display_name} ({assignment.consumable.asset_tag})"
+                return {
+                    "id": assignment.consumable.id,
+                    "display_name": display_name,
+                    "item_name": item_name,
+                }
+
+    return None
+
+
+def enrich_context(data: dict, user: User) -> dict:
+    department = str(data.get("department", "")).strip() or _infer_user_department(user)
+    branch = str(data.get("branch", "")).strip() or user.branch.strip()
+    message = str(data.get("message", "")).strip()
+    possible_asset_match = _possible_asset_match_for_user(user, message)
+
+    return {
+        "branch": branch,
+        "department": department,
+        "recent_tickets": _recent_tickets_for_user(user),
+        "possible_asset_match": possible_asset_match,
+        "channel": str(data.get("channel", "")).strip(),
+        "caller_name": str(data.get("caller_name", "")).strip(),
+        "reporter_name": user.name,
+        "reporter_email": user.email,
+    }
+
+
+def _build_follow_up_questions(draft: dict, confidence: float) -> list[str]:
+    questions: list[str] = []
+
+    if not str(draft.get("asset", "")).strip():
+        questions.append("Which device, application, or service is affected?")
+    if not str(draft.get("impact", "")).strip():
+        questions.append("What business impact is this causing, and how many users are affected?")
+    if not str(draft.get("branch", "")).strip():
+        questions.append("Which branch or location should we attach to this ticket?")
+    if not str(draft.get("department", "")).strip():
+        questions.append("Which department is the reporter calling from?")
+
+    if confidence < AI_INTAKE_CONFIDENCE_FOLLOW_UP and not questions:
+        questions.append("Please review the draft carefully and correct the title, description, category, and priority before submitting.")
+
+    return questions[:3]
+
+
+def _compose_ticket_description(
+    description: str,
+    *,
+    location: str = "",
+    department: str = "",
+    asset: str = "",
+    impact: str = "",
+) -> str:
+    cleaned_description = str(description or "").strip()
+    if not cleaned_description:
+        return ""
+
+    metadata_lines: list[str] = []
+    normalized_description = cleaned_description.lower()
+    metadata_candidates = [
+        ("Branch", location),
+        ("Department", department),
+        ("Affected Asset", asset),
+        ("Business Impact", impact),
+    ]
+    for label, raw_value in metadata_candidates:
+        value = str(raw_value or "").strip()
+        if not value:
+            continue
+        line = f"{label}: {value}"
+        if line.lower() not in normalized_description:
+            metadata_lines.append(line)
+
+    if not metadata_lines:
+        return cleaned_description
+    return f"{cleaned_description}\n\n" + "\n".join(metadata_lines)
+
+
+def _call_ai_service_json(path: str, payload: dict, *, timeout: int = 10) -> dict:
+    ai_base_url = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001").rstrip("/")
+    ai_service_url = f"{ai_base_url}{path}"
+    request_body = json.dumps(payload).encode("utf-8")
+    request_object = urllib_request.Request(
+        ai_service_url,
+        data=request_body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(request_object, timeout=timeout) as response:
+            raw_body = response.read().decode("utf-8")
+            data = json.loads(raw_body) if raw_body else {}
+            if isinstance(data, dict):
+                return data
+            raise RuntimeError("AI service returned an invalid response payload.")
+    except HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="ignore") if hasattr(error, "read") else ""
+        raise RuntimeError(f"AI service error: {error.code} {error_body}".strip()) from error
+    except URLError as error:
+        raise ConnectionError("AI service is unreachable. Ensure ai_services is running on port 8001.") from error
+
+
+def _build_ai_intake_response(message: str, user: User, *, extra_context: dict | None = None) -> dict:
+    context_payload = {"message": message}
+    if extra_context:
+        context_payload.update(extra_context)
+
+    context = enrich_context(context_payload, user)
+    ai_draft = _call_ai_service_json(
+        "/ticket-draft",
+        {"message": message, "context": context},
+    )
+    if ai_draft.get("error"):
+        raise RuntimeError(str(ai_draft["error"]))
+
+    possible_asset_match = context.get("possible_asset_match") or {}
+    draft = {
+        "title": str(ai_draft.get("title", "")).strip() or "IT Support Request",
+        "description": str(ai_draft.get("description", message)).strip() or message.strip(),
+        "category": _normalize_ai_ticket_category(ai_draft.get("category")) or Technician.SKILL_SOFTWARE,
+        "priority": _normalize_ai_ticket_priority(ai_draft.get("priority")) or Ticket.PRIORITY_MEDIUM,
+        "asset": str(ai_draft.get("asset", "")).strip() or str(possible_asset_match.get("display_name", "")).strip(),
+        "impact": str(ai_draft.get("impact", "")).strip(),
+        "branch": context.get("branch", ""),
+        "department": context.get("department", ""),
+    }
+
+    confidence = float(ai_draft.get("confidence", 0.0) or 0.0)
+    if extra_context and extra_context.get("transcription_source") == "placeholder":
+        confidence = min(confidence, 0.35)
+
+    follow_up_questions = _build_follow_up_questions(draft, confidence)
+    if confidence > AI_INTAKE_CONFIDENCE_DIRECT:
+        intake_mode = "direct"
+    elif confidence >= AI_INTAKE_CONFIDENCE_FOLLOW_UP:
+        intake_mode = "follow_up"
+    else:
+        intake_mode = "manual"
+
+    return {
+        "draft": draft,
+        "confidence": round(confidence, 4),
+        "follow_up_questions": follow_up_questions,
+        "intake_mode": intake_mode,
+    }
+
+
+def _resolve_intake_user(request) -> User | None:
+    raw_user_id = request.data.get("employee_id", request.data.get("user_id"))
+    if raw_user_id in (None, "", "null"):
+        return None
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        return None
+    return User.objects.filter(id=user_id, is_active=True).first()
+
+
+def _transcribe_uploaded_audio(audio_file, transcript_hint: str = "") -> tuple[str, str]:
+    transcript = str(transcript_hint or "").strip()
+    if transcript:
+        return transcript, "browser"
+
+    file_name = getattr(audio_file, "name", "call-audio")
+    placeholder = (
+        f"Voice transcription placeholder for {file_name}. "
+        "Please review and complete the draft before submission."
+    )
+    return placeholder, "placeholder"
 
 
 def _normalize_ticket_status(value: str | None) -> str:
@@ -453,21 +776,31 @@ def _normalize_business_leaves(raw_leaves, *, business_hours: BusinessHours) -> 
     return normalized, None
 
 
-def _ensure_default_business_hours() -> BusinessHours:
-    existing = BusinessHours.objects.filter(is_default=True).order_by("id").first()
-    if existing:
-        if existing.timezone_name != BUSINESS_TIMEZONE:
-            existing.timezone_name = BUSINESS_TIMEZONE
-            existing.save(update_fields=["timezone_name", "updated_at"])
-        return existing
-    return BusinessHours.objects.create(
-        name="Default Business Hours",
-        description="Default support desk hours for automated routing.",
-        timezone_name=BUSINESS_TIMEZONE,
-        groups=[BusinessHours.GROUP_ALL],
-        weekly_schedule=_default_business_schedule(),
-        is_default=True,
-    )
+def _ensure_default_business_hours() -> BusinessHours | None:
+    """
+    Returns the default BusinessHours row, creating it if needed.
+
+    Safety: if migrations haven't been applied yet (missing table), we return None
+    so ticket submission doesn't hard-crash with a 500 in dev environments.
+    """
+    try:
+        existing = BusinessHours.objects.filter(is_default=True).order_by("id").first()
+        if existing:
+            if existing.timezone_name != BUSINESS_TIMEZONE:
+                existing.timezone_name = BUSINESS_TIMEZONE
+                existing.save(update_fields=["timezone_name", "updated_at"])
+            return existing
+        return BusinessHours.objects.create(
+            name="Default Business Hours",
+            description="Default support desk hours for automated routing.",
+            timezone_name=BUSINESS_TIMEZONE,
+            groups=[BusinessHours.GROUP_ALL],
+            weekly_schedule=_default_business_schedule(),
+            is_default=True,
+        )
+    except OperationalError:
+        logger.error("BusinessHours table missing; skipping business-hours routing checks.")
+        return None
 
 
 def _current_business_datetime(timezone_name: str) -> datetime:
@@ -785,47 +1118,277 @@ def _normalize_skillset_value(raw_value: str) -> str:
     return ""
 
 
-def _pick_best_technician_for_ticket(
+def _normalized_inverse_score(value: float, minimum: float, maximum: float) -> float:
+    if maximum <= minimum:
+        return 1.0
+    return max(0.0, min(1.0, (maximum - value) / (maximum - minimum)))
+
+
+def _ticket_resolution_seconds(ticket: Ticket) -> float | None:
+    resolved_statuses = {
+        Ticket.STATUS_PENDING_REVIEW,
+        Ticket.STATUS_SOLVED,
+        Ticket.LEGACY_STATUS_RESOLVED,
+    }
+    if _normalize_ticket_status(ticket.status) not in resolved_statuses and ticket.status not in resolved_statuses:
+        return None
+
+    started_at = ticket.accepted_at or ticket.assigned_at or ticket.created_at
+    if not started_at or not ticket.updated_at:
+        return None
+
+    return max((ticket.updated_at - started_at).total_seconds(), 0.0)
+
+
+def _technician_performance_metrics(technicians: list[Technician]) -> dict[int, dict[str, float | int]]:
+    technician_ids = [technician.id for technician in technicians]
+    stats_by_technician = {
+        technician.id: {
+            "total_assigned": 0,
+            "completed": 0,
+            "resolution_total": 0.0,
+            "resolution_samples": 0,
+        }
+        for technician in technicians
+    }
+
+    historical_tickets = Ticket.objects.filter(technician_id__in=technician_ids).only(
+        "technician_id",
+        "status",
+        "assigned_at",
+        "accepted_at",
+        "created_at",
+        "updated_at",
+    )
+
+    for historical_ticket in historical_tickets:
+        stats = stats_by_technician.get(historical_ticket.technician_id)
+        if not stats:
+            continue
+
+        stats["total_assigned"] += 1
+        resolution_seconds = _ticket_resolution_seconds(historical_ticket)
+        if resolution_seconds is None:
+            continue
+
+        stats["completed"] += 1
+        stats["resolution_total"] += resolution_seconds
+        stats["resolution_samples"] += 1
+
+    average_resolution_by_technician: dict[int, float] = {}
+    for technician_id, stats in stats_by_technician.items():
+        if stats["resolution_samples"] <= 0:
+            continue
+        average_resolution_by_technician[technician_id] = stats["resolution_total"] / stats["resolution_samples"]
+
+    resolution_values = list(average_resolution_by_technician.values())
+    min_resolution = min(resolution_values) if resolution_values else 0.0
+    max_resolution = max(resolution_values) if resolution_values else 0.0
+
+    performance_metrics: dict[int, dict[str, float | int]] = {}
+    for technician in technicians:
+        stats = stats_by_technician[technician.id]
+        if stats["total_assigned"] == 0:
+            success_rate = 0.5
+        else:
+            success_rate = stats["completed"] / stats["total_assigned"]
+
+        if technician.id in average_resolution_by_technician:
+            resolution_score = _normalized_inverse_score(
+                average_resolution_by_technician[technician.id],
+                min_resolution,
+                max_resolution,
+            )
+        else:
+            resolution_score = 0.5
+
+        average_resolution_hours = (
+            round((stats["resolution_total"] / stats["resolution_samples"]) / 3600.0, 2)
+            if stats["resolution_samples"] > 0
+            else 0.0
+        )
+        performance_score = round((success_rate * 0.5) + (resolution_score * 0.5), 6)
+        performance_metrics[technician.id] = {
+            "total_assigned": stats["total_assigned"],
+            "completed": stats["completed"],
+            "success_rate": round(success_rate, 6),
+            "success_rate_percent": round(success_rate * 100.0, 2),
+            "resolution_score": round(resolution_score, 6),
+            "resolution_score_percent": round(resolution_score * 100.0, 2),
+            "avg_resolution_hours": average_resolution_hours,
+            "performance_score": performance_score,
+            "performance_score_percent": round(performance_score * 100.0, 2),
+        }
+
+    return performance_metrics
+
+
+def _technician_performance_scores(technicians: list[Technician]) -> dict[int, float]:
+    return {
+        technician_id: float(metrics["performance_score"])
+        for technician_id, metrics in _technician_performance_metrics(technicians).items()
+    }
+
+
+def _technician_reassignment_metrics(technicians: list[Technician]) -> dict[int, dict[str, float | int]]:
+    if not technicians:
+        return {}
+
+    technician_ids = [technician.id for technician in technicians]
+    stats_by_technician = {
+        technician.id: {
+            "pending_acceptance_count": 0,
+            "overdue_acceptance_count": 0,
+            "recent_assignment_count": 0,
+        }
+        for technician in technicians
+    }
+
+    now = timezone.now()
+    acceptance_cutoff = now - timedelta(minutes=max(ACCEPTANCE_SLA_MINUTES, REASSIGN_THRESHOLD_MINUTES))
+    active_tickets = Ticket.objects.filter(technician_id__in=technician_ids).exclude(
+        status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED]
+    ).only("technician_id", "status", "accepted_at", "assigned_at", "created_at")
+
+    for active_ticket in active_tickets:
+        stats = stats_by_technician.get(active_ticket.technician_id)
+        if not stats:
+            continue
+
+        if _normalize_ticket_status(active_ticket.status) != Ticket.STATUS_PENDING or active_ticket.accepted_at is not None:
+            continue
+
+        stats["pending_acceptance_count"] += 1
+        assigned_reference = active_ticket.assigned_at or active_ticket.created_at
+        if assigned_reference and assigned_reference <= acceptance_cutoff:
+            stats["overdue_acceptance_count"] += 1
+
+    recent_window_start = now - timedelta(
+        minutes=max(REASSIGNMENT_RECENT_ASSIGNMENTS_WINDOW_MINUTES, 1)
+    )
+    recent_assignment_rows = (
+        TicketAssignmentHistory.objects.filter(
+            technician_id__in=technician_ids,
+            assigned_at__gte=recent_window_start,
+        )
+        .values("technician_id")
+        .annotate(recent_assignment_count=Count("id"))
+    )
+    for row in recent_assignment_rows:
+        stats = stats_by_technician.get(row["technician_id"])
+        if not stats:
+            continue
+        stats["recent_assignment_count"] = int(row["recent_assignment_count"])
+
+    pending_values = [stats["pending_acceptance_count"] for stats in stats_by_technician.values()]
+    overdue_values = [stats["overdue_acceptance_count"] for stats in stats_by_technician.values()]
+    recent_values = [stats["recent_assignment_count"] for stats in stats_by_technician.values()]
+    min_pending = min(pending_values) if pending_values else 0
+    max_pending = max(pending_values) if pending_values else 0
+    min_overdue = min(overdue_values) if overdue_values else 0
+    max_overdue = max(overdue_values) if overdue_values else 0
+    min_recent = min(recent_values) if recent_values else 0
+    max_recent = max(recent_values) if recent_values else 0
+
+    reassignment_metrics: dict[int, dict[str, float | int]] = {}
+    for technician in technicians:
+        stats = stats_by_technician[technician.id]
+        pending_acceptance_score = _normalized_inverse_score(
+            float(stats["pending_acceptance_count"]),
+            float(min_pending),
+            float(max_pending),
+        )
+        overdue_acceptance_score = _normalized_inverse_score(
+            float(stats["overdue_acceptance_count"]),
+            float(min_overdue),
+            float(max_overdue),
+        )
+        recent_assignment_score = _normalized_inverse_score(
+            float(stats["recent_assignment_count"]),
+            float(min_recent),
+            float(max_recent),
+        )
+        reassignment_readiness_score = round(
+            (pending_acceptance_score * 0.35)
+            + (overdue_acceptance_score * 0.45)
+            + (recent_assignment_score * 0.20),
+            6,
+        )
+        reassignment_metrics[technician.id] = {
+            "pending_acceptance_count": int(stats["pending_acceptance_count"]),
+            "overdue_acceptance_count": int(stats["overdue_acceptance_count"]),
+            "recent_assignment_count": int(stats["recent_assignment_count"]),
+            "pending_acceptance_score": round(pending_acceptance_score, 6),
+            "overdue_acceptance_score": round(overdue_acceptance_score, 6),
+            "recent_assignment_score": round(recent_assignment_score, 6),
+            "reassignment_readiness_score": reassignment_readiness_score,
+            "reassignment_readiness_score_percent": round(reassignment_readiness_score * 100.0, 2),
+        }
+
+    return reassignment_metrics
+
+
+def _rank_technicians_for_ticket(
     category: str,
     title: str,
     description: str,
     exclude_technician_ids: set[int] | None = None,
     allow_unavailable_fallback: bool = False,
-) -> tuple[Technician | None, bool, str | None]:
+    routing_context: str = "assignment",
+    candidate_technicians: list[Technician] | None = None,
+) -> tuple[list[dict[str, object]], str | None]:
     excluded_ids = {item for item in (exclude_technician_ids or set()) if isinstance(item, int)}
-    all_active_technicians = list(
-        Technician.objects.select_related("user")
-        .filter(
-            user__is_active=True,
-            user__role=User.ROLE_TECHNICIAN,
+    if candidate_technicians is None:
+        all_active_technicians = list(
+            Technician.objects.select_related("user")
+            .filter(
+                user__is_active=True,
+                user__role=User.ROLE_TECHNICIAN,
+            )
+            .order_by("user__name")
         )
-        .order_by("user__name")
-    )
+    else:
+        all_active_technicians = [
+            item
+            for item in candidate_technicians
+            if item.user_id and item.user.is_active and item.user.role == User.ROLE_TECHNICIAN
+        ]
+
     if excluded_ids:
         all_active_technicians = [item for item in all_active_technicians if item.id not in excluded_ids]
     if not all_active_technicians:
-        return None, False, None
+        return [], None
 
     business_hours = _ensure_default_business_hours()
-    business_hours_open_now = _is_business_hours_open_now(business_hours)
-    local_business_day = _current_business_datetime(business_hours.timezone_name).date()
-    technicians_on_leave = set(
-        BusinessLeave.objects.filter(
-            business_hours=business_hours,
-            start_date__lte=local_business_day,
-            end_date__gte=local_business_day,
-        ).values_list("technician_id", flat=True)
-    )
-    technicians_within_business_hours = [
-        item
-        for item in all_active_technicians
-        if _is_technician_within_business_hours(
-            item,
-            business_hours,
-            business_hours_open_now,
-            technicians_on_leave=technicians_on_leave,
-        )
-    ]
+    technicians_on_leave: set[int] = set()
+    if business_hours is None:
+        # If business-hours tables don't exist yet (unmigrated dev DB), don't block routing.
+        technicians_within_business_hours = list(all_active_technicians)
+    else:
+        business_hours_open_now = _is_business_hours_open_now(business_hours)
+        local_business_day = _current_business_datetime(business_hours.timezone_name).date()
+        try:
+            technicians_on_leave = set(
+                BusinessLeave.objects.filter(
+                    business_hours=business_hours,
+                    start_date__lte=local_business_day,
+                    end_date__gte=local_business_day,
+                ).values_list("technician_id", flat=True)
+            )
+        except OperationalError:
+            logger.error("BusinessLeave table missing; skipping leave checks for routing.")
+            technicians_on_leave = set()
+        technicians_within_business_hours = [
+            item
+            for item in all_active_technicians
+            if _is_technician_within_business_hours(
+                item,
+                business_hours,
+                business_hours_open_now,
+                technicians_on_leave=technicians_on_leave,
+            )
+        ]
+
     fallback_not_on_leave = [item for item in all_active_technicians if item.id not in technicians_on_leave]
     candidate_pool = (
         technicians_within_business_hours
@@ -833,7 +1396,7 @@ def _pick_best_technician_for_ticket(
         else (fallback_not_on_leave if allow_unavailable_fallback else [])
     )
     if not candidate_pool:
-        return None, False, None
+        return [], None
 
     available_technicians = [item for item in candidate_pool if item.is_available]
     technicians = (
@@ -842,7 +1405,7 @@ def _pick_best_technician_for_ticket(
         else (candidate_pool if allow_unavailable_fallback else [])
     )
     if not technicians:
-        return None, False, None
+        return [], None
 
     workload_rows = (
         Ticket.objects.filter(technician_id__in=[item.id for item in technicians])
@@ -851,35 +1414,112 @@ def _pick_best_technician_for_ticket(
         .annotate(open_count=Count("id"))
     )
     workload_by_technician = {row["technician_id"]: row["open_count"] for row in workload_rows}
+    performance_metrics = _technician_performance_metrics(technicians)
+    reassignment_metrics = _technician_reassignment_metrics(technicians)
+    workload_values = [workload_by_technician.get(technician.id, 0) for technician in technicians]
+    min_workload = min(workload_values) if workload_values else 0
+    max_workload = max(workload_values) if workload_values else 0
 
     ticket_domain = _infer_ticket_skill_domain(category, title, description)
-
-    best_technician = None
-    best_score = None
-    best_exact_match = False
+    ranked_profiles: list[dict[str, object]] = []
 
     for technician in technicians:
         skill_domain = _normalize_technician_skill_domain(technician.skillset)
         exact_match = bool(ticket_domain) and ticket_domain == skill_domain
 
         if not ticket_domain:
-            domain_rank = 1
+            skill_score = 0.7
         elif exact_match:
-            domain_rank = 0
+            skill_score = 1.0
         elif not skill_domain:
-            domain_rank = 2
+            skill_score = 0.35
         else:
-            domain_rank = 3
+            skill_score = 0.1
 
         workload = workload_by_technician.get(technician.id, 0)
-        score = (domain_rank, workload, technician.user.name.lower(), technician.id)
+        workload_score = _normalized_inverse_score(float(workload), float(min_workload), float(max_workload))
+        availability_score = 1.0 if technician.is_available else 0.2
+        performance_score = float(performance_metrics.get(technician.id, {}).get("performance_score", 0.5))
+        base_weighted_score = round(
+            (skill_score * 0.4)
+            + (workload_score * 0.2)
+            + (availability_score * 0.2)
+            + (performance_score * 0.2),
+            6,
+        )
+        reassignment_readiness_score = float(
+            reassignment_metrics.get(technician.id, {}).get("reassignment_readiness_score", 0.5)
+        )
+        selection_score = (
+            round((base_weighted_score * 0.75) + (reassignment_readiness_score * 0.25), 6)
+            if routing_context == "reassignment"
+            else base_weighted_score
+        )
+        ranked_profiles.append(
+            {
+                "technician": technician,
+                "exact_match": exact_match,
+                "ticket_domain": ticket_domain,
+                "skill_score": round(skill_score, 6),
+                "workload": workload,
+                "workload_score": round(workload_score, 6),
+                "availability_score": round(availability_score, 6),
+                "performance_score": round(performance_score, 6),
+                "base_weighted_score": base_weighted_score,
+                "selection_score": selection_score,
+                "pending_acceptance_count": int(
+                    reassignment_metrics.get(technician.id, {}).get("pending_acceptance_count", 0)
+                ),
+                "overdue_acceptance_count": int(
+                    reassignment_metrics.get(technician.id, {}).get("overdue_acceptance_count", 0)
+                ),
+                "recent_assignment_count": int(
+                    reassignment_metrics.get(technician.id, {}).get("recent_assignment_count", 0)
+                ),
+                "reassignment_readiness_score": round(reassignment_readiness_score, 6),
+                "is_available": technician.is_available,
+            }
+        )
 
-        if best_score is None or score < best_score:
-            best_score = score
-            best_technician = technician
-            best_exact_match = exact_match
+    ranked_profiles.sort(
+        key=lambda item: (
+            -float(item["selection_score"]),
+            0 if bool(item["exact_match"]) else 1,
+            int(item["overdue_acceptance_count"]),
+            int(item["pending_acceptance_count"]),
+            int(item["workload"]),
+            str(item["technician"].user.name).lower(),
+            int(item["technician"].id),
+        )
+    )
+    return ranked_profiles, ticket_domain
 
-    return best_technician, best_exact_match, ticket_domain
+
+def _pick_best_technician_for_ticket(
+    category: str,
+    title: str,
+    description: str,
+    exclude_technician_ids: set[int] | None = None,
+    allow_unavailable_fallback: bool = False,
+    routing_context: str = "assignment",
+) -> tuple[Technician | None, bool, str | None]:
+    ranked_profiles, ticket_domain = _rank_technicians_for_ticket(
+        category=category,
+        title=title,
+        description=description,
+        exclude_technician_ids=exclude_technician_ids,
+        allow_unavailable_fallback=allow_unavailable_fallback,
+        routing_context=routing_context,
+    )
+    if not ranked_profiles:
+        return None, False, ticket_domain
+
+    top_profile = ranked_profiles[0]
+    return (
+        top_profile["technician"],
+        bool(top_profile["exact_match"]),
+        ticket_domain,
+    )
 
 
 def _find_matching_consumable_for_restock(
@@ -1025,6 +1665,11 @@ def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) ->
         "technician_name": ticket.technician.user.name if ticket.technician_id else None,
         "routed_to_role": User.ROLE_TECHNICIAN if ticket.technician_id else User.ROLE_ADMIN_FAULT,
         "reporter_reviewed_problem": ticket.reporter_reviewed_problem,
+        "assigned_at": ticket.assigned_at.isoformat() if ticket.assigned_at else None,
+        "accepted_at": ticket.accepted_at.isoformat() if ticket.accepted_at else None,
+        "last_activity_at": ticket.last_activity_at.isoformat() if ticket.last_activity_at else None,
+        "escalation_level": ticket.escalation_level,
+        "reassign_count": ticket.reassign_count,
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
@@ -1128,6 +1773,115 @@ def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) ->
         type=Notification.TYPE_SYSTEM,
         ticket=ticket,
     )
+
+
+def _mark_ticket_activity(ticket: Ticket, *, at_time: datetime | None = None) -> None:
+    activity_at = at_time or timezone.now()
+    ticket.last_activity_at = activity_at
+    ticket.save(update_fields=["last_activity_at", "updated_at"])
+
+
+def _record_assignment_history(
+    ticket: Ticket,
+    technician: Technician | None,
+    *,
+    reason: str,
+    note: str = "",
+    assigned_at: datetime | None = None,
+) -> None:
+    if not technician:
+        return
+
+    TicketAssignmentHistory.objects.create(
+        ticket=ticket,
+        technician=technician,
+        reason=reason,
+        note=note,
+        assigned_at=assigned_at or timezone.now(),
+    )
+
+
+def _previously_assigned_technician_ids(ticket: Ticket) -> set[int]:
+    previous_ids = set(ticket.assignment_history.values_list("technician_id", flat=True))
+    if ticket.technician_id:
+        previous_ids.add(ticket.technician_id)
+    return previous_ids
+
+
+def _resolve_system_actor_for_ticket(ticket: Ticket) -> User | None:
+    candidate_user_ids: list[int] = []
+    if ticket.logged_by_admin_id:
+        candidate_user_ids.append(ticket.logged_by_admin_id)
+    if ticket.technician_id and ticket.technician.user_id:
+        candidate_user_ids.append(ticket.technician.user_id)
+
+    for candidate_user_id in candidate_user_ids:
+        candidate_user = User.objects.filter(id=candidate_user_id, is_active=True).first()
+        if candidate_user and candidate_user.role != User.ROLE_EMPLOYEE:
+            return candidate_user
+
+    for role in (User.ROLE_ADMIN_FAULT, User.ROLE_MANAGER, User.ROLE_ADMIN_CONSUMABLES, User.ROLE_TECHNICIAN):
+        candidate_user = User.objects.filter(role=role, is_active=True).order_by("id").first()
+        if candidate_user:
+            return candidate_user
+    return None
+
+
+def _add_internal_ticket_message(ticket: Ticket, content: str, *, actor: User | None = None) -> TicketMessage | None:
+    resolved_actor = actor or _resolve_system_actor_for_ticket(ticket)
+    if not resolved_actor:
+        return None
+
+    return TicketMessage.objects.create(
+        ticket=ticket,
+        sender=resolved_actor,
+        message_type=TicketMessage.TYPE_INTERNAL_NOTE,
+        content=content.strip(),
+    )
+
+
+def _assign_ticket_to_technician(
+    ticket: Ticket,
+    technician: Technician,
+    *,
+    assigned_at: datetime | None = None,
+    status_value: str = Ticket.STATUS_PENDING,
+    reset_acceptance: bool = True,
+    increment_reassign: bool = False,
+    history_reason: str = TicketAssignmentHistory.REASON_AUTO_ASSIGN,
+    history_note: str = "",
+) -> None:
+    assignment_time = assigned_at or timezone.now()
+    update_fields = ["technician", "assigned_at", "last_activity_at", "status", "updated_at"]
+
+    ticket.technician = technician
+    ticket.assigned_at = assignment_time
+    ticket.last_activity_at = assignment_time
+    ticket.status = status_value
+
+    if reset_acceptance:
+        ticket.accepted_at = None
+        update_fields.append("accepted_at")
+
+    if increment_reassign:
+        ticket.reassign_count += 1
+        update_fields.append("reassign_count")
+
+    ticket.save(update_fields=update_fields)
+    _record_assignment_history(
+        ticket,
+        technician,
+        reason=history_reason,
+        note=history_note,
+        assigned_at=assignment_time,
+    )
+
+
+def _extract_ticket_business_impact(ticket: Ticket) -> str:
+    match = BUSINESS_IMPACT_LINE_PATTERN.search(ticket.description or "")
+    if not match:
+        return ""
+    return match.group(1).strip().lower()
 
 
 FORGOT_PASSWORD_GENERIC_MESSAGE = (
@@ -1649,7 +2403,11 @@ def tickets_collection_view(request):
     title = str(request.data.get("title", "")).strip()
     description = str(request.data.get("description", "")).strip()
     category_hint = str(request.data.get("category", "")).strip()
+    priority_hint = str(request.data.get("priority", "")).strip()
     location = str(request.data.get("location", "")).strip()
+    department = str(request.data.get("department", "")).strip()
+    asset = str(request.data.get("asset", "")).strip()
+    impact = str(request.data.get("impact", "")).strip()
     employee_id = request.data.get("employee_id")
     caller_name = str(request.data.get("caller_name", "")).strip()
     logged_by_admin_id = request.data.get("logged_by_admin_id")
@@ -1678,39 +2436,62 @@ def tickets_collection_view(request):
         if not caller_name:
             return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
 
+    provided_category = _normalize_ai_ticket_category(category_hint)
     auto_category, triage_skill_domain = _auto_ticket_category(
         title=title,
         description=description,
         category_hint=category_hint,
     )
+    resolved_category = provided_category or auto_category
+
+    provided_priority = _normalize_ai_ticket_priority(priority_hint)
     auto_priority = _auto_ticket_priority(
         title=title,
         description=description,
     )
+    resolved_priority = provided_priority or auto_priority
+
+    composed_description = _compose_ticket_description(
+        description,
+        location=location,
+        department=department,
+        asset=asset,
+        impact=impact,
+    )
 
     auto_assigned_technician, has_exact_skill_match, inferred_assignment_skill_domain = _pick_best_technician_for_ticket(
-        category=auto_category,
+        category=resolved_category,
         title=title,
-        description=description,
+        description=composed_description,
         allow_unavailable_fallback=False,
     )
 
+    assignment_time = timezone.now()
     ticket = Ticket.objects.create(
         title=title,
-        description=description,
-        category=auto_category,
+        description=composed_description,
+        category=resolved_category,
         location=location,
-        priority=auto_priority,
+        priority=resolved_priority,
         status=Ticket.STATUS_PENDING,
         employee=employee,
         caller_name=caller_name or employee.name,
         logged_by_admin=logged_by_admin,
         technician=auto_assigned_technician,
+        assigned_at=assignment_time,
+        last_activity_at=assignment_time,
         reporter_reviewed_problem=True,
     )
     submission_actor = caller_name or employee.name
 
     if auto_assigned_technician:
+        _record_assignment_history(
+            ticket,
+            auto_assigned_technician,
+            reason=TicketAssignmentHistory.REASON_AUTO_ASSIGN,
+            note="Initial auto-assignment during ticket intake.",
+            assigned_at=assignment_time,
+        )
         _notify_user(
             auto_assigned_technician.user,
             f"Ticket #{ticket.id} auto-assigned to you based on skill/workload routing.",
@@ -1728,7 +2509,12 @@ def tickets_collection_view(request):
             _notify_user(admin_user, f"New ticket #{ticket.id} submitted by {submission_actor}.", ticket=ticket)
 
     payload = _ticket_to_dict(ticket)
-    triage_note = f"Auto-triage set category to {auto_category} and priority to {auto_priority}."
+    if provided_category or provided_priority:
+        triage_note = (
+            f"AI intake suggested category {resolved_category} and priority {resolved_priority}."
+        )
+    else:
+        triage_note = f"Auto-triage set category to {resolved_category} and priority to {resolved_priority}."
     if auto_assigned_technician and has_exact_skill_match:
         payload["routing_note"] = (
             f"{triage_note} Ticket auto-assigned to {auto_assigned_technician.user.name} based on skill match and awaits technician acceptance."
@@ -1751,7 +2537,7 @@ def tickets_collection_view(request):
             )
     else:
         current_business_hours = _ensure_default_business_hours()
-        if not _is_business_hours_open_now(current_business_hours):
+        if current_business_hours is None or not _is_business_hours_open_now(current_business_hours):
             payload["routing_note"] = (
                 f"{triage_note} Support desk is currently outside configured business hours. "
                 "Ticket routed to Admin Fault queue for assignment."
@@ -1847,6 +2633,7 @@ def ticket_comments_view(request, ticket_id: int):
         author=author,
         comment=comment_text,
     )
+    _mark_ticket_activity(ticket)
 
     _notify_user(
         ticket.employee,
@@ -1912,6 +2699,7 @@ def ticket_material_requests_view(request, ticket_id: int):
         author=requester,
         comment=f"Requested material '{item_name}' x{quantity_value}. Note: {notes or 'N/A'}",
     )
+    _mark_ticket_activity(ticket)
 
     for admin_user in User.objects.filter(Q(role=User.ROLE_ADMIN_FAULT) | Q(role=User.ROLE_ADMIN_CONSUMABLES), is_active=True):
         _notify_user(
@@ -1975,6 +2763,7 @@ def escalate_ticket_view(request, ticket_id: int):
             title=ticket.title,
             description=ticket.description,
             exclude_technician_ids={ticket.technician_id} if ticket.technician_id else None,
+            routing_context="reassignment",
         )
         if not auto_target_technician:
             return Response(
@@ -1983,10 +2772,14 @@ def escalate_ticket_view(request, ticket_id: int):
             )
 
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
-        ticket.technician = auto_target_technician
-        # Escalation hands over ownership and requires new technician acceptance.
-        ticket.status = Ticket.STATUS_PENDING
-        ticket.save(update_fields=["technician", "status", "updated_at"])
+        _assign_ticket_to_technician(
+            ticket,
+            auto_target_technician,
+            assigned_at=timezone.now(),
+            status_value=Ticket.STATUS_PENDING,
+            history_reason=TicketAssignmentHistory.REASON_ADMIN_ESCALATION,
+            history_note=f"Admin Fault escalation by {actor_user.name}.",
+        )
 
         TicketComment.objects.create(
             ticket=ticket,
@@ -2059,10 +2852,14 @@ def escalate_ticket_view(request, ticket_id: int):
             return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
 
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
-        ticket.technician = target_technician
-        # Escalation hands over ownership and requires new technician acceptance.
-        ticket.status = Ticket.STATUS_PENDING
-        ticket.save(update_fields=["technician", "status", "updated_at"])
+        _assign_ticket_to_technician(
+            ticket,
+            target_technician,
+            assigned_at=timezone.now(),
+            status_value=Ticket.STATUS_PENDING,
+            history_reason=TicketAssignmentHistory.REASON_TECHNICIAN_ESCALATION,
+            history_note=f"Technician escalation by {actor_user.name}.",
+        )
 
         TicketComment.objects.create(
             ticket=ticket,
@@ -2434,6 +3231,12 @@ def ticket_status_view(request, ticket_id: int):
         if not technician_user:
             return Response({"message": "Technician user not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        from .sla_engine import check_ticket_sla
+
+        check_ticket_sla(ticket)
+        ticket.refresh_from_db()
+        previous_status = _normalize_ticket_status(ticket.status)
+
         if not ticket.technician_id or ticket.technician.user_id != technician_user_id_int:
             return Response(
                 {"message": "You can only update status on tickets currently assigned to you."},
@@ -2444,6 +3247,9 @@ def ticket_status_view(request, ticket_id: int):
         if requested_status == Ticket.STATUS_SOLVED:
             # Technician "Solved" action routes to final reporter review stage.
             requested_status = Ticket.STATUS_PENDING_REVIEW
+
+        if previous_status == Ticket.STATUS_IN_PROCESS and requested_status == Ticket.STATUS_IN_PROCESS:
+            return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
         allowed_technician_transitions: dict[str, set[str]] = {
             Ticket.STATUS_PENDING: {Ticket.STATUS_IN_PROCESS},
@@ -2462,8 +3268,14 @@ def ticket_status_view(request, ticket_id: int):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        status_change_time = timezone.now()
         ticket.status = requested_status
-        ticket.save(update_fields=["status", "updated_at"])
+        update_fields = ["status", "last_activity_at", "updated_at"]
+        ticket.last_activity_at = status_change_time
+        if requested_status == Ticket.STATUS_IN_PROCESS and ticket.accepted_at is None:
+            ticket.accepted_at = status_change_time
+            update_fields.append("accepted_at")
+        ticket.save(update_fields=update_fields)
 
         if previous_status != Ticket.STATUS_IN_PROCESS and requested_status == Ticket.STATUS_IN_PROCESS:
             TicketComment.objects.create(
@@ -2545,8 +3357,14 @@ def ticket_status_view(request, ticket_id: int):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    status_change_time = timezone.now()
     ticket.status = status_value
-    ticket.save(update_fields=["status", "updated_at"])
+    update_fields = ["status", "last_activity_at", "updated_at"]
+    ticket.last_activity_at = status_change_time
+    if status_value == Ticket.STATUS_IN_PROCESS and ticket.accepted_at is None:
+        ticket.accepted_at = status_change_time
+        update_fields.append("accepted_at")
+    ticket.save(update_fields=update_fields)
 
     if (
         accepted_by_admin is not None
@@ -2637,7 +3455,13 @@ def ticket_problem_review_view(request, ticket_id: int):
         admin_message = f"Reporter rated Ticket #{ticket.id} at {rating_int}/5 and requested more work. Ticket moved back to In Progress."
         technician_message = f"Reporter rated Ticket #{ticket.id} at {rating_int}/5 and requested more work. Ticket moved back to In Progress."
 
-    ticket.save(update_fields=["status", "updated_at"])
+    review_time = timezone.now()
+    update_fields = ["status", "last_activity_at", "updated_at"]
+    ticket.last_activity_at = review_time
+    if ticket.status == Ticket.STATUS_IN_PROCESS and ticket.accepted_at is None:
+        ticket.accepted_at = review_time
+        update_fields.append("accepted_at")
+    ticket.save(update_fields=update_fields)
 
     TicketComment.objects.create(
         ticket=ticket,
@@ -2698,18 +3522,38 @@ def performance_metrics_view(request):
         bucket_mode = "day" if day_span <= 62 else "month"
 
     solved_durations_hours: list[float] = []
+    acceptance_durations_minutes: list[float] = []
     sla_within_target = 0
     sla_at_risk = 0
     sla_breached = 0
     stale_open_tickets = 0
     escalated_ticket_ids: set[int] = set()
+    sla_operational = {
+        "awaiting_acceptance": 0,
+        "acceptance_overdue": 0,
+        "inactivity_breached": 0,
+        "auto_reassigned": 0,
+        "escalated_tickets": 0,
+    }
+    sla_by_technician_map: dict[str, dict[str, float]] = {}
 
-    for technician in Technician.objects.select_related("user").all():
+    technicians = list(Technician.objects.select_related("user").all())
+    for technician in technicians:
         technician_breakdown_map[technician.user.name] = {
             "assigned": 0,
             "solved": 0,
             "pending": 0,
             "escalated": 0,
+        }
+        sla_by_technician_map[technician.user.name] = {
+            "assigned": 0,
+            "awaiting_acceptance": 0,
+            "at_risk": 0,
+            "breached": 0,
+            "auto_reassigned": 0,
+            "escalated": 0,
+            "acceptance_total": 0.0,
+            "acceptance_samples": 0,
         }
 
     ticket_ids = [item.id for item in tickets]
@@ -2726,6 +3570,7 @@ def performance_metrics_view(request):
     for item in tickets:
         normalized_status = _normalize_ticket_status(item.status)
         technician_breakdown = None
+        technician_sla_breakdown = None
 
         created_day = _to_local_date(item.created_at)
         created_bucket_key = _bucket_key_for_day(created_day, bucket_mode)
@@ -2752,10 +3597,33 @@ def performance_metrics_view(request):
                 },
             )
             technician_breakdown["assigned"] += 1
+            technician_sla_breakdown = sla_by_technician_map.setdefault(
+                technician_name,
+                {
+                    "assigned": 0,
+                    "awaiting_acceptance": 0,
+                    "at_risk": 0,
+                    "breached": 0,
+                    "auto_reassigned": 0,
+                    "escalated": 0,
+                    "acceptance_total": 0.0,
+                    "acceptance_samples": 0,
+                },
+            )
+            technician_sla_breakdown["assigned"] += 1
 
         age_hours = max((now - item.created_at).total_seconds() / 3600.0, 0.0)
         sla_limit_hours = _sla_target_hours(item.priority)
         status_is_solved = normalized_status == Ticket.STATUS_SOLVED
+        status_is_terminal = normalized_status in {Ticket.STATUS_PENDING_REVIEW, Ticket.STATUS_SOLVED}
+        assigned_reference = item.assigned_at or item.created_at
+        acceptance_minutes = None
+        if item.accepted_at and assigned_reference:
+            acceptance_minutes = max((item.accepted_at - assigned_reference).total_seconds() / 60.0, 0.0)
+            acceptance_durations_minutes.append(acceptance_minutes)
+            if technician_sla_breakdown is not None:
+                technician_sla_breakdown["acceptance_total"] += acceptance_minutes
+                technician_sla_breakdown["acceptance_samples"] += 1
 
         if status_is_solved:
             resolution_hours = max((item.updated_at - item.created_at).total_seconds() / 3600.0, 0.0)
@@ -2794,6 +3662,40 @@ def performance_metrics_view(request):
             raw_status = str(item.status or "").strip().lower()
             if raw_status == "escalated" or item.id in escalated_ticket_ids:
                 technician_breakdown["escalated"] += 1
+
+        if not status_is_terminal and item.technician_id:
+            if item.accepted_at is None:
+                sla_operational["awaiting_acceptance"] += 1
+                if technician_sla_breakdown is not None:
+                    technician_sla_breakdown["awaiting_acceptance"] += 1
+
+                acceptance_wait_minutes = max((now - assigned_reference).total_seconds() / 60.0, 0.0)
+                if acceptance_wait_minutes > ACCEPTANCE_SLA_MINUTES:
+                    sla_operational["acceptance_overdue"] += 1
+                    if technician_sla_breakdown is not None:
+                        technician_sla_breakdown["breached"] += 1
+            else:
+                activity_reference = item.last_activity_at or item.accepted_at
+                inactivity_minutes = max((now - activity_reference).total_seconds() / 60.0, 0.0)
+                if inactivity_minutes > ESCALATION_THRESHOLD_MINUTES:
+                    sla_operational["inactivity_breached"] += 1
+                    if technician_sla_breakdown is not None:
+                        technician_sla_breakdown["breached"] += 1
+                elif ESCALATION_THRESHOLD_MINUTES > 0 and (
+                    inactivity_minutes / ESCALATION_THRESHOLD_MINUTES
+                ) >= 0.8:
+                    if technician_sla_breakdown is not None:
+                        technician_sla_breakdown["at_risk"] += 1
+
+        if item.reassign_count > 0:
+            sla_operational["auto_reassigned"] += item.reassign_count
+            if technician_sla_breakdown is not None:
+                technician_sla_breakdown["auto_reassigned"] += item.reassign_count
+
+        if item.escalation_level > 0:
+            sla_operational["escalated_tickets"] += 1
+            if technician_sla_breakdown is not None:
+                technician_sla_breakdown["escalated"] += item.escalation_level
 
         if effective_hours > sla_limit_hours:
             sla_breached += 1
@@ -2834,6 +3736,13 @@ def performance_metrics_view(request):
         if solved_durations_hours
         else 0.0
     )
+    avg_acceptance_minutes = (
+        round(sum(acceptance_durations_minutes) / len(acceptance_durations_minutes), 2)
+        if acceptance_durations_minutes
+        else 0.0
+    )
+    technician_performance_metrics = _technician_performance_metrics(technicians)
+    technician_reassignment_metrics = _technician_reassignment_metrics(technicians)
     total_sla_records = sla_within_target + sla_at_risk + sla_breached
     sla_breach_rate = round((sla_breached / total_sla_records) * 100, 2) if total_sla_records else 0.0
 
@@ -2872,6 +3781,87 @@ def performance_metrics_view(request):
             "at_risk": sla_at_risk,
             "breached": sla_breached,
         },
+        "sla_config": {
+            "acceptance_sla_minutes": ACCEPTANCE_SLA_MINUTES,
+            "reassign_threshold_minutes": REASSIGN_THRESHOLD_MINUTES,
+            "escalation_threshold_minutes": ESCALATION_THRESHOLD_MINUTES,
+        },
+        "sla_operational": {
+            **sla_operational,
+            "avg_acceptance_minutes": avg_acceptance_minutes,
+        },
+        "sla_by_technician": [
+            {
+                "name": name,
+                "assigned": int(values["assigned"]),
+                "awaiting_acceptance": int(values["awaiting_acceptance"]),
+                "at_risk": int(values["at_risk"]),
+                "breached": int(values["breached"]),
+                "auto_reassigned": int(values["auto_reassigned"]),
+                "escalated": int(values["escalated"]),
+                "avg_acceptance_minutes": round(
+                    values["acceptance_total"] / values["acceptance_samples"],
+                    2,
+                )
+                if values["acceptance_samples"]
+                else 0.0,
+            }
+            for name, values in sorted(sla_by_technician_map.items())
+        ],
+        "technician_performance_scores": [
+            {
+                "name": technician.user.name,
+                "skillset": technician.skillset,
+                "total_assigned": int(technician_performance_metrics.get(technician.id, {}).get("total_assigned", 0)),
+                "completed": int(technician_performance_metrics.get(technician.id, {}).get("completed", 0)),
+                "success_rate": float(technician_performance_metrics.get(technician.id, {}).get("success_rate", 0.5)),
+                "success_rate_percent": float(
+                    technician_performance_metrics.get(technician.id, {}).get("success_rate_percent", 50.0)
+                ),
+                "resolution_score": float(
+                    technician_performance_metrics.get(technician.id, {}).get("resolution_score", 0.5)
+                ),
+                "resolution_score_percent": float(
+                    technician_performance_metrics.get(technician.id, {}).get("resolution_score_percent", 50.0)
+                ),
+                "avg_resolution_hours": float(
+                    technician_performance_metrics.get(technician.id, {}).get("avg_resolution_hours", 0.0)
+                ),
+                "performance_score": float(
+                    technician_performance_metrics.get(technician.id, {}).get("performance_score", 0.5)
+                ),
+                "performance_score_percent": float(
+                    technician_performance_metrics.get(technician.id, {}).get("performance_score_percent", 50.0)
+                ),
+                "pending_acceptance_count": int(
+                    technician_reassignment_metrics.get(technician.id, {}).get("pending_acceptance_count", 0)
+                ),
+                "overdue_acceptance_count": int(
+                    technician_reassignment_metrics.get(technician.id, {}).get("overdue_acceptance_count", 0)
+                ),
+                "recent_assignment_count": int(
+                    technician_reassignment_metrics.get(technician.id, {}).get("recent_assignment_count", 0)
+                ),
+                "reassignment_readiness_score": float(
+                    technician_reassignment_metrics.get(technician.id, {}).get("reassignment_readiness_score", 0.5)
+                ),
+                "reassignment_readiness_score_percent": float(
+                    technician_reassignment_metrics.get(technician.id, {}).get(
+                        "reassignment_readiness_score_percent",
+                        50.0,
+                    )
+                ),
+            }
+            for technician in sorted(
+                technicians,
+                key=lambda item: (
+                    -float(
+                        technician_performance_metrics.get(item.id, {}).get("performance_score", 0.5)
+                    ),
+                    item.user.name.lower(),
+                ),
+            )
+        ],
         "filters": {
             "range": range_value,
             "start_date": start_date.isoformat() if start_date else None,
@@ -3691,39 +4681,92 @@ def consumable_return_reject_view(request, return_id: int):
 
 
 @api_view(["POST"])
+def ai_intake_draft_view(request):
+    message = str(request.data.get("message", "")).strip()
+    if not message:
+        return Response({"message": "message is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    context_user = _resolve_intake_user(request)
+    if not context_user:
+        return Response({"message": "A valid user_id or employee_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        payload = _build_ai_intake_response(
+            message,
+            context_user,
+            extra_context={
+                "branch": str(request.data.get("branch", "")).strip(),
+                "department": str(request.data.get("department", "")).strip(),
+                "caller_name": str(request.data.get("caller_name", "")).strip(),
+                "channel": str(request.data.get("channel", "text")).strip() or "text",
+            },
+        )
+    except ConnectionError as error:
+        return Response({"message": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except RuntimeError as error:
+        return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
+def voice_to_ticket_view(request):
+    audio_file = request.FILES.get("audio")
+    if not audio_file:
+        return Response({"message": "audio file is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    context_user = _resolve_intake_user(request)
+    if not context_user:
+        return Response({"message": "A valid employee_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    transcript, transcription_source = _transcribe_uploaded_audio(
+        audio_file,
+        transcript_hint=str(request.data.get("transcript_hint", "")).strip(),
+    )
+
+    try:
+        payload = _build_ai_intake_response(
+            transcript,
+            context_user,
+            extra_context={
+                "branch": str(request.data.get("branch", "")).strip(),
+                "department": str(request.data.get("department", "")).strip(),
+                "caller_name": str(request.data.get("caller_name", "")).strip(),
+                "channel": "voice",
+                "transcription_source": transcription_source,
+            },
+        )
+    except ConnectionError as error:
+        return Response({"message": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except RuntimeError as error:
+        return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    payload["transcript"] = transcript
+    payload["transcription_source"] = transcription_source
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
 def ai_service_chat_proxy_view(request):
     message = str(request.data.get("message", "")).strip()
     if not message:
         return Response({"message": "message is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    ai_base_url = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001").rstrip("/")
-    ai_service_url = f"{ai_base_url}/ai-service/chat"
-
-    payload = json.dumps({"message": message}).encode("utf-8")
-    req = urllib_request.Request(
-        ai_service_url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
-        with urllib_request.urlopen(req, timeout=10) as response:
-            body = response.read().decode("utf-8")
-            data = json.loads(body) if body else {}
-            if isinstance(data, dict):
-                return Response(data, status=status.HTTP_200_OK)
-            return Response({"reply": "AI service returned an invalid response."}, status=status.HTTP_502_BAD_GATEWAY)
-    except HTTPError as error:
+        data = _call_ai_service_json("/ai-service/chat", {"message": message})
+        return Response(data, status=status.HTTP_200_OK)
+    except RuntimeError as error:
         return Response(
-            {"message": f"AI service error: {error.code}"},
+            {"message": str(error)},
             status=status.HTTP_502_BAD_GATEWAY,
         )
-    except URLError:
+    except ConnectionError as error:
         return Response(
-            {"message": "AI service is unreachable. Ensure ai_services is running on port 8001."},
+            {"message": str(error)},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
+    
 
 
 

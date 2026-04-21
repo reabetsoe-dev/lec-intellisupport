@@ -1,7 +1,11 @@
+import logging
+
 from rest_framework import serializers
 
 from .models import DiscussionParticipant, Notification, TicketMessage, User
 from .ticket_communication import extract_mention_tokens, get_primary_mention_handle
+
+logger = logging.getLogger(__name__)
 
 
 class MentionableUserSerializer(serializers.ModelSerializer):
@@ -64,7 +68,11 @@ class TicketMessageTreeSerializer(serializers.ModelSerializer):
 
 
 class TicketMessageCreateSerializer(serializers.Serializer):
-    message_type = serializers.ChoiceField(choices=TicketMessage.TYPE_CHOICES)
+    # Compatibility:
+    # - allow missing message_type (defaults to REPLY)
+    # - allow legacy/alias strings (normalized in validate)
+    # - never raise server errors for unexpected values
+    message_type = serializers.CharField(required=False, allow_blank=True)
     content = serializers.CharField()
     parent_message_id = serializers.IntegerField(required=False, allow_null=True)
 
@@ -73,7 +81,33 @@ class TicketMessageCreateSerializer(serializers.Serializer):
         ticket = self.context["ticket"]
         can_view_internal = self.context["can_view_internal"]
         content = str(attrs.get("content", "")).strip()
-        message_type = attrs["message_type"]
+        raw_message_type = attrs.get("message_type", "")
+        normalized = str(raw_message_type or "").strip().upper()
+
+        aliases = {
+            "": TicketMessage.TYPE_REPLY,
+            TicketMessage.TYPE_REPLY: TicketMessage.TYPE_REPLY,
+            "PUBLIC": TicketMessage.TYPE_REPLY,
+            "EXTERNAL": TicketMessage.TYPE_REPLY,
+            TicketMessage.TYPE_INTERNAL_NOTE: TicketMessage.TYPE_INTERNAL_NOTE,
+            "INTERNAL": TicketMessage.TYPE_INTERNAL_NOTE,
+            "NOTE": TicketMessage.TYPE_INTERNAL_NOTE,
+            "INTERNALNOTE": TicketMessage.TYPE_INTERNAL_NOTE,
+            TicketMessage.TYPE_DISCUSSION: TicketMessage.TYPE_DISCUSSION,
+            "INTERNAL_DISCUSSION": TicketMessage.TYPE_DISCUSSION,
+        }
+
+        message_type = aliases.get(normalized)
+        if message_type is None:
+            logger.error(
+                "Invalid ticket message_type; coercing to REPLY",
+                extra={
+                    "ticket_id": getattr(ticket, "id", None),
+                    "user_id": getattr(current_user, "id", None),
+                    "message_type": raw_message_type,
+                },
+            )
+            message_type = TicketMessage.TYPE_REPLY
 
         if not content:
             raise serializers.ValidationError({"content": "Message content is required."})
@@ -110,6 +144,7 @@ class TicketMessageCreateSerializer(serializers.Serializer):
                 )
 
         attrs["content"] = content
+        attrs["message_type"] = message_type
         attrs["parent_message"] = parent_message
         return attrs
 

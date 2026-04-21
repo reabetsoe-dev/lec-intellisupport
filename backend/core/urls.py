@@ -8,6 +8,7 @@ from .communication_views import (
     ticket_participants_view,
 )
 from .views import (
+    ai_intake_draft_view,
     ai_service_chat_proxy_view,
     assigned_tickets_view,
     assign_technician_view,
@@ -38,6 +39,7 @@ from .views import (
     ticket_priority_view,
     ticket_status_view,
     tickets_collection_view,
+    voice_to_ticket_view,
 )
 
 urlpatterns = [
@@ -46,7 +48,9 @@ urlpatterns = [
     path("auth/reset-password", reset_password_view),
     path("auth/change-password", change_password_view),
     path("auth/setup-password", setup_password_view),
+    path("ai-intake/draft", ai_intake_draft_view),
     path("ai-service/chat", ai_service_chat_proxy_view),
+    path("voice-to-ticket", voice_to_ticket_view),
     path("business-hours/default", business_hours_default_view),
     path("tickets", tickets_collection_view),
     path("tickets/assigned/<int:technician_id>", assigned_tickets_view),
@@ -76,4 +80,5 @@ urlpatterns = [
     path("consumable-returns", consumable_returns_collection_view),
     path("consumable-returns/<int:return_id>/receive", consumable_return_receive_view),
     path("consumable-returns/<int:return_id>/reject", consumable_return_reject_view),
+    
 ]
