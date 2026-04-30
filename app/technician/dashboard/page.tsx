@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ClipboardList, PackagePlus, type LucideIcon } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
+import { TechnicianTicketTable } from "@/components/tickets/TechnicianTicketTable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   getInterfaceActionCardClassName,
@@ -63,6 +64,17 @@ export default function TechnicianDashboardPage() {
           })}
         </CardContent>
       </Card>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#0B1F3A]">Assigned Tickets</h2>
+          <p className="text-sm text-[#4A6A96]">
+            Opening a pending ticket starts it automatically and the system will wait until that job is completed
+            before assigning you another waiting report.
+          </p>
+        </div>
+        <TechnicianTicketTable />
+      </div>
     </div>
   )
 }

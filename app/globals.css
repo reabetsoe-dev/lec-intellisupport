@@ -48,6 +48,8 @@
 }
 
 :root {
+  --font-landing-display: "Aptos Display";
+  --font-landing-body: "Aptos";
   --radius: 0.625rem;
   --background: #f4f8ff;
   --foreground: #0b1f3a;

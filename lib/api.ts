@@ -139,6 +139,20 @@ export type Technician = {
   skillset: string
   is_active: boolean
   is_available: boolean
+  availability_updated_at?: string | null
+  last_check_in_at?: string | null
+  last_check_out_at?: string | null
+}
+
+export type TechnicianCheckpointAction = "check_in" | "check_out"
+
+export type TechnicianCheckpointResponse = {
+  message: string
+  action: TechnicianCheckpointAction
+  recorded_at: string
+  timezone: string
+  assignment_note: string
+  technician: Technician
 }
 
 export type Employee = {
@@ -171,7 +185,41 @@ export type CreatedResolvedDatum = {
   resolved: number
 }
 
-export type PerformanceRange = "today" | "7d" | "30d" | "90d" | "all" | "custom"
+export type TechnicianActivitySummaryDatum = {
+  technician_id: number
+  user_id: number
+  name: string
+  email: string
+  skillset: string
+  is_currently_available: boolean
+  check_ins: number
+  check_outs: number
+  tickets_accepted: number
+  tickets_solved: number
+  tickets_escalated: number
+  asset_requests_submitted: number
+  total_session_hours: number
+  total_ticket_work_hours: number
+  avg_ticket_work_hours: number
+  last_activity_at?: string | null
+}
+
+export type TechnicianRecentActivityDatum = {
+  id: number
+  technician_id: number
+  technician_name: string
+  action_type: string
+  action_label: string
+  description: string
+  occurred_at: string
+  ended_at?: string | null
+  duration_minutes?: number | null
+  ticket_id?: number | null
+  consumable_request_id?: number | null
+  metadata?: Record<string, unknown>
+}
+
+export type PerformanceRange = "today" | "7d" | "30d" | "90d" | "365d" | "all" | "custom"
 
 export type PerformanceMetricsQuery = {
   range?: PerformanceRange
@@ -190,6 +238,10 @@ export type PerformanceMetrics = {
     avg_resolution_hours?: number
     sla_breach_rate?: number
     stale_open_tickets?: number
+    technician_check_ins?: number
+    technician_check_outs?: number
+    currently_checked_in_technicians?: number
+    technician_activity_events?: number
   }
   by_status: CountDatum[]
   by_priority: CountDatum[]
@@ -246,6 +298,8 @@ export type PerformanceMetrics = {
     reassignment_readiness_score: number
     reassignment_readiness_score_percent: number
   }>
+  technician_activity_summary?: TechnicianActivitySummaryDatum[]
+  technician_recent_activity?: TechnicianRecentActivityDatum[]
   filters?: {
     range: string
     start_date?: string | null
@@ -409,6 +463,29 @@ export type ConsumableReturn = {
   updatedAt: string
 }
 
+export type AssetQrFaultReportPayload = {
+  assetCode: string
+  assetName: string
+  assetType: string
+  location: string
+  department: string
+  category: string
+  title: string
+  description: string
+  urgency: "Low" | "Medium" | "High" | "Critical"
+  employeeId?: number
+  employeeName?: string
+  employeeEmail?: string
+  attachment?: File | null
+}
+
+export type AssetQrFaultReportResponse = {
+  message: string
+  ticketId: number
+  referenceNumber: string
+  routingNote?: string
+}
+
 export type ChatbotResponse = {
   reply: string
   confidence?: number
@@ -535,6 +612,7 @@ const AUTH_SESSION_STORAGE_KEY = "lec_intellisupport_user"
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
 const MAX_ERROR_MESSAGE_LENGTH = 240
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
+const BACKEND_BROWSER_PROXY_PREFIX = "/api/backend"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -797,6 +875,19 @@ function shouldRetryWithIpv4Fallback(url: string): boolean {
   return url.includes("://localhost")
 }
 
+function resolveBrowserBackendProxyTarget(baseUrl: string, path: string): { baseUrl: string; path: string } {
+  if (typeof window === "undefined" || baseUrl !== BACKEND_BASE_URL) {
+    return { baseUrl, path }
+  }
+
+  const normalizedPath = path.startsWith("/api/") ? path.slice(4) : path
+
+  return {
+    baseUrl: window.location.origin,
+    path: `${BACKEND_BROWSER_PROXY_PREFIX}${normalizedPath}`,
+  }
+}
+
 function buildRequestInit(options: RequestOptions): RequestInit {
   const authMode = options.authMode ?? "session"
   const token = authMode === "session" ? options.token ?? getStoredToken() : null
@@ -916,7 +1007,8 @@ async function requestJson<T>(baseUrl: string, path: string, options: RequestOpt
       : DEFAULT_REQUEST_TIMEOUT_MS
   const service = options.service ?? (baseUrl === BACKEND_BASE_URL ? "backend" : baseUrl === AI_BASE_URL ? "ai" : "unknown")
   const requestInit = buildRequestInit(options)
-  const primaryUrl = buildRequestUrl(baseUrl, path)
+  const requestTarget = service === "backend" ? resolveBrowserBackendProxyTarget(baseUrl, path) : { baseUrl, path }
+  const primaryUrl = buildRequestUrl(requestTarget.baseUrl, requestTarget.path)
   const candidateUrls = shouldRetryWithIpv4Fallback(primaryUrl) ? [primaryUrl, toIpv4Localhost(primaryUrl)] : [primaryUrl]
   let lastError: unknown = null
 
@@ -936,7 +1028,7 @@ async function requestJson<T>(baseUrl: string, path: string, options: RequestOpt
     throw lastError
   }
 
-  throw buildNetworkError(baseUrl, service, lastError)
+  throw buildNetworkError(requestTarget.baseUrl, service, lastError)
 }
 
 export async function loginUser(email: string, password: string): Promise<LoginResponse> {
@@ -944,6 +1036,17 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     method: "POST",
     body: { email, password },
     authMode: "none",
+  })
+}
+
+export async function submitTechnicianCheckpoint(payload: {
+  email: string
+  password: string
+  action: TechnicianCheckpointAction
+}): Promise<TechnicianCheckpointResponse> {
+  return requestJson<TechnicianCheckpointResponse>(BACKEND_BASE_URL, "/api/auth/technician-checkpoint", {
+    method: "POST",
+    body: payload,
   })
 }
 
@@ -1316,6 +1419,10 @@ export async function getConsumables(): Promise<Consumable[]> {
   return requestJson<Consumable[]>(BACKEND_BASE_URL, "/api/consumables")
 }
 
+export async function getConsumableById(id: number): Promise<Consumable> {
+  return requestJson<Consumable>(BACKEND_BASE_URL, `/api/consumables/${id}`)
+}
+
 export async function addConsumable(payload: AddConsumablePayload): Promise<Consumable> {
   return requestJson<Consumable>(BACKEND_BASE_URL, "/api/consumables", {
     method: "POST",
@@ -1483,5 +1590,68 @@ export async function rejectConsumableReturn(
     method: "PUT",
     body: { reason, rejected_by_id: rejectedById },
   })
+}
+
+export async function submitAssetQrFaultReport(
+  payload: AssetQrFaultReportPayload
+): Promise<AssetQrFaultReportResponse> {
+  const formData = new FormData()
+  formData.append("assetCode", payload.assetCode)
+  formData.append("assetName", payload.assetName)
+  formData.append("assetType", payload.assetType)
+  formData.append("location", payload.location)
+  formData.append("department", payload.department)
+  formData.append("category", payload.category)
+  formData.append("title", payload.title)
+  formData.append("description", payload.description)
+  formData.append("urgency", payload.urgency)
+  if (typeof payload.employeeId === "number") {
+    formData.append("employeeId", String(payload.employeeId))
+  }
+  if (payload.employeeName) {
+    formData.append("employeeName", payload.employeeName)
+  }
+  if (payload.employeeEmail) {
+    formData.append("employeeEmail", payload.employeeEmail)
+  }
+  if (payload.attachment) {
+    formData.append("attachment", payload.attachment)
+  }
+
+  const response = await fetch("/api/asset-qr/report", {
+    method: "POST",
+    body: formData,
+  })
+
+  const responseText = await response.text()
+  let responseData: Record<string, unknown> = {}
+  if (responseText) {
+    try {
+      responseData = JSON.parse(responseText) as Record<string, unknown>
+    } catch {
+      responseData = {}
+    }
+  }
+
+  if (!response.ok) {
+    const message = typeof responseData.message === "string" ? responseData.message : "Failed to submit asset fault report."
+    throw new ApiError(message, {
+      code: mapStatusToErrorCode(response.status),
+      status: response.status,
+      service: "backend",
+      details: responseData,
+      retryable: response.status >= 500 || response.status === 429,
+    })
+  }
+
+  return {
+    message:
+      typeof responseData.message === "string"
+        ? responseData.message
+        : "Your asset fault report has been submitted successfully. A technician will be assigned shortly.",
+    ticketId: typeof responseData.ticketId === "number" ? responseData.ticketId : 0,
+    referenceNumber: typeof responseData.referenceNumber === "string" ? responseData.referenceNumber : "",
+    routingNote: typeof responseData.routingNote === "string" ? responseData.routingNote : undefined,
+  }
 }
 

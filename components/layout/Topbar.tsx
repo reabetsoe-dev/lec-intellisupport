@@ -116,6 +116,12 @@ const topbarConfig: Array<{
     title: "Call Logging",
   },
   {
+    match: (pathname) => pathname.startsWith("/admin-fault/technician-access"),
+    parent: "Admin Fault",
+    current: "Technician QR",
+    title: "Technician QR Access",
+  },
+  {
     match: (pathname) => pathname.startsWith("/admin-fault/manage-users"),
     parent: "Admin Fault",
     current: "Manage Users",
@@ -241,7 +247,7 @@ export function Topbar({ user }: TopbarProps) {
     user.role === "admin_consumables" ||
     user.role === "manager"
 
-  const loadNotifications = async () => {
+  const refreshNotifications = async () => {
     if (!supportsNotifications) {
       return
     }
@@ -255,16 +261,32 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   useEffect(() => {
-    void loadNotifications()
     if (!supportsNotifications) {
       return
     }
 
+    let isMounted = true
+    const syncNotifications = async () => {
+      try {
+        const payload = await getNotifications()
+        if (!isMounted) {
+          return
+        }
+        setNotifications(payload.notifications)
+        setUnreadCount(payload.unread_count)
+      } catch {
+        // Keep topbar resilient if notifications API is temporarily unavailable.
+      }
+    }
+
+    void syncNotifications()
+
     const intervalId = window.setInterval(() => {
-      void loadNotifications()
+      void syncNotifications()
     }, 10000)
 
     return () => {
+      isMounted = false
       window.clearInterval(intervalId)
     }
   }, [supportsNotifications, user.role])
@@ -281,7 +303,7 @@ export function Topbar({ user }: TopbarProps) {
       try {
         await markNotificationRead(item.id)
       } catch {
-        void loadNotifications()
+        void refreshNotifications()
       }
     }
 
@@ -294,20 +316,20 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-6 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg border border-white/30 bg-white/12 px-3 py-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-white">
-            <span className="tracking-wide">{parent}</span>
+    <header className="sticky top-0 z-10 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-3 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur sm:px-4 md:px-6">
+      <div className="min-w-0 flex-1">
+        <div className="inline-flex max-w-full items-center rounded-lg border border-white/30 bg-white/12 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-white">
+            <span className="truncate tracking-wide">{parent}</span>
             <ChevronRight className="h-3.5 w-3.5" />
-            <span className="tracking-wide">{current}</span>
+            <span className="truncate tracking-wide">{current}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         {supportsNotifications ? (
-          <DropdownMenu onOpenChange={(open) => (open ? void loadNotifications() : undefined)}>
+          <DropdownMenu onOpenChange={(open) => (open ? void refreshNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"

@@ -2,6 +2,7 @@ from datetime import date
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
+from django.db.models.deletion import ProtectedError
 
 from core.models import Consumable, Technician, User
 
@@ -10,65 +11,36 @@ class Command(BaseCommand):
     help = "Seed demo users and consumables for LEC-Intelli-Support."
 
     def handle(self, *args, **options):
+        technician_users = [
+            {
+                "name": "Palesa Mokopotsa",
+                "email": "palesa.mokopotsa@lec.com",
+                "password": "Technician@123",
+                "role": User.ROLE_TECHNICIAN,
+                "skillset": Technician.SKILL_NETWORK,
+            },
+            {
+                "name": "Reabetsoe Sephekola",
+                "email": "reabetsoe.sephekola@lec.com",
+                "password": "Technician@123",
+                "role": User.ROLE_TECHNICIAN,
+                "skillset": Technician.SKILL_SOFTWARE,
+            },
+            {
+                "name": "Mokholoane Kanei",
+                "email": "mokholoane.kanei@lec.com",
+                "password": "Technician@123",
+                "role": User.ROLE_TECHNICIAN,
+                "skillset": Technician.SKILL_HARDWARE,
+            },
+        ]
+
         demo_users = [
             {
                 "name": "Employee1",
                 "email": "employee@lec.com",
                 "password": "Employee@123",
                 "role": User.ROLE_EMPLOYEE,
-            },{
-                "name": "Lerato Molefe",
-                "email": "technician2@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Mpho Nthunya",
-                "email": "technician3@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Kamohelo Radebe",
-                "email": "technician4@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Palesa Tsolo",
-                "email": "technician5@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Teboho Seema",
-                "email": "technician6@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Nthabiseng Mofokeng",
-                "email": "technician7@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Motlalepula Khomo",
-                "email": "technician8@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Khotso Maseko",
-                "email": "technician9@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
-            },
-            {
-                "name": "Masechaba Lesaoana",
-                "email": "technician10@lec.com",
-                "password": "Technician@123",
-                "role": User.ROLE_TECHNICIAN,
             },
             {
                 "name": "Palesa R.",
@@ -89,6 +61,20 @@ class Command(BaseCommand):
                 "role": User.ROLE_MANAGER,
             },
         ]
+        demo_users.extend(technician_users)
+
+        legacy_seed_technician_emails = {
+            "technician2@lec.com",
+            "technician3@lec.com",
+            "technician4@lec.com",
+            "technician5@lec.com",
+            "technician6@lec.com",
+            "technician7@lec.com",
+            "technician8@lec.com",
+            "technician9@lec.com",
+            "technician10@lec.com",
+        }
+        current_seed_technician_emails = {payload["email"] for payload in technician_users}
 
         for payload in demo_users:
             branch = "Maseru HQ" if payload["role"] == User.ROLE_TECHNICIAN else ""
@@ -105,18 +91,38 @@ class Command(BaseCommand):
             status_label = "Created" if created else "Updated"
             self.stdout.write(f"{status_label} user: {user.email} ({user.role})")
 
-        for technician_user in User.objects.filter(role=User.ROLE_TECHNICIAN):
-            technician, _ = Technician.objects.get_or_create(
+        for payload in technician_users:
+            technician_user = User.objects.get(email=payload["email"], role=User.ROLE_TECHNICIAN)
+            technician, created = Technician.objects.update_or_create(
                 user=technician_user,
                 defaults={
-                    "skillset": Technician.SKILL_NETWORK,
+                    "skillset": payload["skillset"],
                     "department": Technician.DEPARTMENT_IT,
-                    "is_available": True,
+                    "is_available": False,
                 },
             )
-            if technician.department != Technician.DEPARTMENT_IT:
-                technician.department = Technician.DEPARTMENT_IT
-                technician.save(update_fields=["department"])
+            status_label = "Created" if created else "Updated"
+            self.stdout.write(
+                f"{status_label} technician profile: {technician_user.email} ({payload['skillset']})"
+            )
+
+        stale_seed_technician_emails = legacy_seed_technician_emails - current_seed_technician_emails
+        stale_seed_technicians = User.objects.filter(
+            role=User.ROLE_TECHNICIAN,
+            email__in=stale_seed_technician_emails,
+        ).order_by("email")
+        for stale_user in stale_seed_technicians:
+            try:
+                stale_email = stale_user.email
+                stale_user.delete()
+                self.stdout.write(f"Removed legacy seeded technician: {stale_email}")
+            except ProtectedError:
+                if stale_user.is_active:
+                    stale_user.is_active = False
+                    stale_user.save(update_fields=["is_active", "updated_at"])
+                self.stdout.write(
+                    f"Deactivated legacy seeded technician with dependent records: {stale_user.email}"
+                )
 
         demo_consumables = [
             {

@@ -366,7 +366,7 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
   }, [resolvedAccountName, accountId])
 
   return (
-    <div className="fixed right-5 bottom-5 z-50 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6">
+    <div className="fixed right-4 bottom-24 z-50 flex flex-col items-end gap-3 sm:right-6 sm:bottom-28 md:bottom-6">
       {open ? (
         <Card className="flex max-h-[82vh] w-[94vw] max-w-[460px] flex-col overflow-hidden rounded-3xl border-[#0072CE]/25 bg-white/95 py-0 shadow-[0_20px_55px_rgba(7,42,96,0.3)] backdrop-blur">
           <CardHeader className="sticky top-0 z-10 shrink-0 border-b border-white/30 bg-gradient-to-r from-[#0A4EA8] via-[#0072CE] to-[#0091EA] px-4 py-3">

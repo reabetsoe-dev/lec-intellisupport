@@ -11,6 +11,14 @@ export type AuthUser = {
 }
 
 export const AUTH_SESSION_KEY = "lec_intellisupport_user"
+export const LOGIN_MODE_QUERY_PARAM = "mode"
+export const LOGIN_MODE_SWITCH = "switch"
+export const LOGIN_SOURCE_QUERY_PARAM = "source"
+export const LOGIN_SOURCE_TECHNICIAN_QR = "technician-qr"
+
+type SearchParamsLike = {
+  get(name: string): string | null
+}
 
 const dashboardByRole: Record<UserRole, string> = {
   employee: "/employee/dashboard",
@@ -22,6 +30,19 @@ const dashboardByRole: Record<UserRole, string> = {
 
 export function getDashboardPathByRole(role: UserRole): string {
   return dashboardByRole[role]
+}
+
+export function buildTechnicianQrMainLoginHref(): string {
+  const params = new URLSearchParams({
+    [LOGIN_MODE_QUERY_PARAM]: LOGIN_MODE_SWITCH,
+    [LOGIN_SOURCE_QUERY_PARAM]: LOGIN_SOURCE_TECHNICIAN_QR,
+  })
+
+  return `/login?${params.toString()}`
+}
+
+export function isSwitchLoginRequest(searchParams: SearchParamsLike | null | undefined): boolean {
+  return searchParams?.get(LOGIN_MODE_QUERY_PARAM) === LOGIN_MODE_SWITCH
 }
 
 export function getTicketDetailPathByRole(role: UserRole, ticketId: number): string {

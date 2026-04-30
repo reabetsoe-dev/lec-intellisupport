@@ -9,7 +9,7 @@ export default function TechnicianTicketsPage() {
       <EmployeePageHero
         compact
         title="Assigned Tickets"
-        description="Only tickets currently assigned to your technician account are shown here."
+        description="Only tickets currently assigned to your technician account are shown here. Opening a pending ticket starts it automatically."
       />
       <TechnicianTicketTable />
     </div>

@@ -1,25 +1,55 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
-import { getDashboardPathByRole, persistUserSession, simulateLogin } from "@/lib/auth"
+import { clearUserSession, getDashboardPathByRole, isSwitchLoginRequest, persistUserSession, simulateLogin } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const searchParams = useSearchParams()
+  const isSwitchLoginMode = isSwitchLoginRequest(searchParams)
+  const emailInputRef = useRef<HTMLInputElement | null>(null)
+  const passwordInputRef = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    if (!isSwitchLoginMode) {
+      return
+    }
+
+    clearUserSession()
+    setError("")
+    if (emailInputRef.current) {
+      emailInputRef.current.value = ""
+    }
+    if (passwordInputRef.current) {
+      passwordInputRef.current.value = ""
+    }
+  }, [isSwitchLoginMode])
+
+  const readLoginCredentials = () => {
+    return {
+      email: emailInputRef.current?.value.trim() ?? "",
+      password: passwordInputRef.current?.value ?? "",
+    }
+  }
+
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const { email, password } = readLoginCredentials()
+    if (!email || !password.trim()) {
+      setError("Enter email and password to continue.")
+      return
+    }
+
     setError("")
     setLoading(true)
 
@@ -44,7 +74,7 @@ export default function LoginPage() {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-10"
       style={{ backgroundImage: "url('/power-infrastructure.jpg')" }}
     >
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,rgba(2,6,17,0.78)_0%,rgba(4,18,45,0.78)_40%,rgba(6,27,68,0.8)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(2,6,17,0.78)_0%,rgba(4,18,45,0.78)_40%,rgba(6,27,68,0.8)_100%)]" />
 
       <Card className="relative z-10 w-full max-w-md rounded-2xl border border-[#2A6FB2]/45 bg-[linear-gradient(180deg,rgba(8,30,66,0.88)_0%,rgba(5,20,47,0.92)_100%)] py-0 text-slate-100 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md">
         <CardHeader className="space-y-2 px-8 py-7">
@@ -69,10 +99,19 @@ export default function LoginPage() {
               </Label>
               <Input
                 id="email"
+                ref={emailInputRef}
+                name="email"
                 type="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                inputMode="email"
                 placeholder="name@lec.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onInput={() => {
+                  if (error) {
+                    setError("")
+                  }
+                }}
                 className="h-11 border-[#2C5D92]/60 bg-[#0A1D44]/85 text-[#EAF4FF] placeholder:text-[#8FAED4] focus-visible:border-[#5EBCE7] focus-visible:ring-[#5EBCE7]/40"
                 required
               />
@@ -84,10 +123,16 @@ export default function LoginPage() {
               </Label>
               <Input
                 id="password"
+                ref={passwordInputRef}
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="Enter password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onInput={() => {
+                  if (error) {
+                    setError("")
+                  }
+                }}
                 className="h-11 border-[#2C5D92]/60 bg-[#0A1D44]/85 text-[#EAF4FF] placeholder:text-[#8FAED4] focus-visible:border-[#5EBCE7] focus-visible:ring-[#5EBCE7]/40"
                 required
               />
@@ -98,7 +143,7 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="h-11 w-full bg-gradient-to-r from-[#2AAFE6] to-[#167BC8] text-white hover:from-[#1D9CD0] hover:to-[#0D67AD]"
+              className="h-12 w-full touch-manipulation bg-gradient-to-r from-[#2AAFE6] to-[#167BC8] text-white hover:from-[#1D9CD0] hover:to-[#0D67AD]"
             >
               {loading ? "Signing in..." : "Login"}
             </Button>
@@ -113,6 +158,14 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   )
 }
 

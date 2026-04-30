@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { BarChart3, Clock3, type LucideIcon, PhoneCall, UsersRound } from "lucide-react"
+import { BarChart3, Clock3, type LucideIcon, PhoneCall, QrCode, UsersRound } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,6 +45,12 @@ const quickActions: Array<{
     title: "Log Call",
     description: "Log fault calls for employees and capture caller details on their behalf.",
     icon: PhoneCall,
+  },
+  {
+    href: "/admin-fault/technician-access",
+    title: "Technician QR Access",
+    description: "Open the QR technicians use on their phones for check-in/out and monitor live availability.",
+    icon: QrCode,
   },
 ]
 

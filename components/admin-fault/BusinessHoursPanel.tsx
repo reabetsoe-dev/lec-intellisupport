@@ -320,7 +320,11 @@ export function BusinessHoursPanel() {
   }
 
   const saveChanges = async () => {
-    if (!form) {
+    if (!form || !config) {
+      return
+    }
+    if (!config) {
+      setError("Business hours are unavailable.")
       return
     }
 

@@ -39,6 +39,7 @@ from .models import (
     Notification,
     PasswordResetToken,
     Technician,
+    TechnicianActivityLog,
     Ticket,
     TicketAssignmentHistory,
     TicketComment,
@@ -463,6 +464,9 @@ def _resolve_performance_window(request):
     if range_value == "90d":
         return "90d", today - timedelta(days=89), today
 
+    if range_value == "365d":
+        return "365d", today - timedelta(days=364), today
+
     if range_value == "custom":
         start_date = _parse_iso_date(request.query_params.get("start_date"))
         end_date = _parse_iso_date(request.query_params.get("end_date"))
@@ -574,6 +578,18 @@ BUSINESS_TIMEZONE = "Africa/Maseru"
 
 def _default_business_schedule() -> dict[str, dict[str, str | bool]]:
     return {
+        "monday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "tuesday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "wednesday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "thursday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "friday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "saturday": {"enabled": False, "start": "08:00", "end": "16:30"},
+        "sunday": {"enabled": False, "start": "08:00", "end": "16:30"},
+    }
+
+
+def _legacy_business_schedule() -> dict[str, dict[str, str | bool]]:
+    return {
         "monday": {"enabled": True, "start": "08:00", "end": "17:00"},
         "tuesday": {"enabled": True, "start": "08:00", "end": "17:00"},
         "wednesday": {"enabled": True, "start": "08:00", "end": "17:00"},
@@ -666,6 +682,12 @@ def _normalize_business_schedule(raw_schedule) -> tuple[dict[str, dict[str, str 
         }
 
     return normalized, None
+
+
+def _business_schedule_matches(raw_schedule, expected_schedule: dict[str, dict[str, str | bool]]) -> bool:
+    normalized_schedule, _ = _normalize_business_schedule(raw_schedule)
+    expected_normalized, _ = _normalize_business_schedule(expected_schedule)
+    return normalized_schedule == expected_normalized
 
 
 def _normalize_business_holidays(raw_holidays) -> tuple[list[dict], str | None]:
@@ -786,9 +808,15 @@ def _ensure_default_business_hours() -> BusinessHours | None:
     try:
         existing = BusinessHours.objects.filter(is_default=True).order_by("id").first()
         if existing:
+            update_fields: list[str] = []
             if existing.timezone_name != BUSINESS_TIMEZONE:
                 existing.timezone_name = BUSINESS_TIMEZONE
-                existing.save(update_fields=["timezone_name", "updated_at"])
+                update_fields.append("timezone_name")
+            if _business_schedule_matches(existing.weekly_schedule, _legacy_business_schedule()):
+                existing.weekly_schedule = _default_business_schedule()
+                update_fields.append("weekly_schedule")
+            if update_fields:
+                existing.save(update_fields=[*update_fields, "updated_at"])
             return existing
         return BusinessHours.objects.create(
             name="Default Business Hours",
@@ -797,10 +825,31 @@ def _ensure_default_business_hours() -> BusinessHours | None:
             groups=[BusinessHours.GROUP_ALL],
             weekly_schedule=_default_business_schedule(),
             is_default=True,
-        )
+    )
     except OperationalError:
         logger.error("BusinessHours table missing; skipping business-hours routing checks.")
         return None
+
+
+def _business_hours_window_label(business_hours: BusinessHours) -> str:
+    schedule, schedule_error = _normalize_business_schedule(business_hours.weekly_schedule)
+    if schedule_error:
+        schedule = _default_business_schedule()
+
+    active_windows = [
+        (str(day_config.get("start", "08:00")), str(day_config.get("end", "16:30")))
+        for day_config in schedule.values()
+        if bool(day_config.get("enabled"))
+    ]
+    if not active_windows:
+        default_window = _default_business_schedule()["monday"]
+        return f"{default_window['start']} to {default_window['end']}"
+
+    first_window = active_windows[0]
+    if all(window == first_window for window in active_windows):
+        return f"{first_window[0]} to {first_window[1]}"
+
+    return f"{first_window[0]} to {first_window[1]}"
 
 
 def _current_business_datetime(timezone_name: str) -> datetime:
@@ -821,13 +870,13 @@ def _is_business_hours_open_now(business_hours: BusinessHours) -> bool:
         schedule = _default_business_schedule()
 
     day_key = BUSINESS_DAY_KEYS[local_now.weekday()]
-    day_config = schedule.get(day_key, {"enabled": False, "start": "08:00", "end": "17:00"})
+    day_config = schedule.get(day_key, {"enabled": False, "start": "08:00", "end": "16:30"})
     if not bool(day_config.get("enabled")):
         return False
 
     try:
         start_time = datetime.strptime(str(day_config.get("start", "08:00")), "%H:%M").time()
-        end_time = datetime.strptime(str(day_config.get("end", "17:00")), "%H:%M").time()
+        end_time = datetime.strptime(str(day_config.get("end", "16:30")), "%H:%M").time()
     except ValueError:
         return False
 
@@ -855,6 +904,15 @@ def _is_technician_within_business_hours(
     if not _is_technician_targeted_by_business_hours(technician, business_hours):
         return True
     return hours_open_now
+
+
+def _technician_has_active_ticket(technician: Technician, *, exclude_ticket_id: int | None = None) -> bool:
+    queryset = Ticket.objects.filter(technician=technician).exclude(
+        status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED]
+    )
+    if exclude_ticket_id is not None:
+        queryset = queryset.exclude(id=exclude_ticket_id)
+    return queryset.exists()
 
 
 def _business_hours_to_dict(config: BusinessHours) -> dict:
@@ -1333,11 +1391,13 @@ def _rank_technicians_for_ticket(
     title: str,
     description: str,
     exclude_technician_ids: set[int] | None = None,
+    restrict_to_technician_ids: set[int] | None = None,
     allow_unavailable_fallback: bool = False,
     routing_context: str = "assignment",
     candidate_technicians: list[Technician] | None = None,
 ) -> tuple[list[dict[str, object]], str | None]:
     excluded_ids = {item for item in (exclude_technician_ids or set()) if isinstance(item, int)}
+    restricted_ids = {item for item in (restrict_to_technician_ids or set()) if isinstance(item, int)}
     if candidate_technicians is None:
         all_active_technicians = list(
             Technician.objects.select_related("user")
@@ -1353,7 +1413,8 @@ def _rank_technicians_for_ticket(
             for item in candidate_technicians
             if item.user_id and item.user.is_active and item.user.role == User.ROLE_TECHNICIAN
         ]
-
+    if restricted_ids:
+        all_active_technicians = [item for item in all_active_technicians if item.id in restricted_ids]
     if excluded_ids:
         all_active_technicians = [item for item in all_active_technicians if item.id not in excluded_ids]
     if not all_active_technicians:
@@ -1398,11 +1459,19 @@ def _rank_technicians_for_ticket(
     if not candidate_pool:
         return [], None
 
-    available_technicians = [item for item in candidate_pool if item.is_available]
+    available_technicians = [
+        item
+        for item in candidate_pool
+        if item.is_available and not _technician_has_active_ticket(item)
+    ]
     technicians = (
         available_technicians
         if available_technicians
-        else (candidate_pool if allow_unavailable_fallback else [])
+        else (
+            [item for item in candidate_pool if not _technician_has_active_ticket(item)]
+            if allow_unavailable_fallback
+            else []
+        )
     )
     if not technicians:
         return [], None
@@ -1500,6 +1569,7 @@ def _pick_best_technician_for_ticket(
     title: str,
     description: str,
     exclude_technician_ids: set[int] | None = None,
+    restrict_to_technician_ids: set[int] | None = None,
     allow_unavailable_fallback: bool = False,
     routing_context: str = "assignment",
 ) -> tuple[Technician | None, bool, str | None]:
@@ -1508,6 +1578,7 @@ def _pick_best_technician_for_ticket(
         title=title,
         description=description,
         exclude_technician_ids=exclude_technician_ids,
+        restrict_to_technician_ids=restrict_to_technician_ids,
         allow_unavailable_fallback=allow_unavailable_fallback,
         routing_context=routing_context,
     )
@@ -1736,7 +1807,134 @@ def _technician_to_dict(technician: Technician) -> dict:
         "skillset": technician.skillset,
         "is_active": technician.user.is_active,
         "is_available": technician.is_available,
+        "availability_updated_at": technician.availability_updated_at.isoformat() if technician.availability_updated_at else None,
+        "last_check_in_at": technician.last_check_in_at.isoformat() if technician.last_check_in_at else None,
+        "last_check_out_at": technician.last_check_out_at.isoformat() if technician.last_check_out_at else None,
     }
+
+
+def _normalize_technician_checkpoint_action(value: str | None) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"checkin", "check_in"}:
+        return "check_in"
+    if normalized in {"checkout", "check_out"}:
+        return "check_out"
+    return ""
+
+
+TECHNICIAN_ACTIVITY_LABELS = {
+    TechnicianActivityLog.ACTION_CHECK_IN: "Checked In",
+    TechnicianActivityLog.ACTION_CHECK_OUT: "Checked Out",
+    TechnicianActivityLog.ACTION_TICKET_ACCEPTED: "Accepted Ticket",
+    TechnicianActivityLog.ACTION_TICKET_SOLVED: "Solved Ticket",
+    TechnicianActivityLog.ACTION_TICKET_ESCALATED: "Escalated Ticket",
+    TechnicianActivityLog.ACTION_ASSET_REQUEST_SUBMITTED: "Submitted Asset Request",
+}
+
+
+def _activity_action_label(action_type: str) -> str:
+    return TECHNICIAN_ACTIVITY_LABELS.get(action_type, action_type.replace("_", " ").title())
+
+
+def _duration_minutes_between(started_at: datetime | None, ended_at: datetime | None) -> int | None:
+    if not started_at or not ended_at:
+        return None
+    duration_seconds = max((ended_at - started_at).total_seconds(), 0.0)
+    return int(round(duration_seconds / 60.0))
+
+
+def _create_technician_activity_log(
+    technician: Technician,
+    *,
+    action_type: str,
+    description: str = "",
+    occurred_at: datetime | None = None,
+    ended_at: datetime | None = None,
+    duration_minutes: int | None = None,
+    ticket: Ticket | None = None,
+    consumable_request: ConsumableRequest | None = None,
+    metadata: dict | None = None,
+) -> TechnicianActivityLog:
+    return TechnicianActivityLog.objects.create(
+        technician=technician,
+        action_type=action_type,
+        description=description,
+        occurred_at=occurred_at or timezone.now(),
+        ended_at=ended_at,
+        duration_minutes=duration_minutes,
+        ticket=ticket,
+        consumable_request=consumable_request,
+        metadata=metadata or {},
+    )
+
+
+def _latest_open_technician_session_log(technician: Technician) -> TechnicianActivityLog | None:
+    return (
+        TechnicianActivityLog.objects.filter(
+            technician=technician,
+            action_type=TechnicianActivityLog.ACTION_CHECK_IN,
+            ended_at__isnull=True,
+        )
+        .order_by("-occurred_at", "-id")
+        .first()
+    )
+
+
+def _latest_open_ticket_work_log(technician: Technician, ticket: Ticket) -> TechnicianActivityLog | None:
+    return (
+        TechnicianActivityLog.objects.filter(
+            technician=technician,
+            ticket=ticket,
+            action_type=TechnicianActivityLog.ACTION_TICKET_ACCEPTED,
+            ended_at__isnull=True,
+        )
+        .order_by("-occurred_at", "-id")
+        .first()
+    )
+
+
+def _close_technician_activity_log(activity_log: TechnicianActivityLog | None, ended_at: datetime) -> int | None:
+    if not activity_log:
+        return None
+
+    duration_minutes = _duration_minutes_between(activity_log.occurred_at, ended_at)
+    activity_log.ended_at = ended_at
+    activity_log.duration_minutes = duration_minutes
+    activity_log.save(update_fields=["ended_at", "duration_minutes"])
+    return duration_minutes
+
+
+def _record_technician_availability(technician: Technician, *, is_available: bool) -> datetime:
+    recorded_at = timezone.now()
+    technician.is_available = is_available
+    technician.availability_updated_at = recorded_at
+    update_fields = ["is_available", "availability_updated_at"]
+    if is_available:
+        if _latest_open_technician_session_log(technician) is None:
+            _create_technician_activity_log(
+                technician,
+                action_type=TechnicianActivityLog.ACTION_CHECK_IN,
+                description="Technician checked in through the QR checkpoint.",
+                occurred_at=recorded_at,
+            )
+        technician.last_check_in_at = recorded_at
+        update_fields.append("last_check_in_at")
+    else:
+        session_duration_minutes = _close_technician_activity_log(
+            _latest_open_technician_session_log(technician),
+            recorded_at,
+        )
+        _create_technician_activity_log(
+            technician,
+            action_type=TechnicianActivityLog.ACTION_CHECK_OUT,
+            description="Technician checked out through the QR checkpoint.",
+            occurred_at=recorded_at,
+            duration_minutes=session_duration_minutes,
+        )
+        technician.last_check_out_at = recorded_at
+        update_fields.append("last_check_out_at")
+    technician.save(update_fields=update_fields)
+    return recorded_at
 
 
 def _user_to_dict(user: User) -> dict:
@@ -1884,6 +2082,80 @@ def _extract_ticket_business_impact(ticket: Ticket) -> str:
     return match.group(1).strip().lower()
 
 
+AUTO_ASSIGNMENT_PRIORITY_ORDER = {
+    Ticket.PRIORITY_CRITICAL: 0,
+    Ticket.PRIORITY_HIGH: 1,
+    Ticket.PRIORITY_MEDIUM: 2,
+    Ticket.PRIORITY_LOW: 3,
+}
+
+
+def _waiting_ticket_candidates() -> list[Ticket]:
+    tickets = list(
+        Ticket.objects.select_related("employee", "technician__user", "logged_by_admin")
+        .filter(technician__isnull=True)
+        .exclude(status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED])
+    )
+    tickets.sort(
+        key=lambda item: (
+            AUTO_ASSIGNMENT_PRIORITY_ORDER.get(item.priority, 99),
+            item.created_at,
+            item.id,
+        )
+    )
+    return tickets
+
+
+def _assign_ticket_to_technician_from_waiting_queue(ticket: Ticket, technician: Technician) -> Ticket:
+    assignment_time = timezone.now()
+    _assign_ticket_to_technician(
+        ticket,
+        technician,
+        assigned_at=assignment_time,
+        status_value=Ticket.STATUS_PENDING,
+        history_reason=TicketAssignmentHistory.REASON_AUTO_ASSIGN,
+        history_note="Auto-assigned from waiting queue.",
+    )
+
+    _notify_user(
+        technician.user,
+        f"Ticket #{ticket.id} was assigned to you automatically from the waiting queue.",
+        ticket=ticket,
+    )
+    _notify_user(
+        ticket.employee,
+        f"Ticket #{ticket.id} has been assigned to technician {technician.user.name}.",
+        ticket=ticket,
+    )
+    for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+        _notify_user(
+            admin_user,
+            f"Waiting ticket #{ticket.id} auto-assigned to {technician.user.name}.",
+            ticket=ticket,
+        )
+
+    ticket.refresh_from_db()
+    return ticket
+
+
+def _auto_assign_next_waiting_ticket(*, preferred_technician: Technician | None = None) -> Ticket | None:
+    waiting_tickets = _waiting_ticket_candidates()
+    if not waiting_tickets:
+        return None
+
+    restricted_ids = {preferred_technician.id} if preferred_technician is not None else None
+    for waiting_ticket in waiting_tickets:
+        auto_target, _, _ = _pick_best_technician_for_ticket(
+            category=waiting_ticket.category,
+            title=waiting_ticket.title,
+            description=waiting_ticket.description,
+            restrict_to_technician_ids=restricted_ids,
+            allow_unavailable_fallback=False,
+        )
+        if auto_target is None:
+            continue
+        return _assign_ticket_to_technician_from_waiting_queue(waiting_ticket, auto_target)
+    return None
 FORGOT_PASSWORD_GENERIC_MESSAGE = (
     "If an account with that email exists, a password reset link has been sent."
 )
@@ -2101,6 +2373,59 @@ def login_view(request):
             "role": user.role,
             "must_change_password": user.must_change_password,
             "token": issue_auth_token(user),
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+def technician_checkpoint_view(request):
+    email = str(request.data.get("email", "")).strip().lower()
+    password = str(request.data.get("password", ""))
+    action = _normalize_technician_checkpoint_action(request.data.get("action"))
+
+    if not email or not password or not action:
+        return Response(
+            {"message": "email, password, and a valid action are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(email=email, role=User.ROLE_TECHNICIAN, is_active=True).first()
+    if not user or not check_password(password, user.password_hash):
+        return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    technician = Technician.objects.select_related("user").filter(user=user).first()
+    if not technician:
+        return Response({"message": "Technician profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    is_available = action == "check_in"
+    recorded_at = _record_technician_availability(technician, is_available=is_available)
+    technician.refresh_from_db()
+
+    if is_available:
+        assigned_ticket = _auto_assign_next_waiting_ticket(preferred_technician=technician)
+        message = f"{technician.user.name} checked in successfully."
+        if assigned_ticket is not None:
+            assignment_note = (
+                f"Ticket #{assigned_ticket.id} has been assigned to you automatically from the waiting queue."
+            )
+        else:
+            assignment_note = "You are now available for new automatic ticket assignments."
+    else:
+        message = f"{technician.user.name} checked out successfully."
+        assignment_note = (
+            "Your check-out has been recorded. You will not receive new automatic ticket assignments "
+            "until you check in again."
+        )
+
+    return Response(
+        {
+            "message": message,
+            "action": action,
+            "recorded_at": recorded_at.isoformat(),
+            "timezone": BUSINESS_TIMEZONE,
+            "assignment_note": assignment_note,
+            "technician": _technician_to_dict(technician),
         },
         status=status.HTTP_200_OK,
     )
@@ -2497,6 +2822,11 @@ def tickets_collection_view(request):
             f"Ticket #{ticket.id} auto-assigned to you based on skill/workload routing.",
             ticket=ticket,
         )
+        _notify_user(
+            ticket.employee,
+            f"Ticket #{ticket.id} has been assigned to technician {auto_assigned_technician.user.name}.",
+            ticket=ticket,
+        )
 
     for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
         if auto_assigned_technician:
@@ -2539,12 +2869,18 @@ def tickets_collection_view(request):
         current_business_hours = _ensure_default_business_hours()
         if current_business_hours is None or not _is_business_hours_open_now(current_business_hours):
             payload["routing_note"] = (
-                f"{triage_note} Support desk is currently outside configured business hours. "
-                "Ticket routed to Admin Fault queue for assignment."
+                f"{triage_note} Support desk is currently outside working hours. "
+                f"Technicians will receive your report during working hours from {_business_hours_window_label(current_business_hours)}."
+            )
+        elif Technician.objects.filter(user__is_active=True, user__role=User.ROLE_TECHNICIAN).exists():
+            payload["routing_note"] = (
+                f"{triage_note} Technicians are currently busy. "
+                "Your report is waiting in the queue and will be assigned automatically as soon as a technician becomes available."
             )
         else:
             payload["routing_note"] = (
-                f"{triage_note} No active technician profile found. Ticket routed to Admin Fault queue for assignment."
+                f"{triage_note} No technicians are currently available. "
+                "Your report will be assigned automatically once a technician becomes available."
             )
     return Response(payload, status=status.HTTP_201_CREATED)
 
@@ -2772,6 +3108,7 @@ def escalate_ticket_view(request, ticket_id: int):
             )
 
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
+        previous_technician = ticket.technician if ticket.technician_id else None
         _assign_ticket_to_technician(
             ticket,
             auto_target_technician,
@@ -2780,6 +3117,20 @@ def escalate_ticket_view(request, ticket_id: int):
             history_reason=TicketAssignmentHistory.REASON_ADMIN_ESCALATION,
             history_note=f"Admin Fault escalation by {actor_user.name}.",
         )
+
+        if previous_technician is not None:
+            work_duration_minutes = _close_technician_activity_log(
+                _latest_open_ticket_work_log(previous_technician, ticket),
+                timezone.now(),
+            )
+            _create_technician_activity_log(
+                previous_technician,
+                action_type=TechnicianActivityLog.ACTION_TICKET_ESCALATED,
+                description=f"Escalated Ticket #{ticket.id} to {auto_target_technician.user.name}",
+                ticket=ticket,
+                duration_minutes=work_duration_minutes,
+                metadata={"target_technician_id": auto_target_technician.id},
+            )
 
         TicketComment.objects.create(
             ticket=ticket,
@@ -2809,6 +3160,8 @@ def escalate_ticket_view(request, ticket_id: int):
                 f"Ticket #{ticket.id} auto-escalated to {auto_target_technician.user.name} by {actor_user.name} ({escalation_note}).",
                 ticket=ticket,
             )
+        if previous_technician is not None and previous_technician.id != auto_target_technician.id:
+            _auto_assign_next_waiting_ticket(preferred_technician=previous_technician)
         return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
     if from_technician_user_id not in (None, "", "null"):
@@ -2852,6 +3205,7 @@ def escalate_ticket_view(request, ticket_id: int):
             return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
 
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
+        previous_technician = ticket.technician if ticket.technician_id else None
         _assign_ticket_to_technician(
             ticket,
             target_technician,
@@ -2860,6 +3214,20 @@ def escalate_ticket_view(request, ticket_id: int):
             history_reason=TicketAssignmentHistory.REASON_TECHNICIAN_ESCALATION,
             history_note=f"Technician escalation by {actor_user.name}.",
         )
+
+        if previous_technician is not None:
+            work_duration_minutes = _close_technician_activity_log(
+                _latest_open_ticket_work_log(previous_technician, ticket),
+                timezone.now(),
+            )
+            _create_technician_activity_log(
+                previous_technician,
+                action_type=TechnicianActivityLog.ACTION_TICKET_ESCALATED,
+                description=f"Escalated Ticket #{ticket.id} to {target_technician.user.name}",
+                ticket=ticket,
+                duration_minutes=work_duration_minutes,
+                metadata={"target_technician_id": target_technician.id},
+            )
 
         TicketComment.objects.create(
             ticket=ticket,
@@ -2889,6 +3257,8 @@ def escalate_ticket_view(request, ticket_id: int):
                 f"Technician {actor_user.name} escalated Ticket #{ticket.id} to {target_technician.user.name}.",
                 ticket=ticket,
             )
+        if previous_technician is not None and previous_technician.id != target_technician.id:
+            _auto_assign_next_waiting_ticket(preferred_technician=previous_technician)
         return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
     return Response(
@@ -2906,7 +3276,7 @@ def technicians_collection_view(request):
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
     skillset = _normalize_skillset_value(str(request.data.get("skillset", "")))
-    raw_is_available = request.data.get("is_available", True)
+    raw_is_available = request.data.get("is_available", False)
     if isinstance(raw_is_available, str):
         is_available = raw_is_available.strip().lower() not in ("0", "false", "no")
     else:
@@ -3278,6 +3648,13 @@ def ticket_status_view(request, ticket_id: int):
         ticket.save(update_fields=update_fields)
 
         if previous_status != Ticket.STATUS_IN_PROCESS and requested_status == Ticket.STATUS_IN_PROCESS:
+            if ticket.technician_id:
+                _create_technician_activity_log(
+                    ticket.technician,
+                    action_type=TechnicianActivityLog.ACTION_TICKET_ACCEPTED,
+                    description=f"Accepted Ticket #{ticket.id}: {ticket.title}",
+                    ticket=ticket,
+                )
             TicketComment.objects.create(
                 ticket=ticket,
                 author=technician_user,
@@ -3295,6 +3672,18 @@ def ticket_status_view(request, ticket_id: int):
                     ticket=ticket,
                 )
         elif previous_status != Ticket.STATUS_PENDING_REVIEW and requested_status == Ticket.STATUS_PENDING_REVIEW:
+            work_duration_minutes = _close_technician_activity_log(
+                _latest_open_ticket_work_log(ticket.technician, ticket) if ticket.technician_id else None,
+                timezone.now(),
+            )
+            if ticket.technician_id:
+                _create_technician_activity_log(
+                    ticket.technician,
+                    action_type=TechnicianActivityLog.ACTION_TICKET_SOLVED,
+                    description=f"Solved Ticket #{ticket.id}: {ticket.title}",
+                    ticket=ticket,
+                    duration_minutes=work_duration_minutes,
+                )
             TicketComment.objects.create(
                 ticket=ticket,
                 author=technician_user,
@@ -3476,13 +3865,71 @@ def ticket_problem_review_view(request, ticket_id: int):
 
     if ticket.technician_id:
         _notify_user(ticket.technician.user, technician_message, ticket=ticket)
+        if approved:
+            _auto_assign_next_waiting_ticket(preferred_technician=ticket.technician)
 
     return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+def _performance_window_bounds(start_date: date | None, end_date: date | None) -> tuple[datetime | None, datetime | None]:
+    if start_date is None or end_date is None:
+        return None, None
+
+    tz = timezone.get_current_timezone()
+    start_dt = timezone.make_aware(datetime.combine(start_date, time.min), tz)
+    end_dt = timezone.make_aware(datetime.combine(end_date + timedelta(days=1), time.min), tz)
+    return start_dt, end_dt
+
+
+def _interval_overlap_minutes(
+    started_at: datetime | None,
+    ended_at: datetime | None,
+    window_start: datetime | None,
+    window_end: datetime | None,
+    *,
+    fallback_end: datetime,
+) -> int:
+    if started_at is None:
+        return 0
+
+    effective_end = ended_at or fallback_end
+    if effective_end <= started_at:
+        return 0
+
+    if window_start is None or window_end is None:
+        overlap_start = started_at
+        overlap_end = effective_end
+    else:
+        overlap_start = max(started_at, window_start)
+        overlap_end = min(effective_end, window_end)
+
+    if overlap_end <= overlap_start:
+        return 0
+
+    return int(round((overlap_end - overlap_start).total_seconds() / 60.0))
+
+
+def _technician_activity_log_to_dict(item: TechnicianActivityLog) -> dict:
+    return {
+        "id": item.id,
+        "technician_id": item.technician_id,
+        "technician_name": item.technician.user.name,
+        "action_type": item.action_type,
+        "action_label": _activity_action_label(item.action_type),
+        "description": item.description,
+        "occurred_at": item.occurred_at.isoformat(),
+        "ended_at": item.ended_at.isoformat() if item.ended_at else None,
+        "duration_minutes": item.duration_minutes,
+        "ticket_id": item.ticket_id,
+        "consumable_request_id": item.consumable_request_id,
+        "metadata": item.metadata or {},
+    }
 
 
 @api_view(["GET"])
 def performance_metrics_view(request):
     range_value, start_date, end_date = _resolve_performance_window(request)
+    window_start_dt, window_end_dt = _performance_window_bounds(start_date, end_date)
 
     queryset = Ticket.objects.select_related("technician__user").all()
     if start_date is not None:
@@ -3537,7 +3984,8 @@ def performance_metrics_view(request):
     }
     sla_by_technician_map: dict[str, dict[str, float]] = {}
 
-    technicians = list(Technician.objects.select_related("user").all())
+    technicians = list(Technician.objects.select_related("user").all().order_by("user__name"))
+    technician_activity_summary_map: dict[int, dict[str, object]] = {}
     for technician in technicians:
         technician_breakdown_map[technician.user.name] = {
             "assigned": 0,
@@ -3554,6 +4002,24 @@ def performance_metrics_view(request):
             "escalated": 0,
             "acceptance_total": 0.0,
             "acceptance_samples": 0,
+        }
+        technician_activity_summary_map[technician.id] = {
+            "technician_id": technician.id,
+            "user_id": technician.user_id,
+            "name": technician.user.name,
+            "email": technician.user.email,
+            "skillset": technician.skillset,
+            "is_currently_available": technician.is_available,
+            "check_ins": 0,
+            "check_outs": 0,
+            "tickets_accepted": 0,
+            "tickets_solved": 0,
+            "tickets_escalated": 0,
+            "asset_requests_submitted": 0,
+            "session_minutes": 0,
+            "ticket_work_minutes": 0,
+            "tracked_ticket_work_sessions": 0,
+            "last_activity_at": None,
         }
 
     ticket_ids = [item.id for item in tickets]
@@ -3704,6 +4170,75 @@ def performance_metrics_view(request):
         else:
             sla_within_target += 1
 
+    activity_logs = list(
+        TechnicianActivityLog.objects.select_related("technician__user", "ticket", "consumable_request")
+        .filter(
+            Q(occurred_at__date__gte=start_date) if start_date is not None else Q(),
+            Q(occurred_at__date__lte=end_date) if end_date is not None else Q(),
+        )
+        .order_by("-occurred_at", "-id")
+    )
+    session_logs = list(
+        TechnicianActivityLog.objects.select_related("technician__user")
+        .filter(action_type=TechnicianActivityLog.ACTION_CHECK_IN)
+        .order_by("-occurred_at", "-id")
+    )
+    ticket_work_logs = list(
+        TechnicianActivityLog.objects.select_related("technician__user", "ticket")
+        .filter(action_type=TechnicianActivityLog.ACTION_TICKET_ACCEPTED)
+        .order_by("-occurred_at", "-id")
+    )
+
+    for item in activity_logs:
+        summary = technician_activity_summary_map.get(item.technician_id)
+        if summary is None:
+            continue
+
+        summary["last_activity_at"] = item.occurred_at.isoformat()
+
+        if item.action_type == TechnicianActivityLog.ACTION_CHECK_IN:
+            summary["check_ins"] = int(summary["check_ins"]) + 1
+        elif item.action_type == TechnicianActivityLog.ACTION_CHECK_OUT:
+            summary["check_outs"] = int(summary["check_outs"]) + 1
+        elif item.action_type == TechnicianActivityLog.ACTION_TICKET_ACCEPTED:
+            summary["tickets_accepted"] = int(summary["tickets_accepted"]) + 1
+        elif item.action_type == TechnicianActivityLog.ACTION_TICKET_SOLVED:
+            summary["tickets_solved"] = int(summary["tickets_solved"]) + 1
+        elif item.action_type == TechnicianActivityLog.ACTION_TICKET_ESCALATED:
+            summary["tickets_escalated"] = int(summary["tickets_escalated"]) + 1
+        elif item.action_type == TechnicianActivityLog.ACTION_ASSET_REQUEST_SUBMITTED:
+            summary["asset_requests_submitted"] = int(summary["asset_requests_submitted"]) + 1
+
+    for session_log in session_logs:
+        summary = technician_activity_summary_map.get(session_log.technician_id)
+        if summary is None:
+            continue
+
+        overlap_minutes = _interval_overlap_minutes(
+            session_log.occurred_at,
+            session_log.ended_at,
+            window_start_dt,
+            window_end_dt,
+            fallback_end=now,
+        )
+        summary["session_minutes"] = int(summary["session_minutes"]) + overlap_minutes
+
+    for work_log in ticket_work_logs:
+        summary = technician_activity_summary_map.get(work_log.technician_id)
+        if summary is None:
+            continue
+
+        overlap_minutes = _interval_overlap_minutes(
+            work_log.occurred_at,
+            work_log.ended_at,
+            window_start_dt,
+            window_end_dt,
+            fallback_end=now,
+        )
+        summary["ticket_work_minutes"] = int(summary["ticket_work_minutes"]) + overlap_minutes
+        if overlap_minutes > 0:
+            summary["tracked_ticket_work_sessions"] = int(summary["tracked_ticket_work_sessions"]) + 1
+
     trend_keys: list[str]
     if start_date and end_date:
         if bucket_mode == "day":
@@ -3746,6 +4281,57 @@ def performance_metrics_view(request):
     total_sla_records = sla_within_target + sla_at_risk + sla_breached
     sla_breach_rate = round((sla_breached / total_sla_records) * 100, 2) if total_sla_records else 0.0
 
+    technician_activity_summary = []
+    technician_check_ins = 0
+    technician_check_outs = 0
+    for summary in technician_activity_summary_map.values():
+        session_minutes = int(summary["session_minutes"])
+        ticket_work_minutes = int(summary["ticket_work_minutes"])
+        tracked_ticket_work_sessions = int(summary["tracked_ticket_work_sessions"])
+        check_ins = int(summary["check_ins"])
+        check_outs = int(summary["check_outs"])
+        technician_check_ins += check_ins
+        technician_check_outs += check_outs
+
+        technician_activity_summary.append(
+            {
+                "technician_id": summary["technician_id"],
+                "user_id": summary["user_id"],
+                "name": summary["name"],
+                "email": summary["email"],
+                "skillset": summary["skillset"],
+                "is_currently_available": summary["is_currently_available"],
+                "check_ins": check_ins,
+                "check_outs": check_outs,
+                "tickets_accepted": int(summary["tickets_accepted"]),
+                "tickets_solved": int(summary["tickets_solved"]),
+                "tickets_escalated": int(summary["tickets_escalated"]),
+                "asset_requests_submitted": int(summary["asset_requests_submitted"]),
+                "total_session_hours": round(session_minutes / 60.0, 2),
+                "total_ticket_work_hours": round(ticket_work_minutes / 60.0, 2),
+                "avg_ticket_work_hours": (
+                    round((ticket_work_minutes / 60.0) / tracked_ticket_work_sessions, 2)
+                    if tracked_ticket_work_sessions
+                    else 0.0
+                ),
+                "last_activity_at": summary["last_activity_at"],
+            }
+        )
+
+    technician_activity_summary.sort(
+        key=lambda item: (
+            -(
+                item["tickets_solved"]
+                + item["tickets_escalated"]
+                + item["tickets_accepted"]
+                + item["check_ins"]
+                + item["check_outs"]
+                + item["asset_requests_submitted"]
+            ),
+            item["name"],
+        )
+    )
+
     payload = {
         "kpis": {
             "total_tickets": total_tickets,
@@ -3757,6 +4343,10 @@ def performance_metrics_view(request):
             "avg_resolution_hours": avg_resolution_hours,
             "sla_breach_rate": sla_breach_rate,
             "stale_open_tickets": stale_open_tickets,
+            "technician_check_ins": technician_check_ins,
+            "technician_check_outs": technician_check_outs,
+            "currently_checked_in_technicians": sum(1 for item in technicians if item.is_available),
+            "technician_activity_events": len(activity_logs),
         },
         "by_status": [{"name": key, "count": value} for key, value in sorted(by_status.items())],
         "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
@@ -3868,6 +4458,8 @@ def performance_metrics_view(request):
             "end_date": end_date.isoformat() if end_date else None,
             "bucket_mode": bucket_mode,
         },
+        "technician_activity_summary": technician_activity_summary,
+        "technician_recent_activity": [_technician_activity_log_to_dict(item) for item in activity_logs[:40]],
         "generated_at": timezone.now().isoformat(),
     }
     return Response(payload, status=status.HTTP_200_OK)
@@ -4154,8 +4746,14 @@ def consumables_collection_view(request):
     return Response(_consumable_to_dict(consumable), status=status.HTTP_201_CREATED)
 
 
-@api_view(["PUT"])
+@api_view(["GET", "PUT"])
 def consumable_detail_view(request, consumable_id: int):
+    if request.method == "GET":
+        consumable = Consumable.objects.filter(id=consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_consumable_to_dict(consumable), status=status.HTTP_200_OK)
+
     with transaction.atomic():
         consumable = Consumable.objects.select_for_update().filter(id=consumable_id).first()
         if not consumable:
@@ -4421,6 +5019,20 @@ def consumable_requests_collection_view(request):
         notes=notes,
     )
     request_item.refresh_from_db()
+    if requester.role == User.ROLE_TECHNICIAN:
+        technician = Technician.objects.select_related("user").filter(user=requester).first()
+        if technician is not None:
+            _create_technician_activity_log(
+                technician,
+                action_type=TechnicianActivityLog.ACTION_ASSET_REQUEST_SUBMITTED,
+                description=f"Submitted asset request #{request_item.id} for {request_item.consumable.item_name}",
+                consumable_request=request_item,
+                metadata={
+                    "assignment_type": request_item.assignment_type,
+                    "quantity": request_item.quantity,
+                    "department": request_item.department,
+                },
+            )
     return Response(_consumable_request_to_dict(request_item), status=status.HTTP_201_CREATED)
 
 

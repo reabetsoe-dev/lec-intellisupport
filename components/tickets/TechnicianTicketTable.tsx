@@ -333,7 +333,9 @@ export function TechnicianTicketTable() {
                   <TableCell className="py-2">
                     <div className="flex flex-wrap gap-1.5">
                       <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]" asChild>
-                        <Link href={`/technician/tickets/${ticket.id}`}>Open</Link>
+                        <Link href={`/technician/tickets/${ticket.id}`}>
+                          {ticket.status === "Pending" ? "Open & Start" : "Open"}
+                        </Link>
                       </Button>
                     </div>
                   </TableCell>

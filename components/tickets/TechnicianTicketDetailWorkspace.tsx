@@ -129,7 +129,7 @@ function commentTone(commentText: string): string {
 
 function workflowHint(status: string): string {
   if (status === "Pending") {
-    return "Awaiting technician acceptance. Click Accept to start work and notify the reporter."
+    return "Opening this ticket starts work automatically and moves it to In Progress."
   }
   if (status === "In Progress") {
     return "Actively being handled. Click Solved when fix is completed and ready for reporter review."
@@ -150,6 +150,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [autoStarting, setAutoStarting] = useState(false)
   const [loadError, setLoadError] = useState("")
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false)
   const [escalationTarget, setEscalationTarget] = useState("")
@@ -203,12 +204,49 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   }, [loadAll])
 
   useAutoRefresh(loadAll, {
-    enabled: Boolean(currentUserId) && !loading && !actionLoading,
+    enabled: Boolean(currentUserId) && !loading && !actionLoading && !autoStarting,
     intervalMs: 10000,
   })
 
   const detailStatus = ticket ? normalizeTicketStatus(ticket.status) : "Pending"
   const timelineItems = useMemo(() => ticket?.comments ?? [], [ticket])
+
+  useEffect(() => {
+    if (!ticket || !currentUserId || autoStarting || actionLoading) {
+      return
+    }
+    if (normalizeTicketStatus(ticket.status) !== "Pending") {
+      return
+    }
+
+    let isCurrent = true
+
+    const autoStartTicket = async () => {
+      try {
+        setAutoStarting(true)
+        await updateTicketStatus(ticket.id, "In Progress", undefined, currentUserId)
+      } catch {
+        // Refresh below reconciles races if another client already moved the ticket.
+      } finally {
+        if (!isCurrent) {
+          return
+        }
+        try {
+          await loadAll()
+        } catch (error) {
+          setLoadError(error instanceof Error ? error.message : "Failed to refresh ticket details.")
+        } finally {
+          setAutoStarting(false)
+        }
+      }
+    }
+
+    void autoStartTicket()
+
+    return () => {
+      isCurrent = false
+    }
+  }, [actionLoading, autoStarting, currentUserId, loadAll, ticket])
 
   const handleStatusUpdate = async (nextStatus: "In Progress" | "Solved") => {
     if (!ticket || !currentUser) {
@@ -351,14 +389,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
             <div className="flex flex-wrap gap-2">
               <Button
                 className="bg-[#1E5EA5] text-white hover:bg-[#174D87]"
-                disabled={actionLoading || detailStatus !== "Pending"}
+                disabled={actionLoading || autoStarting || detailStatus !== "Pending"}
                 onClick={() => void handleStatusUpdate("In Progress")}
               >
-                {actionLoading ? "Saving..." : "Accept"}
+                {autoStarting ? "Starting..." : actionLoading ? "Saving..." : "Accept"}
               </Button>
               <Button
                 className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
-                disabled={actionLoading || detailStatus !== "In Progress"}
+                disabled={actionLoading || autoStarting || detailStatus !== "In Progress"}
                 onClick={() => void handleStatusUpdate("Solved")}
               >
                 {actionLoading ? "Saving..." : "Solved"}
@@ -366,14 +404,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               <Button
                 variant="outline"
                 className="border-[#C89A4D] bg-white text-[#8B5A12]"
-                disabled={actionLoading || detailStatus === "Pending Review" || detailStatus === "Solved"}
+                disabled={actionLoading || autoStarting || detailStatus === "Pending Review" || detailStatus === "Solved"}
                 onClick={() => setEscalationDialogOpen(true)}
               >
                 Escalate
               </Button>
             </div>
             <p>
-              Accept notifies reporter that work is in progress. Solved sends the ticket for reporter rating/review.
+              Opening a pending ticket starts it automatically. Solved sends the ticket for reporter rating/review.
               Escalate transfers ownership to another technician.
             </p>
           </CardContent>

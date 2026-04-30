@@ -267,18 +267,8 @@ export function AddConsumableForm() {
         condition: form.condition,
         status: "In Stock",
       })
-<<<<<<< HEAD
-      await loadAssets()
-      window.dispatchEvent(new Event("assets:sync"))
-      showActionFeedback("success", "Asset added to inventory.")
       resetForm()
-      setView("assets")
-=======
-      showActionFeedback("success", mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
-      if (mode === "add") {
-        onCancel(false)
-      }
->>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
+      showActionFeedback("success", "Asset added to inventory.")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add asset.")
     } finally {
@@ -288,64 +278,6 @@ export function AddConsumableForm() {
 
   return (
     <div className="space-y-4">
-<<<<<<< HEAD
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className={
-            view === "assets"
-              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
-              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
-          }
-          onClick={() => setView("assets")}
-        >
-          Assets
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={
-            view === "add"
-              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
-              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
-          }
-          onClick={() => setView("add")}
-        >
-          Add Assets
-        </Button>
-      </div>
-
-      {view === "assets" ? (
-        <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
-          <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
-            <CardTitle className="text-base font-semibold text-[#0B1F3A]">All Assets in Inventory</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                  <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Asset Tag</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Category</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Brand / Model</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Serial</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Available Quantity</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Total Quantity</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Condition</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingAssets ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">Loading assets...</TableCell>
-                  </TableRow>
-                ) : assets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">No assets added yet.</TableCell>
-                  </TableRow>
-=======
       <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
         <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Add Inventory Item</CardTitle>
@@ -388,7 +320,6 @@ export function AddConsumableForm() {
                 </select>
                 {tab === "gadget" ? (
                   <Input placeholder="Brand (Samsung, Apple, etc.)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
->>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
                 ) : (
                   <select className={selectClassName} value={form.brand} onChange={(e) => update("brand", e.target.value)}>
                     <option value="" disabled>Select brand</option>

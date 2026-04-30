@@ -38,12 +38,14 @@ from .views import (
     ticket_problem_review_view,
     ticket_priority_view,
     ticket_status_view,
+    technician_checkpoint_view,
     tickets_collection_view,
     voice_to_ticket_view,
 )
 
 urlpatterns = [
     path("auth/login", login_view),
+    path("auth/technician-checkpoint", technician_checkpoint_view),
     path("auth/forgot-password", forgot_password_view),
     path("auth/reset-password", reset_password_view),
     path("auth/change-password", change_password_view),

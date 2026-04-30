@@ -4,13 +4,13 @@ from django.utils import timezone
 
 def default_business_hours_schedule() -> dict[str, dict[str, str | bool]]:
     return {
-        "monday": {"enabled": True, "start": "08:00", "end": "17:00"},
-        "tuesday": {"enabled": True, "start": "08:00", "end": "17:00"},
-        "wednesday": {"enabled": True, "start": "08:00", "end": "17:00"},
-        "thursday": {"enabled": True, "start": "08:00", "end": "17:00"},
-        "friday": {"enabled": True, "start": "08:00", "end": "17:00"},
-        "saturday": {"enabled": False, "start": "08:00", "end": "17:00"},
-        "sunday": {"enabled": False, "start": "08:00", "end": "17:00"},
+        "monday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "tuesday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "wednesday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "thursday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "friday": {"enabled": True, "start": "08:00", "end": "16:30"},
+        "saturday": {"enabled": False, "start": "08:00", "end": "16:30"},
+        "sunday": {"enabled": False, "start": "08:00", "end": "16:30"},
     }
 
 
@@ -107,13 +107,68 @@ class Technician(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="technician_profile")
     skillset = models.CharField(max_length=20, choices=SKILLSET_CHOICES)
     department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES, default=DEPARTMENT_IT)
-    is_available = models.BooleanField(default=True)
+    is_available = models.BooleanField(default=False)
+    availability_updated_at = models.DateTimeField(null=True, blank=True)
+    last_check_in_at = models.DateTimeField(null=True, blank=True)
+    last_check_out_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "technicians"
 
     def __str__(self) -> str:
         return f"Technician: {self.user.name}"
+
+
+class TechnicianActivityLog(models.Model):
+    ACTION_CHECK_IN = "check_in"
+    ACTION_CHECK_OUT = "check_out"
+    ACTION_TICKET_ACCEPTED = "ticket_accepted"
+    ACTION_TICKET_SOLVED = "ticket_solved"
+    ACTION_TICKET_ESCALATED = "ticket_escalated"
+    ACTION_ASSET_REQUEST_SUBMITTED = "asset_request_submitted"
+
+    ACTION_CHOICES = [
+        (ACTION_CHECK_IN, "Check In"),
+        (ACTION_CHECK_OUT, "Check Out"),
+        (ACTION_TICKET_ACCEPTED, "Ticket Accepted"),
+        (ACTION_TICKET_SOLVED, "Ticket Solved"),
+        (ACTION_TICKET_ESCALATED, "Ticket Escalated"),
+        (ACTION_ASSET_REQUEST_SUBMITTED, "Asset Request Submitted"),
+    ]
+
+    technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name="activity_logs")
+    ticket = models.ForeignKey(
+        "Ticket",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="technician_activity_logs",
+    )
+    consumable_request = models.ForeignKey(
+        "ConsumableRequest",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="technician_activity_logs",
+    )
+    action_type = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    description = models.CharField(max_length=255, blank=True, default="")
+    occurred_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "technician_activity_logs"
+        ordering = ["-occurred_at", "-id"]
+        indexes = [
+            models.Index(fields=["technician", "occurred_at"], name="tech_act_techn_occ_idx"),
+            models.Index(fields=["action_type", "occurred_at"], name="tech_act_type_occ_idx"),
+            models.Index(fields=["ticket", "occurred_at"], name="tech_act_ticket_occ_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.technician.user.name} - {self.action_type} @ {self.occurred_at.isoformat()}"
 
 
 class BusinessHours(models.Model):

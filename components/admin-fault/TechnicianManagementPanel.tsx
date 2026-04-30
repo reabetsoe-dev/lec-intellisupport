@@ -41,6 +41,19 @@ const skillsetOptions = [
 const TECHNICIAN_BRANCH = "Maseru HQ"
 const TECHNICIAN_DEPARTMENT = "IT"
 
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "Not recorded yet"
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString()
+}
+
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
 type EditableEmployee = {
   id: number
@@ -667,6 +680,20 @@ export function TechnicianManagementPanel() {
                               <span className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]">
                                 {technician.skillset || "No skillset"}
                               </span>
+                              <span
+                                className={
+                                  technician.is_available
+                                    ? "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                                    : "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                                }
+                              >
+                                {technician.is_available ? "Checked In" : "Checked Out"}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid gap-1 rounded-xl border border-[#D7E4F2] bg-white/80 p-3 text-[11px] text-[#426A96]">
+                              <p>Last check in: {formatDateTime(technician.last_check_in_at)}</p>
+                              <p>Last check out: {formatDateTime(technician.last_check_out_at)}</p>
+                              <p>Availability updated: {formatDateTime(technician.availability_updated_at)}</p>
                             </div>
                           </div>
                         </div>
