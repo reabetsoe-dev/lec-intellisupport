@@ -242,14 +242,14 @@ export function TechnicianTicketTable() {
         </div>
       </CardHeader>
 
-      <CardContent className="p-0 [&_th]:whitespace-normal [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words">
-        <Table className="min-w-[1080px] table-fixed">
+      <CardContent className="overflow-x-auto p-0 [&_th]:whitespace-nowrap [&_td]:align-top">
+        <Table className="min-w-[1250px] table-fixed">
           <TableHeader>
             <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
               <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
               <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
               <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
-              <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
+              <TableHead className="w-[318px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
               <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
               <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
               <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation</TableHead>
@@ -282,8 +282,8 @@ export function TechnicianTicketTable() {
                   <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated)}</TableCell>
                   <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.reporter}</TableCell>
                   <TableCell className="py-3 text-xs text-[#2A5D8D]">
-                    <div className="space-y-1">
-                      <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold underline underline-offset-2">
+                    <div className="max-w-[290px] space-y-1">
+                      <Link href={`/technician/tickets/${ticket.id}`} className="block truncate font-semibold underline underline-offset-2">
                         {ticket.title}
                       </Link>
                       <p className="line-clamp-2 text-[#4A6887]">{ticket.description}</p>
