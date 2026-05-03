@@ -320,7 +320,7 @@ export function BusinessHoursPanel() {
   }
 
   const saveChanges = async () => {
-    if (!form || !config) {
+    if (!form) {
       return
     }
     if (!config) {

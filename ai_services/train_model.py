@@ -1,127 +1,121 @@
-from __future__ import annotations
-
-from pathlib import Path
-
+import os
 import joblib
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DATA_PATH = BASE_DIR / "data" / "new_tickets.csv"
-MODEL_DIR = BASE_DIR / "models"
 
-CATEGORY_MAP = {
+DATA_PATH = "data/tickets_advanced.csv"
+MODEL_DIR = "models"
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+# Load data
+data = pd.read_csv(DATA_PATH)
+
+# Normalize column names (safe)
+data.columns = [c.strip().lower() for c in data.columns]
+
+# Required columns
+required_cols = {"text", "category", "severity"}
+missing = required_cols - set(data.columns)
+if missing:
+    raise ValueError(f"Missing required columns in CSV: {missing}")
+
+# service_type is optional: default to "general" when absent
+if "service_type" not in data.columns:
+    print("service_type column not found. Using default value: general")
+    data["service_type"] = "general"
+
+# Normalize labels
+data["text"] = (
+    data["text"]
+    .astype(str)
+    .fillna("")
+    .str.replace(r"\s+", " ", regex=True)
+    .str.strip()
+)
+
+# Collapse any extra categories into the supported core classes.
+CATEGORY_COLLAPSE = {
     "hardware": "HARDWARE",
     "software": "SOFTWARE",
     "network": "NETWORK",
     "security": "SECURITY",
+    "cybersecurity": "SECURITY",
+    # Optional: map other legacy categories if they appear
+    "email": "SOFTWARE",
     "account": "SOFTWARE",
-    "communication": "SOFTWARE",
-    "training": "SOFTWARE",
-    "remotework": "NETWORK",
-    "infrastructure": "NETWORK",
-    "licensing": "SOFTWARE",
-    "performance": "SOFTWARE",
+    "printer": "HARDWARE",
 }
 
-PRIORITY_MAP = {
-    "low": "Low",
-    "medium": "Medium",
-    "high": "High",
-    "urgent": "Critical",
-    "critical": "Critical",
-}
+data["category"] = data["category"].astype(str).str.strip().str.lower().map(CATEGORY_COLLAPSE)
 
+# Drop rows with unknown/unmapped categories
+data = data.dropna(subset=["category"]).copy()
+data = data[data["text"].str.len() >= 8].copy()
 
-def _normalize_text(series: pd.Series) -> pd.Series:
-    return (
-        series.fillna("")
-        .astype(str)
-        .str.replace(r"\s+", " ", regex=True)
-        .str.strip()
-    )
+# Keep only these core categories strictly
+allowed = {"HARDWARE", "SOFTWARE", "NETWORK", "SECURITY"}
+data = data[data["category"].isin(allowed)].copy()
+data = data.drop_duplicates(subset=["text", "category", "severity", "service_type"]).copy()
+if data.empty:
+    raise ValueError("No training rows left after preprocessing. Check dataset quality/mappings.")
 
+# Severity + service_type normalization (keep as-is but lower-case for consistency)
+data["severity"] = data["severity"].astype(str).fillna("").str.strip().str.lower()
+data["service_type"] = data["service_type"].astype(str).fillna("general").str.strip().str.lower()
+data.loc[data["service_type"] == "", "service_type"] = "general"
 
-def _load_training_frame() -> pd.DataFrame:
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(f"Training dataset not found: {DATA_PATH}")
+X = data["text"]
+y_category = data["category"]
+y_severity = data["severity"]
+y_service_type = data["service_type"]
 
-    data = pd.read_csv(DATA_PATH)
-    data.columns = [column.strip().lower() for column in data.columns]
+# Convert text to numbers
+vectorizer = TfidfVectorizer(
+    ngram_range=(1, 2),
+    min_df=2,
+    max_df=0.95,
+    sublinear_tf=True,
+)
+X_vectors = vectorizer.fit_transform(X)
 
-    required_columns = {"description", "category", "priority"}
-    missing_columns = required_columns - set(data.columns)
-    if missing_columns:
-        raise ValueError(f"Missing required CSV columns: {sorted(missing_columns)}")
+# Train category model
+category_model = LogisticRegression(max_iter=3000, class_weight="balanced")
+category_model.fit(X_vectors, y_category)
 
-    data["description"] = _normalize_text(data["description"])
-    data["category"] = (
-        data["category"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .map(CATEGORY_MAP)
-    )
-    data["priority"] = (
-        data["priority"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .map(PRIORITY_MAP)
-    )
+# Train severity model
+severity_model = LogisticRegression(max_iter=3000, class_weight="balanced")
+severity_model.fit(X_vectors, y_severity)
 
-    data = data.dropna(subset=["description", "category", "priority"]).copy()
-    data = data[data["description"].str.len() >= 12].copy()
-    data = data.drop_duplicates(subset=["description", "category", "priority"]).copy()
+# Train service type model
+service_type_classes = y_service_type.nunique()
+if service_type_classes >= 2:
+    service_type_model = LogisticRegression(max_iter=3000, class_weight="balanced")
+    service_type_model.fit(X_vectors, y_service_type)
+else:
+    # LogisticRegression requires at least 2 classes, so we use a constant fallback model.
+    service_type_model = DummyClassifier(strategy="most_frequent")
+    service_type_model.fit(X_vectors, y_service_type)
 
-    if data.empty:
-        raise ValueError("No usable training rows remain after preprocessing.")
+print("Models trained successfully!")
+print("Training rows:", len(data))
+print("Category classes:", list(category_model.classes_))
+print("Service type classes:", sorted(data["service_type"].unique().tolist()))
 
-    return data
+# Save models and vectorizer
+joblib.dump(vectorizer, os.path.join(MODEL_DIR, "vectorizer.joblib"))
+joblib.dump(category_model, os.path.join(MODEL_DIR, "category_model.joblib"))
+joblib.dump(severity_model, os.path.join(MODEL_DIR, "severity_model.joblib"))
+joblib.dump(service_type_model, os.path.join(MODEL_DIR, "service_type_model.joblib"))
 
+print("Models saved successfully in:", MODEL_DIR)
 
-def main() -> None:
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-
-    data = _load_training_frame()
-    descriptions = data["description"]
-    categories = data["category"]
-    priorities = data["priority"]
-
-    vectorizer = TfidfVectorizer(
-        ngram_range=(1, 2),
-        min_df=2,
-        max_df=0.98,
-        strip_accents="unicode",
-        sublinear_tf=True,
-    )
-    description_vectors = vectorizer.fit_transform(descriptions)
-
-    category_model = LogisticRegression(max_iter=3000, class_weight="balanced")
-    category_model.fit(description_vectors, categories)
-
-    priority_model = LogisticRegression(max_iter=3000, class_weight="balanced")
-    priority_model.fit(description_vectors, priorities)
-
-    joblib.dump(vectorizer, MODEL_DIR / "vectorizer.pkl")
-    joblib.dump(category_model, MODEL_DIR / "category_model.pkl")
-    joblib.dump(priority_model, MODEL_DIR / "priority_model.pkl")
-
-    print("Dataset-based intake models trained successfully.")
-    print(f"Rows used: {len(data)}")
-    print(f"Category classes: {list(category_model.classes_)}")
-    print(f"Priority classes: {list(priority_model.classes_)}")
-    print(f"Saved models to: {MODEL_DIR}")
-
-    sample_text = descriptions.iloc[0]
-    sample_vector = vectorizer.transform([sample_text])
-    print(f"Sample category prediction: {category_model.predict(sample_vector)[0]}")
-    print(f"Sample priority prediction: {priority_model.predict(sample_vector)[0]}")
-
-
-if __name__ == "__main__":
-    main()
+# Quick sanity test
+sample = "internet down HQ pls"
+vec = vectorizer.transform([sample])
+print("Sample:", sample)
+print("Predicted category:", category_model.predict(vec)[0])

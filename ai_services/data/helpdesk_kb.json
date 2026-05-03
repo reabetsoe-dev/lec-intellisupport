@@ -163,7 +163,7 @@
     "steps": [
       "Confirm software is approved by IT policy and license is available.",
       "Run installer as administrator and disable conflicting apps.",
-      "Check device security blocks or missing prerequisites (.NET/VC++).",
+      "Check endpoint security blocks or missing prerequisites (.NET/VC++).",
       "Retry installation after reboot."
     ],
     "escalation": "Escalate with installer logs and screenshot of exact error code."
@@ -210,15 +210,15 @@
   {
     "id": "antivirus_alert",
     "category": "SOFTWARE",
-    "title": "Antivirus alert or device protection block",
+    "title": "Antivirus alert or endpoint protection block",
     "keywords": ["antivirus", "defender", "malware", "threat", "quarantine", "blocked"],
     "steps": [
       "Do not bypass or disable antivirus policy.",
-      "Run full device scan and isolate suspicious file.",
+      "Run full endpoint scan and isolate suspicious file.",
       "Capture threat name, path, and event timestamp.",
       "If business app is blocked, submit false-positive review request."
     ],
-    "escalation": "Escalate immediately for suspected malware or repeated device alerts."
+    "escalation": "Escalate immediately for suspected malware or repeated endpoint alerts."
   },
   {
     "id": "phishing_email",
@@ -312,3 +312,4 @@
     "escalation": "Escalate if monitor works on another device but not on assigned laptop."
   }
 ]
+ 

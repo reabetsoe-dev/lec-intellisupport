@@ -7,6 +7,7 @@ import {
   createConsumableRequest as createConsumableRequestApi,
   getConsumableRequests as getConsumableRequestsApi,
   getConsumables,
+  getRequesterDefaults,
   type Consumable,
   type ConsumableRequest,
 } from "@/lib/api"
@@ -33,6 +34,34 @@ function toDisplayItemName(value: string): string {
     .join(" ")
 }
 
+function mergeOptionsWithCurrent(baseOptions: readonly string[], currentValue: string): string[] {
+  const seen = new Set<string>()
+  const options: string[] = []
+
+  for (const value of [...baseOptions, currentValue]) {
+    const trimmedValue = value.trim()
+    const key = trimmedValue.toLowerCase()
+
+    if (!trimmedValue || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    options.push(trimmedValue)
+  }
+
+  return options
+}
+
+function normalizeOptionValue(baseOptions: readonly string[], value: string | undefined): string {
+  const trimmedValue = value?.trim()
+  if (!trimmedValue) {
+    return ""
+  }
+
+  return baseOptions.find((option) => option.toLowerCase() === trimmedValue.toLowerCase()) ?? trimmedValue
+}
+
 export function EmployeeConsumableRequestPanel() {
   const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
@@ -56,6 +85,12 @@ export function EmployeeConsumableRequestPanel() {
 
   const user = getStoredUserSession()
   const isTechnician = user?.role === "technician"
+
+  const branchOptions = useMemo(() => mergeOptionsWithCurrent(BRANCH_OPTIONS, branch), [branch])
+  const departmentOptions = useMemo(
+    () => mergeOptionsWithCurrent(DEPARTMENT_OPTIONS, department),
+    [department]
+  )
 
   const selectableConsumables = useMemo(() => {
     if (!isTechnician) {
@@ -120,6 +155,59 @@ export function EmployeeConsumableRequestPanel() {
     }
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+
+    let cancelled = false
+
+    const applyProfileDefaults = (nextDefaults: { branch?: string; department?: string }) => {
+      if (cancelled) {
+        return
+      }
+
+      const nextBranch = normalizeOptionValue(BRANCH_OPTIONS, nextDefaults.branch)
+      const nextDepartment = normalizeOptionValue(DEPARTMENT_OPTIONS, nextDefaults.department)
+
+      if (nextBranch) {
+        setBranch((current) => current || nextBranch)
+      }
+      if (nextDepartment) {
+        setDepartment((current) => current || nextDepartment)
+      }
+    }
+
+    const loadProfileDefaults = async () => {
+      try {
+        const defaults = await getRequesterDefaults(user.id)
+        applyProfileDefaults({
+          branch: defaults.branch,
+          department: defaults.department,
+        })
+      } catch {
+        // The form remains editable if profile defaults are temporarily unavailable.
+      }
+    }
+
+    void loadProfileDefaults()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, user?.role])
+
+  useEffect(() => {
+    if (isTechnician || department.trim()) {
+      return
+    }
+
+    const latestRequestWithDepartment = requests.find((request) => request.department.trim())
+    if (latestRequestWithDepartment) {
+      setDepartment(normalizeOptionValue(DEPARTMENT_OPTIONS, latestRequestWithDepartment.department))
+    }
+  }, [department, isTechnician, requests])
+
   const myRequests = requests
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -173,8 +261,6 @@ export function EmployeeConsumableRequestPanel() {
       })
       setItemName("")
       setAssignmentType("")
-      setBranch("")
-      setDepartment("")
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
@@ -230,7 +316,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select department</option>
-                    {DEPARTMENT_OPTIONS.map((option) => (
+                    {departmentOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -292,7 +378,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select branch</option>
-                    {BRANCH_OPTIONS.map((option) => (
+                    {branchOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>

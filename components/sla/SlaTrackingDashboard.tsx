@@ -587,17 +587,23 @@ export function SlaTrackingDashboard() {
                   <YAxis type="category" dataKey="name" width={150} />
                   <Tooltip
                     formatter={(value, name) => {
-                      const numericValue = typeof value === "number" ? value : Number(value ?? 0)
-                      const metricName = typeof name === "string" ? name : String(name ?? "")
-                      if (metricName === "performance_score_percent") return [`${numericValue}%`, "Performance Score"]
-                      return [numericValue, metricName]
+                      const normalizedValue =
+                        typeof value === "number" ? value : Number.parseFloat(String(value ?? 0))
+                      if (name === "performance_score_percent") {
+                        return [`${Number.isFinite(normalizedValue) ? normalizedValue : 0}%`, "Performance Score"]
+                      }
+                      return [Number.isFinite(normalizedValue) ? normalizedValue : 0, String(name)]
                     }}
                   />
                   <Bar dataKey="performance_score_percent" fill="#0F766E" radius={[0, 8, 8, 0]}>
                     <LabelList
                       dataKey="performance_score_percent"
                       position="right"
-                      formatter={(value) => `${typeof value === "number" ? value : Number(value ?? 0)}%`}
+                      formatter={(value) => {
+                        const normalizedValue =
+                          typeof value === "number" ? value : Number.parseFloat(String(value ?? 0))
+                        return `${Number.isFinite(normalizedValue) ? normalizedValue : 0}%`
+                      }}
                       fill="#0F172A"
                       fontSize={11}
                     />

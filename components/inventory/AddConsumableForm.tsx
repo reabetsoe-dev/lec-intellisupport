@@ -267,8 +267,8 @@ export function AddConsumableForm() {
         condition: form.condition,
         status: "In Stock",
       })
-      resetForm()
       showActionFeedback("success", "Asset added to inventory.")
+      resetForm()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add asset.")
     } finally {

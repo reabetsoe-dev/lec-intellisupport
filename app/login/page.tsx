@@ -161,9 +161,27 @@ function LoginContent() {
   )
 }
 
+<<<<<<< Updated upstream
 export default function LoginPage() {
   return (
     <Suspense fallback={null}>
+=======
+function LoginPageLoading() {
+  return (
+    <div
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-10"
+      style={{ backgroundImage: "url('/power-infrastructure.jpg')" }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(2,6,17,0.78)_0%,rgba(4,18,45,0.78)_40%,rgba(6,27,68,0.8)_100%)]" />
+      <div className="relative z-10 text-sm text-[#D6EAFF]">Loading sign in...</div>
+    </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageLoading />}>
+>>>>>>> Stashed changes
       <LoginContent />
     </Suspense>
   )

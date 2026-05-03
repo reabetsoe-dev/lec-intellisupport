@@ -116,15 +116,14 @@ export function TicketConversationThread({
 
   const groupedMessages = flattenedAndSorted
 
-  const [animateIn, setAnimateIn] = useState(false)
+  const [animatedMessageKey, setAnimatedMessageKey] = useState("")
   const lastMessageKey = groupedMessages.length
     ? `${groupedMessages[groupedMessages.length - 1].message_type}:${groupedMessages[groupedMessages.length - 1].id}:${groupedMessages[groupedMessages.length - 1].created_at}`
     : "empty"
 
   useEffect(() => {
     // Trigger a subtle fade+slide animation when the newest message changes.
-    setAnimateIn(false)
-    const rafId = window.requestAnimationFrame(() => setAnimateIn(true))
+    const rafId = window.requestAnimationFrame(() => setAnimatedMessageKey(lastMessageKey))
     return () => window.cancelAnimationFrame(rafId)
   }, [lastMessageKey])
 
@@ -168,7 +167,7 @@ export function TicketConversationThread({
 
         const isLast = idx === groupedMessages.length - 1
         const animClass = isLast
-          ? animateIn
+          ? animatedMessageKey === lastMessageKey
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-2"
           : "opacity-100 translate-y-0"
