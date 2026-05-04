@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/ensure-next-dev-lock.mjs",
-    "dev": "next dev --webpack",
+    "dev": "next dev --hostname 0.0.0.0 --port 3000 --webpack",
     "predev:webpack": "node scripts/ensure-next-dev-lock.mjs",
-    "dev:webpack": "next dev --webpack",
+    "dev:webpack": "next dev --hostname 0.0.0.0 --port 3000 --webpack",
     "predev:turbo": "node scripts/ensure-next-dev-lock.mjs",
-    "dev:turbo": "next dev --turbopack",
+    "dev:turbo": "next dev --hostname 0.0.0.0 --port 3000 --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

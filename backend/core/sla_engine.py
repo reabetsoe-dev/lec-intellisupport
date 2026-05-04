@@ -162,6 +162,7 @@ def auto_reassign(ticket: Ticket) -> SlaActionResult:
 
     from .views import (
         _assign_ticket_to_technician,
+        _notify_technician_assignment,
         _notify_user,
         _previously_assigned_technician_ids,
         _rank_technicians_for_ticket,
@@ -227,10 +228,12 @@ def auto_reassign(ticket: Ticket) -> SlaActionResult:
             f"Ticket #{ticket.id} was auto-reassigned to {next_technician.user.name} after the acceptance SLA elapsed.",
             ticket=ticket,
         )
-    _notify_user(
-        next_technician.user,
-        f"Ticket #{ticket.id} was auto-reassigned to you and is awaiting acceptance.",
-        ticket=ticket,
+    _notify_technician_assignment(
+        next_technician,
+        ticket,
+        in_app_message=f"Ticket #{ticket.id} was auto-reassigned to you and is awaiting acceptance.",
+        email_subject=f"LEC IntelliSupport: Ticket #{ticket.id} reassigned to you",
+        email_intro="The SLA engine reassigned a ticket to you because it still needed acceptance and progress.",
     )
 
     if has_exact_skill_match:

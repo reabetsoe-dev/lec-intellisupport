@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getTicketDetailPathByRole, type AuthUser } from "@/lib/auth"
 import {
+  getTicketById,
   getNotifications,
   markNotificationRead,
   type AppNotification,
+  updateTicketStatus,
 } from "@/lib/api"
 
 const topbarConfig: Array<{
@@ -231,6 +233,23 @@ function notificationBadgeClass(type: AppNotification["type"]): string {
   return "border-slate-200 bg-slate-50 text-slate-700"
 }
 
+function normalizeTicketStatus(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
+    return "Pending"
+  }
+  if (normalized === "escalated" || normalized === "in progress" || normalized === "in process") {
+    return "In Progress"
+  }
+  if (normalized === "pending review" || normalized === "awaiting review") {
+    return "Pending Review"
+  }
+  if (normalized === "resolved" || normalized === "solved") {
+    return "Solved"
+  }
+  return status
+}
+
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname() ?? ""
   const router = useRouter()
@@ -293,17 +312,24 @@ export function Topbar({ user }: TopbarProps) {
 
   const handleNotificationSelect = async (item: AppNotification) => {
     if (!item.is_read) {
-      setNotifications((currentItems) =>
-        currentItems.map((currentItem) =>
-          currentItem.id === item.id ? { ...currentItem, is_read: true } : currentItem
-        )
-      )
+      setNotifications((currentItems) => currentItems.filter((currentItem) => currentItem.id !== item.id))
       setUnreadCount((currentValue) => Math.max(currentValue - 1, 0))
 
       try {
         await markNotificationRead(item.id)
       } catch {
         void refreshNotifications()
+      }
+    }
+
+    if (user.role === "technician" && item.ticket_id) {
+      try {
+        const ticket = await getTicketById(item.ticket_id, { technicianUserId: user.id })
+        if (normalizeTicketStatus(ticket.status) === "Pending") {
+          await updateTicketStatus(item.ticket_id, "In Progress", undefined, user.id)
+        }
+      } catch {
+        // Keep notification navigation resilient even if auto-open cannot complete here.
       }
     }
 

@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const lockFile = path.join(repoRoot, ".next", "dev", "lock");
+const webpackCacheDir = path.join(repoRoot, ".next", "dev", "cache", "webpack");
 
 function hasRunningNextDevInRepo() {
   try {
@@ -58,7 +59,17 @@ try {
   console.log("Removed stale Next.js dev lock file.");
 } catch (error) {
   if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-    process.exit(0);
+    // Continue into cache cleanup even if the lock file is already gone.
+  } else {
+    console.warn("Unable to remove Next.js lock file:", error);
   }
-  console.warn("Unable to remove Next.js lock file:", error);
+}
+
+try {
+  if (fs.existsSync(webpackCacheDir)) {
+    fs.rmSync(webpackCacheDir, { recursive: true, force: true });
+    console.log("Cleared stale Next.js webpack cache.");
+  }
+} catch (error) {
+  console.warn("Unable to clear Next.js webpack cache:", error);
 }
