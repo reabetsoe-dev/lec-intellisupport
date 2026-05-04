@@ -78,9 +78,14 @@ export default function AdminFaultTechnicianAccessPage() {
       return `${protocol}//${hostname}${port}/technician-access`
     }
 
+    const isPhoneReachableHost = (hostname: string) => {
+      const normalizedHost = hostname.trim().toLowerCase()
+      return normalizedHost !== "" && normalizedHost !== "localhost" && normalizedHost !== "127.0.0.1"
+    }
+
     void (async () => {
-      const initialUrl = buildPhoneUrl(window.location.hostname)
-      setPhoneUrl(initialUrl)
+      const currentHostUrl = buildPhoneUrl(window.location.hostname)
+      let resolvedPhoneUrl = currentHostUrl
 
       try {
         const response = await fetch("/api/network-info", { cache: "no-store" })
@@ -96,11 +101,15 @@ export default function AdminFaultTechnicianAccessPage() {
         const detectedAddress =
           typeof networkInfo?.primaryAddress === "string" ? networkInfo.primaryAddress.trim() : ""
 
-        if (detectedAddress && isMounted) {
-          setPhoneUrl(buildPhoneUrl(detectedAddress))
+        if (detectedAddress && isPhoneReachableHost(detectedAddress)) {
+          resolvedPhoneUrl = buildPhoneUrl(detectedAddress)
         }
       } catch {
-        // Keep the current URL if network detection fails.
+        // Keep the current host URL if network detection fails.
+      } finally {
+        if (isMounted) {
+          setPhoneUrl(resolvedPhoneUrl)
+        }
       }
 
       try {
@@ -127,7 +136,37 @@ export default function AdminFaultTechnicianAccessPage() {
     }
   }, [])
 
+  const phoneUrlHost = (() => {
+    if (!phoneUrl.trim()) {
+      return ""
+    }
+
+    try {
+      return new URL(phoneUrl).hostname.trim().toLowerCase()
+    } catch {
+      return ""
+    }
+  })()
+
+  const isPhoneReachableQr = phoneUrlHost !== "" && phoneUrlHost !== "localhost" && phoneUrlHost !== "127.0.0.1"
+
   const handleDownloadQr = () => {
+    const imageElement = qrContainerRef.current?.querySelector("img")
+    if (imageElement?.src) {
+      try {
+        const anchor = document.createElement("a")
+        anchor.href = imageElement.src
+        anchor.download = "technician-checkpoint-qr.png"
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+        return
+      } catch {
+        window.alert("Unable to download the QR code right now. Please try again.")
+        return
+      }
+    }
+
     const svgElement = qrContainerRef.current?.querySelector("svg")
     if (!svgElement) {
       return
@@ -147,7 +186,7 @@ export default function AdminFaultTechnicianAccessPage() {
       const objectUrl = URL.createObjectURL(blob)
       const anchor = document.createElement("a")
       anchor.href = objectUrl
-      anchor.download = "technician-checkpoint-qr.svg"
+      anchor.download = "technician-checkpoint-qr.svg"// svg download
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
@@ -201,6 +240,37 @@ export default function AdminFaultTechnicianAccessPage() {
               >
                 {phoneUrl.trim() ? (
                   <QrCodeSvg value={phoneUrl.trim()} size={320} className="mx-auto w-full max-w-[320px]" />
+                ) : (
+                  <div className="flex min-h-[20rem] items-center justify-center rounded-2xl border border-dashed border-[#C9DDF1] bg-[#F7FBFF] px-6 text-sm text-[#4F6F95]">
+                    Preparing phone QR...
+                  </div>
+                )}
+              </div>
+
+              <div className="mx-auto mt-5 max-w-2xl space-y-3 text-left">
+                <div className="rounded-2xl border border-[#D8E6F5] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#4F6F95]">
+                    Technician Phone Link
+                  </p>
+                  <a
+                    href={phoneUrl || "#"}
+                    className="mt-2 block break-all text-sm font-medium text-[#0A63B8] underline decoration-[#9BC4EA] underline-offset-4"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {phoneUrl || "Detecting phone-friendly link..."}
+                  </a>
+                  <p className="mt-2 text-xs text-[#4F6F95]">
+                    Technicians can scan this QR from a phone on the same network and sign in with technician credentials
+                    to check in or check out.
+                  </p>
+                </div>
+
+                {!isPhoneReachableQr ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    A phone-friendly network address was not detected yet. Start the frontend on the local network and
+                    reopen this page so the QR points to a reachable phone URL.
+                  </div>
                 ) : null}
               </div>
             </div>

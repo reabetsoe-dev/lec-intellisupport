@@ -107,6 +107,7 @@ class Technician(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="technician_profile")
     skillset = models.CharField(max_length=20, choices=SKILLSET_CHOICES)
     department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES, default=DEPARTMENT_IT)
+    notification_email = models.EmailField(blank=True, default="")
     is_available = models.BooleanField(default=False)
     availability_updated_at = models.DateTimeField(null=True, blank=True)
     last_check_in_at = models.DateTimeField(null=True, blank=True)

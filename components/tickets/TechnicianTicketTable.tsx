@@ -2,15 +2,16 @@
 
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Filter } from "lucide-react"
+import { Filter, LoaderCircle } from "lucide-react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getAssignedTickets, type Ticket } from "@/lib/api"
+import { escalateTicket, getAssignedTickets, getTechnicians, type Technician, type Ticket, updateTicketStatus } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,12 @@ type EscalationCommentPreview = {
   comment: string
   by?: string | null
   at?: string | null
+}
+
+type ActionDialogState = {
+  open: boolean
+  status: "success" | "error" | "info"
+  message: string
 }
 
 type TicketRow = {
@@ -87,7 +94,7 @@ function normalizeTicketStatus(status: string): string {
     return "In Progress"
   }
   if (normalized === "pending review" || normalized === "awaiting review") {
-    return "Pending Review"
+    return "Solved"
   }
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
     return "Pending"
@@ -128,7 +135,7 @@ function toRow(ticket: Ticket): TicketRow {
     title: ticket.title,
     description: ticket.description || "No fault description provided.",
     branch: ticket.location || "N/A",
-    updated: ticket.created_at || "",
+    updated: ticket.updated_at || ticket.created_at || "",
     priority: ticket.priority,
     status: normalizeTicketStatus(ticket.status),
     escalationTarget: ticket.latest_escalation_target || "Current queue",
@@ -143,6 +150,29 @@ export function TechnicianTicketTable() {
   const [loadError, setLoadError] = useState("")
 
   const [commentPreview, setCommentPreview] = useState<EscalationCommentPreview | null>(null)
+  const [solvedTicket, setSolvedTicket] = useState<TicketRow | null>(null)
+  const [reassignTicket, setReassignTicket] = useState<TicketRow | null>(null)
+  const [reassignOptions, setReassignOptions] = useState<Technician[]>([])
+  const [reassignTarget, setReassignTarget] = useState("")
+  const [reassignComment, setReassignComment] = useState("")
+  const [busyTicketId, setBusyTicketId] = useState<number | null>(null)
+  const [busyAction, setBusyAction] = useState<"solve" | "reassign_open" | "reassign_submit" | null>(null)
+  const [actionDialog, setActionDialog] = useState<ActionDialogState>({
+    open: false,
+    status: "info",
+    message: "",
+  })
+
+  const currentUser = getStoredUserSession()
+  const currentUserId = currentUser?.id ?? null
+
+  const showActionResult = (status: ActionDialogState["status"], message: string) => {
+    setActionDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   const loadAssignedTickets = useCallback(async () => {
     const user = getStoredUserSession()
@@ -201,9 +231,83 @@ export function TechnicianTicketTable() {
     [assignedTickets]
   )
 
+  const handleConfirmSolved = async () => {
+    if (!solvedTicket || !currentUserId) {
+      showActionResult("error", "Session expired. Please login again.")
+      return
+    }
+
+    try {
+      setBusyTicketId(solvedTicket.id)
+      setBusyAction("solve")
+      await updateTicketStatus(solvedTicket.id, "Solved", undefined, currentUserId)
+      await loadAssignedTickets()
+      setSolvedTicket(null)
+      showActionResult("success", `Ticket #${solvedTicket.id} marked solved and sent for reporter review.`)
+    } catch (error) {
+      showActionResult("error", error instanceof Error ? error.message : "Failed to mark ticket as solved.")
+    } finally {
+      setBusyTicketId(null)
+      setBusyAction(null)
+    }
+  }
+
+  const openReassignDialog = async (ticket: TicketRow) => {
+    if (!currentUserId) {
+      showActionResult("error", "Session expired. Please login again.")
+      return
+    }
+
+    try {
+      setBusyTicketId(ticket.id)
+      setBusyAction("reassign_open")
+      const technicianData = await getTechnicians()
+      setReassignOptions(technicianData.filter((item) => item.user_id !== currentUserId && item.is_available))
+      setReassignTarget("")
+      setReassignComment("")
+      setReassignTicket(ticket)
+    } catch (error) {
+      showActionResult("error", error instanceof Error ? error.message : "Failed to load technicians for reassignment.")
+    } finally {
+      setBusyTicketId(null)
+      setBusyAction(null)
+    }
+  }
+
+  const handleReassignSubmit = async () => {
+    if (!reassignTicket || !currentUserId) {
+      showActionResult("error", "Session expired. Please login again.")
+      return
+    }
+    if (!reassignTarget) {
+      showActionResult("error", "Choose the technician to reassign this ticket to.")
+      return
+    }
+    if (!reassignComment.trim()) {
+      showActionResult("error", "Add reassignment notes before continuing.")
+      return
+    }
+
+    try {
+      setBusyTicketId(reassignTicket.id)
+      setBusyAction("reassign_submit")
+      await escalateTicket(reassignTicket.id, currentUserId, Number(reassignTarget), reassignComment.trim())
+      await loadAssignedTickets()
+      setReassignTicket(null)
+      setReassignTarget("")
+      setReassignComment("")
+      showActionResult("success", `Ticket #${reassignTicket.id} reassigned successfully.`)
+    } catch (error) {
+      showActionResult("error", error instanceof Error ? error.message : "Failed to reassign ticket.")
+    } finally {
+      setBusyTicketId(null)
+      setBusyAction(null)
+    }
+  }
+
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
-      <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
+      <CardHeader className="gap-3 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4 md:grid-cols-[1fr_auto]">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded border border-[#C89A4D] bg-[#FFF2DE] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
             Pending {summary.pending}
@@ -216,7 +320,7 @@ export function TechnicianTicketTable() {
           </span>
         </div>
 
-        <div className="flex justify-start">
+        <div className="flex justify-start md:justify-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" size="sm" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
@@ -331,17 +435,42 @@ export function TechnicianTicketTable() {
                     )}
                   </TableCell>
                   <TableCell className="py-2">
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-col gap-1.5">
                       <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]" asChild>
                         <Link href={`/technician/tickets/${ticket.id}`}>
                           {ticket.status === "Pending" ? "Open & Start" : "Open"}
                         </Link>
                       </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
+                        <Button
+                          size="sm"
+                          type="button"
+                          className="h-8 w-full bg-[#1C7C54] text-white hover:bg-[#155E40]"
+                          disabled={busyTicketId === ticket.id || ticket.status !== "In Progress"}
+                          onClick={() => setSolvedTicket(ticket)}
+                        >
+                          {busyTicketId === ticket.id && busyAction === "solve" ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : null}
+                          Solved
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          className="h-8 w-full border-[#C89A4D] bg-white text-[#8B5A12]"
+                          disabled={busyTicketId === ticket.id || ticket.status === "Pending Review" || ticket.status === "Solved"}
+                          onClick={() => void openReassignDialog(ticket)}
+                        >
+                          {busyTicketId === ticket.id && busyAction === "reassign_open" ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : null}
+                          Reassign
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
           </TableBody>
         </Table>
       </CardContent>
@@ -367,6 +496,116 @@ export function TechnicianTicketTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(solvedTicket)} onOpenChange={(open) => (!open ? setSolvedTicket(null) : undefined)}>
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
+          <DialogHeader>
+            <DialogTitle className="text-[#1D3F63]">
+              {solvedTicket ? `Confirm Solved - Ticket #${solvedTicket.id}` : "Confirm Solved"}
+            </DialogTitle>
+            <DialogDescription className="text-[#4A6887]">
+              Confirm once you have completed the fix. The ticket will move to reporter review so the user can confirm the issue is solved.
+            </DialogDescription>
+          </DialogHeader>
+          {solvedTicket ? (
+            <div className="rounded-lg border border-[#C8DAEC] bg-white p-3 text-sm text-slate-800">
+              <p className="font-semibold text-[#1D3F63]">{solvedTicket.title}</p>
+              <p className="mt-1 text-[#4A6887]">{solvedTicket.reporter}</p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-[#93AECA] bg-white text-[#20466D]"
+              onClick={() => setSolvedTicket(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1C7C54] text-white hover:bg-[#155E40]"
+              onClick={() => void handleConfirmSolved()}
+              disabled={!solvedTicket || busyAction === "solve"}
+            >
+              {busyAction === "solve" ? "Saving..." : "Solved"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(reassignTicket)} onOpenChange={(open) => (!open ? setReassignTicket(null) : undefined)}>
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
+          <DialogHeader>
+            <DialogTitle className="text-[#1D3F63]">
+              {reassignTicket ? `Reassign Ticket #${reassignTicket.id}` : "Reassign Ticket"}
+            </DialogTitle>
+            <DialogDescription className="text-[#4A6887]">
+              Choose another available technician and explain why the ticket should be handed over.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Technician</label>
+              <select
+                className="h-10 w-full rounded-md border border-[#B7CBE0] bg-white px-3 text-sm text-slate-800"
+                value={reassignTarget}
+                onChange={(event) => setReassignTarget(event.target.value)}
+                disabled={busyAction === "reassign_submit"}
+              >
+                <option value="">Select technician</option>
+                {reassignOptions.map((technician) => (
+                  <option key={technician.id} value={String(technician.id)}>
+                    {technician.name} ({technician.skillset})
+                  </option>
+                ))}
+              </select>
+              {reassignOptions.length === 0 ? (
+                <p className="text-xs text-[#8A6A21]">No alternate technicians are currently available.</p>
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Reassignment Notes</label>
+              <textarea
+                className="min-h-24 w-full rounded-md border border-[#B7CBE0] bg-white px-3 py-2 text-sm text-slate-800"
+                placeholder="Summarize the work done and why another technician should take over."
+                value={reassignComment}
+                onChange={(event) => setReassignComment(event.target.value)}
+                disabled={busyAction === "reassign_submit"}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-[#93AECA] bg-white text-[#20466D]"
+              onClick={() => {
+                setReassignTicket(null)
+                setReassignTarget("")
+                setReassignComment("")
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#9A6400] text-white hover:bg-[#7F5200]"
+              onClick={() => void handleReassignSubmit()}
+              disabled={!reassignTicket || busyAction === "reassign_submit" || reassignOptions.length === 0}
+            >
+              {busyAction === "reassign_submit" ? "Reassigning..." : "Confirm Reassign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ActionFeedbackDialog
+        open={actionDialog.open}
+        status={actionDialog.status}
+        message={actionDialog.message}
+        onOk={() => setActionDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }

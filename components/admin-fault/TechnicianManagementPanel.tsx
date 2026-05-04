@@ -65,6 +65,7 @@ type EditableTechnician = {
   id: number
   name: string
   email: string
+  notification_email: string
   skillset: string
 }
 
@@ -73,6 +74,7 @@ export function TechnicianManagementPanel() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
+  const [notificationEmail, setNotificationEmail] = useState("")
   const [skillset, setSkillset] = useState("")
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
@@ -172,6 +174,7 @@ export function TechnicianManagementPanel() {
       id: technician.id,
       name: technician.name,
       email: technician.email,
+      notification_email: technician.notification_email ?? "",
       skillset: technician.skillset,
     })
   }
@@ -220,6 +223,7 @@ export function TechnicianManagementPanel() {
 
     const trimmedName = editingTechnician.name.trim()
     const trimmedEmail = editingTechnician.email.trim()
+    const trimmedNotificationEmail = editingTechnician.notification_email.trim()
     const trimmedSkillset = editingTechnician.skillset.trim()
 
     if (!trimmedName) {
@@ -242,6 +246,7 @@ export function TechnicianManagementPanel() {
       await updateTechnicianDetails(editingTechnician.id, {
         name: trimmedName,
         email: trimmedEmail,
+        notification_email: trimmedNotificationEmail,
         skillset: trimmedSkillset,
       })
       await loadTechnicians()
@@ -323,10 +328,12 @@ export function TechnicianManagementPanel() {
       await createTechnician({
         name: name.trim(),
         email: email.trim(),
+        notification_email: notificationEmail.trim(),
         skillset: skillset.trim(),
       })
       setName("")
       setEmail("")
+      setNotificationEmail("")
       setSkillset("")
       await loadTechnicians()
       showResultDialog("success", "Technician created. Setup link sent to their email.")
@@ -487,7 +494,8 @@ export function TechnicianManagementPanel() {
             onSubmit={handleSubmit}
           >
           <p className="md:col-span-2 text-xs text-[#4A6A96]">
-            A one-time password setup link will be sent to this email address.
+            The login email receives the password setup link. The assignment notification email receives ticket
+            assignment alerts when the technician is away from the office.
           </p>
           <div className="space-y-2">
             <label htmlFor="technician-name" className="text-sm font-medium text-[#1E3A6D]">
@@ -503,7 +511,7 @@ export function TechnicianManagementPanel() {
 
           <div className="space-y-2">
             <label htmlFor="technician-email" className="text-sm font-medium text-[#1E3A6D]">
-              Email
+              Login Email
             </label>
             <Input
               id="technician-email"
@@ -511,6 +519,19 @@ export function TechnicianManagementPanel() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="technician-notification-email" className="text-sm font-medium text-[#1E3A6D]">
+              Assignment Notification Email
+            </label>
+            <Input
+              id="technician-notification-email"
+              type="email"
+              value={notificationEmail}
+              onChange={(event) => setNotificationEmail(event.target.value)}
+              placeholder="Optional. Leave blank to use the login email."
             />
           </div>
 
@@ -669,7 +690,10 @@ export function TechnicianManagementPanel() {
                           </span>
                           <div className="min-w-0 space-y-1">
                             <p className="truncate text-base font-semibold text-[#0B1F3A]">{technician.name}</p>
-                            <p className="truncate text-xs text-[#355A84]">{technician.email}</p>
+                            <p className="truncate text-xs text-[#355A84]">Login: {technician.email}</p>
+                            <p className="truncate text-xs text-[#4A6A96]">
+                              Assignment alerts: {technician.notification_email || technician.email}
+                            </p>
                             <div className="flex flex-wrap gap-1.5 pt-0.5">
                               <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
                                 Branch: {technician.branch || "Not set"}
@@ -891,7 +915,7 @@ export function TechnicianManagementPanel() {
               </div>
               <div className="space-y-2">
                 <label htmlFor="edit-technician-email" className="text-sm font-medium text-[#1E3A6D]">
-                  Technician Email
+                  Technician Login Email
                 </label>
                 <Input
                   id="edit-technician-email"
@@ -903,6 +927,22 @@ export function TechnicianManagementPanel() {
                     )
                   }
                   required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-technician-notification-email" className="text-sm font-medium text-[#1E3A6D]">
+                  Assignment Notification Email
+                </label>
+                <Input
+                  id="edit-technician-notification-email"
+                  type="email"
+                  value={editingTechnician.notification_email}
+                  onChange={(event) =>
+                    setEditingTechnician((current) =>
+                      current ? { ...current, notification_email: event.target.value } : current
+                    )
+                  }
+                  placeholder="Optional. Leave blank to use the login email."
                 />
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -18,6 +18,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError
 from django.db.models.deletion import ProtectedError
@@ -949,13 +950,33 @@ def _is_technician_within_business_hours(
     return hours_open_now
 
 
-def _technician_has_active_ticket(technician: Technician, *, exclude_ticket_id: int | None = None) -> bool:
+MAX_ACTIVE_TICKETS_PER_TECHNICIAN = 2
+TECHNICIAN_INACTIVE_WORKLOAD_STATUSES = [
+    Ticket.STATUS_PENDING_REVIEW,
+    Ticket.STATUS_SOLVED,
+    Ticket.LEGACY_STATUS_RESOLVED,
+]
+
+
+def _technician_active_ticket_count(technician: Technician, *, exclude_ticket_id: int | None = None) -> int:
     queryset = Ticket.objects.filter(technician=technician).exclude(
-        status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED]
+        status__in=TECHNICIAN_INACTIVE_WORKLOAD_STATUSES
     )
     if exclude_ticket_id is not None:
         queryset = queryset.exclude(id=exclude_ticket_id)
-    return queryset.exists()
+    return queryset.count()
+
+
+def _technician_has_reached_active_ticket_capacity(
+    technician: Technician,
+    *,
+    exclude_ticket_id: int | None = None,
+) -> bool:
+    return _technician_active_ticket_count(technician, exclude_ticket_id=exclude_ticket_id) >= MAX_ACTIVE_TICKETS_PER_TECHNICIAN
+
+
+def _technician_has_active_ticket(technician: Technician, *, exclude_ticket_id: int | None = None) -> bool:
+    return _technician_active_ticket_count(technician, exclude_ticket_id=exclude_ticket_id) > 0
 
 
 def _business_hours_to_dict(config: BusinessHours) -> dict:
@@ -1505,13 +1526,13 @@ def _rank_technicians_for_ticket(
     available_technicians = [
         item
         for item in candidate_pool
-        if item.is_available and not _technician_has_active_ticket(item)
+        if item.is_available and not _technician_has_reached_active_ticket_capacity(item)
     ]
     technicians = (
         available_technicians
         if available_technicians
         else (
-            [item for item in candidate_pool if not _technician_has_active_ticket(item)]
+            [item for item in candidate_pool if not _technician_has_reached_active_ticket_capacity(item)]
             if allow_unavailable_fallback
             else []
         )
@@ -1521,7 +1542,7 @@ def _rank_technicians_for_ticket(
 
     workload_rows = (
         Ticket.objects.filter(technician_id__in=[item.id for item in technicians])
-        .exclude(status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED])
+        .exclude(status__in=TECHNICIAN_INACTIVE_WORKLOAD_STATUSES)
         .values("technician_id")
         .annotate(open_count=Count("id"))
     )
@@ -1845,6 +1866,7 @@ def _technician_to_dict(technician: Technician) -> dict:
         "user_id": technician.user_id,
         "name": technician.user.name,
         "email": technician.user.email,
+        "notification_email": technician.notification_email,
         "branch": TECHNICIAN_FIXED_BRANCH,
         "department": TECHNICIAN_FIXED_DEPARTMENT,
         "skillset": technician.skillset,
@@ -1863,6 +1885,35 @@ def _normalize_technician_checkpoint_action(value: str | None) -> str:
     if normalized in {"checkout", "check_out"}:
         return "check_out"
     return ""
+
+
+LEGACY_LOGIN_IDENTIFIER_ALIASES = {
+    "technician2@lec.com": "palesa.mokopotsa@lec.com",
+    "technician3@lec.com": "reabetsoe.sephekola@lec.com",
+    "technician4@lec.com": "mokholoane.kanei@lec.com",
+}
+
+
+def _resolve_login_identifier_alias(identifier: str) -> str:
+    normalized = str(identifier).strip().lower()
+    return LEGACY_LOGIN_IDENTIFIER_ALIASES.get(normalized, normalized)
+
+
+def _find_active_user_for_login(identifier: str, *, role: str | None = None) -> User | None:
+    normalized_identifier = str(identifier).strip()
+    if not normalized_identifier:
+        return None
+
+    queryset = User.objects.filter(is_active=True)
+    if role:
+        queryset = queryset.filter(role=role)
+
+    normalized_email = _resolve_login_identifier_alias(normalized_identifier)
+    user = queryset.filter(email=normalized_email).first()
+    if user:
+        return user
+
+    return queryset.filter(name__iexact=normalized_identifier).first()
 
 
 TECHNICIAN_ACTIVITY_LABELS = {
@@ -2037,6 +2088,105 @@ def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) ->
     )
 
 
+def _normalize_optional_email(value: object, *, required: bool = False, field_name: str = "email") -> str:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        if required:
+            raise ValidationError(f"{field_name} is required.")
+        return ""
+
+    try:
+        validate_email(normalized)
+    except ValidationError as exc:
+        raise ValidationError(f"{field_name} must be a valid email address.") from exc
+    return normalized
+
+
+def _resolve_technician_notification_email(technician: Technician) -> str:
+    configured_email = str(technician.notification_email or "").strip().lower()
+    if configured_email:
+        return configured_email
+    return str(technician.user.email or "").strip().lower()
+
+
+def _send_technician_assignment_email(
+    *,
+    technician: Technician,
+    ticket: Ticket,
+    subject: str,
+    intro: str,
+) -> None:
+    recipient_email = _resolve_technician_notification_email(technician)
+    if not recipient_email:
+        return
+
+    if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+        logger.info(
+            "Skipping technician assignment email for ticket #%s because email service is not configured.",
+            ticket.id,
+        )
+        return
+
+    app_base_url = _resolve_frontend_base_url()
+    login_url = f"{app_base_url}/login"
+    assignment_email = str(technician.notification_email or "").strip().lower()
+    ticket_location = str(ticket.location or "").strip() or "Not provided"
+    reporter_name = getattr(ticket.employee, "name", "") or "Not provided"
+
+    message = (
+        f"Hello {technician.user.name},\n\n"
+        f"{intro}\n\n"
+        f"Ticket: #{ticket.id} - {ticket.title}\n"
+        f"Category: {ticket.category}\n"
+        f"Priority: {ticket.priority}\n"
+        f"Location: {ticket_location}\n"
+        f"Reported by: {reporter_name}\n"
+        f"Current status: {ticket.status}\n"
+        f"Technician login email: {technician.user.email}\n"
+    )
+    if assignment_email and assignment_email != technician.user.email:
+        message += f"Assignment notification email: {assignment_email}\n"
+    message += (
+        "\n"
+        "Sign in to review and accept the ticket:\n"
+        f"{login_url}\n\n"
+        "Regards,\n"
+        "LEC IntelliSupport"
+    )
+
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[recipient_email],
+            fail_silently=False,
+        )
+    except (SMTPException, OSError):
+        logger.exception(
+            "Failed to send technician assignment email for ticket #%s to %s.",
+            ticket.id,
+            recipient_email,
+        )
+
+
+def _notify_technician_assignment(
+    technician: Technician,
+    ticket: Ticket,
+    *,
+    in_app_message: str,
+    email_subject: str,
+    email_intro: str,
+) -> None:
+    _notify_user(technician.user, in_app_message, ticket=ticket)
+    _send_technician_assignment_email(
+        technician=technician,
+        ticket=ticket,
+        subject=email_subject,
+        intro=email_intro,
+    )
+
+
 def _mark_ticket_activity(ticket: Ticket, *, at_time: datetime | None = None) -> None:
     activity_at = at_time or timezone.now()
     ticket.last_activity_at = activity_at
@@ -2181,10 +2331,12 @@ def _assign_ticket_to_technician_from_waiting_queue(ticket: Ticket, technician: 
         history_note="Auto-assigned from waiting queue.",
     )
 
-    _notify_user(
-        technician.user,
-        f"Ticket #{ticket.id} was assigned to you automatically from the waiting queue.",
-        ticket=ticket,
+    _notify_technician_assignment(
+        technician,
+        ticket,
+        in_app_message=f"Ticket #{ticket.id} was assigned to you automatically from the waiting queue.",
+        email_subject=f"LEC IntelliSupport: Ticket #{ticket.id} assigned to you",
+        email_intro="A waiting ticket has now been assigned to you automatically.",
     )
     _notify_user(
         ticket.employee,
@@ -2417,15 +2569,26 @@ def _create_password_reset_token(user: User, request) -> None:
 
 @api_view(["POST"])
 def login_view(request):
-    email = str(request.data.get("email", "")).strip().lower()
+    email = str(request.data.get("email", "")).strip()
     password = str(request.data.get("password", ""))
 
     if not email or not password:
         return Response({"message": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.filter(email=email, is_active=True).first()
+    user = _find_active_user_for_login(email)
     if not user:
         return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if user.must_change_password:
+        return Response(
+            {
+                "message": (
+                    "Your account still needs password setup. "
+                    "Use the password setup link or reset your password before logging in."
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     if not check_password(password, user.password_hash):
         return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -2444,7 +2607,7 @@ def login_view(request):
 
 @api_view(["POST"])
 def technician_checkpoint_view(request):
-    email = str(request.data.get("email", "")).strip().lower()
+    email = str(request.data.get("email", "")).strip()
     password = str(request.data.get("password", ""))
     action = _normalize_technician_checkpoint_action(request.data.get("action"))
 
@@ -2454,8 +2617,22 @@ def technician_checkpoint_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    user = User.objects.filter(email=email, role=User.ROLE_TECHNICIAN, is_active=True).first()
-    if not user or not check_password(password, user.password_hash):
+    user = _find_active_user_for_login(email, role=User.ROLE_TECHNICIAN)
+    if not user:
+        return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if user.must_change_password:
+        return Response(
+            {
+                "message": (
+                    "Your technician account still needs password setup. "
+                    "Complete password setup or reset your password before using check-in or check-out."
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not check_password(password, user.password_hash):
         return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
     technician = Technician.objects.select_related("user").filter(user=user).first()
@@ -2497,12 +2674,12 @@ def technician_checkpoint_view(request):
 
 @api_view(["POST"])
 def forgot_password_view(request):
-    email = str(request.data.get("email", "")).strip().lower()
+    email = str(request.data.get("email", "")).strip()
     if _forgot_password_is_rate_limited(request, email):
         return Response({"message": FORGOT_PASSWORD_GENERIC_MESSAGE}, status=status.HTTP_200_OK)
 
     if email:
-        user = User.objects.filter(email=email, is_active=True).first()
+        user = _find_active_user_for_login(email)
         if user:
             try:
                 _create_password_reset_token(user, request)
@@ -2881,10 +3058,12 @@ def tickets_collection_view(request):
             note="Initial auto-assignment during ticket intake.",
             assigned_at=assignment_time,
         )
-        _notify_user(
-            auto_assigned_technician.user,
-            f"Ticket #{ticket.id} auto-assigned to you based on skill/workload routing.",
-            ticket=ticket,
+        _notify_technician_assignment(
+            auto_assigned_technician,
+            ticket,
+            in_app_message=f"Ticket #{ticket.id} auto-assigned to you based on skill/workload routing.",
+            email_subject=f"LEC IntelliSupport: Ticket #{ticket.id} assigned to you",
+            email_intro="A new ticket has been assigned to you automatically based on skill and workload routing.",
         )
         _notify_user(
             ticket.employee,
@@ -2936,7 +3115,11 @@ def tickets_collection_view(request):
                 f"{triage_note} Support desk is currently outside working hours. "
                 f"Technicians will receive your report during working hours from {_business_hours_window_label(current_business_hours)}."
             )
-        elif Technician.objects.filter(user__is_active=True, user__role=User.ROLE_TECHNICIAN).exists():
+        elif Technician.objects.filter(
+            user__is_active=True,
+            user__role=User.ROLE_TECHNICIAN,
+            is_available=True,
+        ).exists():
             payload["routing_note"] = (
                 f"{triage_note} Technicians are currently busy. "
                 "Your report is waiting in the queue and will be assigned automatically as soon as a technician becomes available."
@@ -3207,10 +3390,12 @@ def escalate_ticket_view(request, ticket_id: int):
                 f"Ticket #{ticket.id} was auto-reassigned by Admin Fault to {auto_target_technician.user.name}.",
                 ticket=ticket,
             )
-        _notify_user(
-            auto_target_technician.user,
-            f"Ticket #{ticket.id} was auto-escalated to you by Admin Fault and awaits your acceptance.",
-            ticket=ticket,
+        _notify_technician_assignment(
+            auto_target_technician,
+            ticket,
+            in_app_message=f"Ticket #{ticket.id} was auto-escalated to you by Admin Fault and awaits your acceptance.",
+            email_subject=f"LEC IntelliSupport: Ticket #{ticket.id} reassigned to you",
+            email_intro="Admin Fault reassigned a ticket to you, and it is waiting for your acceptance.",
         )
         for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
             if has_exact_skill_match:
@@ -3305,10 +3490,12 @@ def escalate_ticket_view(request, ticket_id: int):
                 f"Ticket #{ticket.id} was escalated by you to {target_technician.user.name}.",
                 ticket=ticket,
             )
-        _notify_user(
-            target_technician.user,
-            f"Ticket #{ticket.id} escalated to you by {actor_user.name} and awaits your acceptance.",
-            ticket=ticket,
+        _notify_technician_assignment(
+            target_technician,
+            ticket,
+            in_app_message=f"Ticket #{ticket.id} escalated to you by {actor_user.name} and awaits your acceptance.",
+            email_subject=f"LEC IntelliSupport: Ticket #{ticket.id} reassigned to you",
+            email_intro=f"Technician {actor_user.name} reassigned a ticket to you, and it is waiting for your acceptance.",
         )
         _notify_user(
             ticket.employee,
@@ -3339,6 +3526,14 @@ def technicians_collection_view(request):
 
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
+    try:
+        notification_email = _normalize_optional_email(
+            request.data.get("notification_email", ""),
+            field_name="notification_email",
+        )
+    except ValidationError as exc:
+        message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+        return Response({"message": message}, status=status.HTTP_400_BAD_REQUEST)
     skillset = _normalize_skillset_value(str(request.data.get("skillset", "")))
     raw_is_available = request.data.get("is_available", False)
     if isinstance(raw_is_available, str):
@@ -3375,6 +3570,7 @@ def technicians_collection_view(request):
                 user=user,
                 skillset=skillset,
                 department=TECHNICIAN_FIXED_DEPARTMENT,
+                notification_email=notification_email,
                 is_available=is_available,
             )
             _create_password_setup_invite(user, "Technician")
@@ -3431,6 +3627,18 @@ def technician_detail_view(request, technician_id: int):
                 )
             technician.skillset = skillset
             updated_technician_fields.append("skillset")
+
+        if "notification_email" in request.data:
+            try:
+                notification_email = _normalize_optional_email(
+                    request.data.get("notification_email", ""),
+                    field_name="notification_email",
+                )
+            except ValidationError as exc:
+                message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+                return Response({"message": message}, status=status.HTTP_400_BAD_REQUEST)
+            technician.notification_email = notification_email
+            updated_technician_fields.append("notification_email")
 
         if "is_active" in request.data:
             raw_is_active = request.data.get("is_active")
@@ -3777,6 +3985,8 @@ def ticket_status_view(request, ticket_id: int):
                     f"Technician {technician_user.name} marked Ticket #{ticket.id} as solved (pending reporter review).",
                     ticket=ticket,
                 )
+            if ticket.technician_id:
+                _auto_assign_next_waiting_ticket(preferred_technician=ticket.technician)
 
         return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 

@@ -175,10 +175,10 @@ def ticket_participants_view(request, ticket_id: int):
 def notifications_view(request):
     notifications = (
         Notification.objects.select_related("ticket", "ticket_message")
-        .filter(user=request.user)
+        .filter(user=request.user, is_read=False)
         .order_by("-created_at", "-id")[:50]
     )
-    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+    unread_count = notifications.count()
     return Response(
         {
             "unread_count": unread_count,
