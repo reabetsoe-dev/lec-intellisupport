@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { Eye, EyeOff } from "lucide-react"
 
 import {
   clearUserSession,
@@ -27,6 +28,7 @@ export default function LoginPage() {
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const passwordInputRef = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState("")
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export default function LoginPage() {
     if (passwordInputRef.current) {
       passwordInputRef.current.value = ""
     }
+    setIsPasswordVisible(false)
   }, [isSwitchLoginMode])
 
   const readLoginCredentials = () => {
@@ -132,21 +135,32 @@ export default function LoginPage() {
               <Label htmlFor="password" className="text-[#C5DDF8]">
                 Password
               </Label>
-              <Input
-                id="password"
-                ref={passwordInputRef}
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="Enter password"
-                onInput={() => {
-                  if (error) {
-                    setError("")
-                  }
-                }}
-                className="h-11 border-[#2C5D92]/60 bg-[#0A1D44]/85 text-[#EAF4FF] placeholder:text-[#8FAED4] focus-visible:border-[#5EBCE7] focus-visible:ring-[#5EBCE7]/40"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  ref={passwordInputRef}
+                  name="password"
+                  type={isPasswordVisible ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="Enter password"
+                  onInput={() => {
+                    if (error) {
+                      setError("")
+                    }
+                  }}
+                  className="h-11 border-[#2C5D92]/60 bg-[#0A1D44]/85 pr-12 text-[#EAF4FF] placeholder:text-[#8FAED4] focus-visible:border-[#5EBCE7] focus-visible:ring-[#5EBCE7]/40"
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+                  aria-pressed={isPasswordVisible}
+                  onClick={() => setIsPasswordVisible((currentValue) => !currentValue)}
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-[#9DC5EA] transition hover:text-[#D6EAFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5EBCE7]/50"
+                >
+                  {isPasswordVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
 
             {error ? <p className="text-sm text-[#FF8A8F]">{error}</p> : null}

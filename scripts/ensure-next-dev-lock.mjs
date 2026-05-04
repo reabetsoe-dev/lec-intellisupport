@@ -3,7 +3,9 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 
 const repoRoot = process.cwd();
+const nextDir = path.join(repoRoot, ".next");
 const lockFile = path.join(repoRoot, ".next", "dev", "lock");
+const gitHeadFile = path.join(nextDir, ".git-head");
 
 function hasRunningNextDevInRepo() {
   try {
@@ -44,7 +46,51 @@ function hasRunningNextDevInRepo() {
   }
 }
 
+function getCurrentGitHead() {
+  try {
+    return execSync("git rev-parse HEAD", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function getRecordedGitHead() {
+  try {
+    return fs.readFileSync(gitHeadFile, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function recordGitHead(head) {
+  if (!head) {
+    return;
+  }
+
+  fs.mkdirSync(nextDir, { recursive: true });
+  fs.writeFileSync(gitHeadFile, `${head}\n`, "utf8");
+}
+
+function clearNextArtifacts(reason) {
+  try {
+    fs.rmSync(nextDir, { recursive: true, force: true });
+    console.log(reason);
+  } catch (error) {
+    console.warn("Unable to remove stale Next.js artifacts:", error);
+  }
+}
+
+const currentGitHead = getCurrentGitHead();
+const recordedGitHead = getRecordedGitHead();
+
 if (!fs.existsSync(lockFile)) {
+  if (fs.existsSync(nextDir) && currentGitHead && recordedGitHead !== currentGitHead) {
+    clearNextArtifacts("Removed stale Next.js artifacts after a Git revision change.");
+  }
+  recordGitHead(currentGitHead);
   process.exit(0);
 }
 
@@ -62,3 +108,9 @@ try {
   }
   console.warn("Unable to remove Next.js lock file:", error);
 }
+
+if (fs.existsSync(nextDir) && currentGitHead && recordedGitHead !== currentGitHead) {
+  clearNextArtifacts("Removed stale Next.js artifacts after a Git revision change.");
+}
+
+recordGitHead(currentGitHead);
