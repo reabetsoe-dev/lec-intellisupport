@@ -3,4 +3,3 @@ scikit-learn
 fastapi
 uvicorn
 joblib
-openai-whisper

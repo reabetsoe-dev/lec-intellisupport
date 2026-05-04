@@ -61,7 +61,6 @@ logger = logging.getLogger(__name__)
 AI_INTAKE_CONFIDENCE_DIRECT = 0.8
 AI_INTAKE_CONFIDENCE_FOLLOW_UP = 0.5
 DEPARTMENT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Department:\s*([^\n\r]+)", re.IGNORECASE)
-BRANCH_NOTE_PATTERN = re.compile(r"(?:^|\s)\[Branch:([^\]]+)\]", re.IGNORECASE)
 BUSINESS_IMPACT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Business Impact:\s*([^\n\r]+)", re.IGNORECASE)
 CORE_AI_CATEGORIES = {
     Technician.SKILL_HARDWARE,
@@ -141,48 +140,6 @@ def _extract_department_from_text(text: str) -> str:
     if not match:
         return ""
     return match.group(1).strip()
-
-
-def _extract_branch_from_consumable_notes(text: str) -> str:
-    if not text:
-        return ""
-    match = BRANCH_NOTE_PATTERN.search(text)
-    if not match:
-        return ""
-    return match.group(1).strip()
-
-
-def _infer_user_branch(user: User) -> str:
-    if not user:
-        return ""
-
-    stored_branch = str(user.branch or "").strip()
-    if stored_branch:
-        return stored_branch
-
-    recent_request_notes = (
-        ConsumableRequest.objects.filter(employee=user)
-        .exclude(notes="")
-        .order_by("-created_at")
-        .values_list("notes", flat=True)[:5]
-    )
-    for notes in recent_request_notes:
-        branch = _extract_branch_from_consumable_notes(str(notes or ""))
-        if branch:
-            return branch
-
-    recent_locations = (
-        Ticket.objects.filter(employee=user)
-        .exclude(location="")
-        .order_by("-created_at")
-        .values_list("location", flat=True)[:5]
-    )
-    for location in recent_locations:
-        branch = str(location or "").strip()
-        if branch:
-            return branch
-
-    return ""
 
 
 def _infer_user_department(user: User) -> str:
@@ -2045,27 +2002,6 @@ def _user_to_dict(user: User) -> dict:
     }
 
 
-def _requester_defaults_to_dict(user: User) -> dict:
-    technician = None
-    if user.role == User.ROLE_TECHNICIAN:
-        technician = Technician.objects.filter(user=user).first()
-
-    branch = _infer_user_branch(user)
-    department = _infer_user_department(user)
-
-    if technician is not None:
-        branch = branch or TECHNICIAN_FIXED_BRANCH
-        department = str(technician.department or "").strip() or TECHNICIAN_FIXED_DEPARTMENT
-
-    return {
-        "id": user.id,
-        "name": user.name,
-        "role": user.role,
-        "branch": branch,
-        "department": department,
-    }
-
-
 def _notification_to_dict(item: Notification) -> dict:
     return {
         "id": item.id,
@@ -3713,19 +3649,6 @@ def employees_collection_view(request):
         )
 
     return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
-
-
-@api_view(["GET"])
-def requester_defaults_view(request, user_id: int):
-    user = User.objects.filter(
-        id=user_id,
-        role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
-        is_active=True,
-    ).first()
-    if not user:
-        return Response({"message": "Requester not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    return Response(_requester_defaults_to_dict(user), status=status.HTTP_200_OK)
 
 
 @api_view(["PATCH", "DELETE"])

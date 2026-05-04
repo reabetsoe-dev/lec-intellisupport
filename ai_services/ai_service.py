@@ -8,7 +8,7 @@ IMPORTANT RULES (LECIntelliSupport):
   (AI predicts category; assignment selects a technician who handles that category.)
 """
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib
@@ -17,8 +17,6 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
 import re
-import whisper
-import io
 
 app = FastAPI(title="LEC IntelliSupport AI")
 app.add_middleware(
@@ -873,52 +871,6 @@ def assign_technician(data: AssignRequest) -> Dict[str, Any]:
         "reason": "Matched by category and lowest workload",
     }
 
-
-@app.post("/transcribe-audio")
-async def transcribe_audio(file: UploadFile = File(...)):
-    """
-    Transcribe audio file using Whisper ASR.
-    Accepts audio file upload and returns text transcript.
-    """
-    if not file:
-        return {"error": "No file provided"}
-    
-    if not file.filename:
-        return {"error": "No filename provided"}
-    
-    # Check if file has audio extension
-    allowed_extensions = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.webm'}
-    file_extension = Path(file.filename).suffix.lower()
-    if file_extension not in allowed_extensions:
-        return {"error": f"Unsupported file format. Allowed formats: {', '.join(allowed_extensions)}"}
-    
-    try:
-        # Read audio file bytes
-        audio_bytes = await file.read()
-        
-        # Create a temporary file-like object for Whisper
-        audio_file = io.BytesIO(audio_bytes)
-        
-        # Load Whisper model (using small model for balance of speed/accuracy)
-        model = whisper.load_model("small")
-        
-        # Transcribe audio
-        result = model.transcribe(audio_file, language="en")
-        
-        # Clean up transcript
-        transcript = result["text"].strip()
-        
-        if not transcript:
-            return {"error": "No speech detected in audio file"}
-        
-        return {
-            "transcript": transcript,
-            "language": result.get("language", "en"),
-            "confidence": result.get("confidence", None)
-        }
-        
-    except Exception as e:
-        return {"error": f"Transcription failed: {str(e)}"}
 
 @app.post("/ai-service/chat")
 def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:

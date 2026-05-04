@@ -167,14 +167,6 @@ export type Employee = {
   updated_at: string
 }
 
-export type RequesterDefaults = {
-  id: number
-  name: string
-  role: UserRole
-  branch: string
-  department: string
-}
-
 export type CountDatum = {
   name: string
   count: number
@@ -527,13 +519,6 @@ export type TicketIntakeDraftResponse = {
 export type VoiceTicketDraftResponse = TicketIntakeDraftResponse & {
   transcript: string
   transcription_source?: string
-}
-
-type AudioTranscriptionResponse = {
-  transcript?: string
-  language?: string
-  confidence?: number | null
-  error?: string
 }
 
 type AddConsumablePayload = {
@@ -1304,10 +1289,6 @@ export async function getEmployees(): Promise<Employee[]> {
   return requestJson<Employee[]>(BACKEND_BASE_URL, "/api/employees")
 }
 
-export async function getRequesterDefaults(userId: number): Promise<RequesterDefaults> {
-  return requestJson<RequesterDefaults>(BACKEND_BASE_URL, `/api/requesters/${userId}/defaults`)
-}
-
 export async function createEmployee(payload: {
   name: string
   email: string
@@ -1529,49 +1510,6 @@ export async function createVoiceTicketDraft(payload: {
     method: "POST",
     body: formData,
   })
-}
-
-export async function transcribeAudioClip(payload: {
-  audio: Blob
-  filename?: string
-}): Promise<{
-  transcript: string
-  language?: string
-  confidence?: number | null
-}> {
-  const formData = new FormData()
-  formData.append("file", payload.audio, payload.filename ?? "voice-note.webm")
-
-  const response = await requestJson<AudioTranscriptionResponse>(AI_BASE_URL, "/transcribe-audio", {
-    method: "POST",
-    body: formData,
-    authMode: "none",
-    service: "ai",
-    timeoutMs: 60_000,
-  })
-
-  if (typeof response.error === "string" && response.error.trim()) {
-    throw new ApiError(response.error.trim(), {
-      code: "UNKNOWN",
-      service: "ai",
-      retryable: false,
-    })
-  }
-
-  const transcript = typeof response.transcript === "string" ? response.transcript.trim() : ""
-  if (!transcript) {
-    throw new ApiError("No transcript returned by the AI service.", {
-      code: "INVALID_RESPONSE",
-      service: "ai",
-      retryable: false,
-    })
-  }
-
-  return {
-    transcript,
-    language: typeof response.language === "string" ? response.language : undefined,
-    confidence: typeof response.confidence === "number" ? response.confidence : undefined,
-  }
 }
 
 export async function createConsumableRequest(payload: {
