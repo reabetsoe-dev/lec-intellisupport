@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { CornerDownRight, MessageSquareReply, ShieldEllipsis } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -89,7 +89,6 @@ export function TicketConversationThread({
   onReply,
   onRetryFailedMessage,
   emptyState,
-  variant = "main",
 }: TicketConversationThreadProps) {
   const flattenedAndSorted = useMemo(() => {
     const flat = flattenMessages(messages)
@@ -115,18 +114,6 @@ export function TicketConversationThread({
   }, [messages])
 
   const groupedMessages = flattenedAndSorted
-
-  const [animateIn, setAnimateIn] = useState(false)
-  const lastMessageKey = groupedMessages.length
-    ? `${groupedMessages[groupedMessages.length - 1].message_type}:${groupedMessages[groupedMessages.length - 1].id}:${groupedMessages[groupedMessages.length - 1].created_at}`
-    : "empty"
-
-  useEffect(() => {
-    // Trigger a subtle fade+slide animation when the newest message changes.
-    setAnimateIn(false)
-    const rafId = window.requestAnimationFrame(() => setAnimateIn(true))
-    return () => window.cancelAnimationFrame(rafId)
-  }, [lastMessageKey])
 
   if (groupedMessages.length === 0) {
     return (
@@ -166,12 +153,7 @@ export function TicketConversationThread({
         const canReply =
           !message.clientStatus || message.clientStatus === "sent"
 
-        const isLast = idx === groupedMessages.length - 1
-        const animClass = isLast
-          ? animateIn
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-2"
-          : "opacity-100 translate-y-0"
+        const animClass = "opacity-100 translate-y-0"
 
         if (isNote) {
           return (
