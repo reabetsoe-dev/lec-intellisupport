@@ -132,7 +132,7 @@ function workflowHint(status: string): string {
     return "Opening this ticket starts work automatically and moves it to In Progress."
   }
   if (status === "In Progress") {
-    return "Actively being handled. Click Solved when fix is completed and ready for reporter review."
+    return "Actively being handled. Click Solved only after the technician has completed the manual fix and it is ready for reporter review."
   }
   if (status === "Pending Review") {
     return "Waiting for reporter rating/review before final closure."
@@ -388,14 +388,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
           <CardContent className="space-y-3 px-6 pb-6 text-sm text-[#3A6288]">
             <div className="flex flex-wrap gap-2">
               <Button
-                className="bg-[#1E5EA5] text-white hover:bg-[#174D87]"
+                className="bg-[#1E5EA5] text-white hover:bg-[#174D87] disabled:border disabled:border-[#BCD0E8] disabled:bg-[#EAF1F9] disabled:text-[#6E87A4] disabled:hover:border-[#BCD0E8] disabled:hover:bg-[#EAF1F9] disabled:hover:text-[#6E87A4]"
                 disabled={actionLoading || autoStarting || detailStatus !== "Pending"}
                 onClick={() => void handleStatusUpdate("In Progress")}
               >
                 {autoStarting ? "Starting..." : actionLoading ? "Saving..." : "Accept"}
               </Button>
               <Button
-                className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
+                className="bg-[#1E7A45] text-white hover:bg-[#18643A] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A] disabled:hover:border-[#B9D5C6] disabled:hover:bg-[#EAF4EE] disabled:hover:text-[#6D8E7A]"
                 disabled={actionLoading || autoStarting || detailStatus !== "In Progress"}
                 onClick={() => void handleStatusUpdate("Solved")}
               >
@@ -403,7 +403,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               </Button>
               <Button
                 variant="outline"
-                className="border-[#C89A4D] bg-white text-[#8B5A12]"
+                className="border-[#C89A4D] bg-white text-[#8B5A12] disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56] disabled:hover:border-[#E4D0A6] disabled:hover:bg-[#F7F0DF] disabled:hover:text-[#A48A56]"
                 disabled={actionLoading || autoStarting || detailStatus === "Pending Review" || detailStatus === "Solved"}
                 onClick={() => setEscalationDialogOpen(true)}
               >
@@ -411,7 +411,8 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               </Button>
             </div>
             <p>
-              Opening a pending ticket starts it automatically. Solved sends the ticket for reporter rating/review.
+              Opening a pending ticket starts it automatically. The technician must press Solved manually after completing the work.
+              Solved then sends the ticket for reporter rating/review.
               Escalate transfers ownership to another technician.
             </p>
           </CardContent>

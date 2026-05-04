@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUpRight,
@@ -102,6 +103,11 @@ function normalizeTicketStatus(status: string): string {
     return "Solved"
   }
   return status
+}
+
+function isTicketAccessErrorMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return normalized.includes("access denied") || normalized.includes("ticket not found") || normalized.includes("not found")
 }
 
 function statusBadgeClass(status: string): string {
@@ -1022,6 +1028,9 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   }
 
   if (loadError) {
+    const isTechnicianAccessError =
+      resolvedRole === "technician" && isTicketAccessErrorMessage(loadError)
+
     return (
       <div className="space-y-6">
         <div
@@ -1031,9 +1040,24 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
           aria-label="Ticket conversations"
           className="rounded-2xl border border-[#EDB0B0] bg-white p-5 outline-none"
         >
-          <p className="text-sm text-rose-600">{loadError}</p>
+          {isTechnicianAccessError ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-base font-semibold text-rose-600">Ticket no longer available in your queue.</p>
+                <p className="mt-2 text-sm leading-6 text-[#8A5A5A]">
+                  This ticket is no longer assigned to your technician account, or it was reassigned before the detail
+                  page finished loading. Open your current assigned tickets to continue working.
+                </p>
+              </div>
+              <Button asChild className="bg-[#0A63B8] text-white hover:bg-[#084C8C]">
+                <Link href="/technician/tickets">Return to Assigned Tickets</Link>
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-rose-600">{loadError}</p>
+          )}
         </div>
-        {canShowDiscussionFab ? <DiscussionFab onClick={activateDiscussionFromFab} /> : null}
+        {canShowDiscussionFab && !isTechnicianAccessError ? <DiscussionFab onClick={activateDiscussionFromFab} /> : null}
       </div>
     )
   }
@@ -1077,7 +1101,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
             <p className="text-sm font-semibold text-[#173A5D]">Solve or reassign this ticket</p>
             <p className="mt-1 text-sm text-[#5A7CA0]">
               Viewing this ticket starts it automatically and moves it to In Progress. Use Solved once the fix is
-              complete, or reassign it if another technician should take over.
+              complete. The status only changes when the technician presses Solved, or reassign it if another technician should take over.
             </p>
             {autoStarting ? (
               <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#BFD8F3] bg-white px-3 py-2 text-xs font-semibold text-[#0A63B8]">
@@ -1090,7 +1114,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                 type="button"
                 onClick={() => setSolvedConfirmOpen(true)}
                 disabled={workflowBusy || autoStarting || detailStatus !== "In Progress"}
-                className="bg-[#1C7C54] text-white hover:bg-[#155E40]"
+                className="bg-[#1C7C54] text-white hover:bg-[#155E40] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A] disabled:hover:border-[#B9D5C6] disabled:hover:bg-[#EAF4EE] disabled:hover:text-[#6D8E7A]"
               >
                 {workflowBusy && detailStatus === "In Progress" ? (
                   <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -1098,6 +1122,11 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                 Solved
               </Button>
             </div>
+            {detailStatus !== "In Progress" ? (
+              <p className="text-xs text-[#5A7CA0]">
+                Solved stays disabled until the ticket is in progress and the technician has finished the manual fix.
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-[#E5D2AB] bg-[#FFF9EC] p-4">
@@ -1135,7 +1164,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
               type="button"
               onClick={() => void handleEscalate()}
               disabled={workflowBusy || autoStarting || detailStatus === "Pending Review" || detailStatus === "Solved"}
-              className="mt-3 bg-[#9A6400] text-white hover:bg-[#7F5200]"
+              className="mt-3 bg-[#9A6400] text-white hover:bg-[#7F5200] disabled:border disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56] disabled:hover:border-[#E4D0A6] disabled:hover:bg-[#F7F0DF] disabled:hover:text-[#A48A56]"
             >
               <ArrowUpRight className="mr-2 h-4 w-4" />
               {workflowBusy ? "Reassigning..." : "Escalate / Reassign"}

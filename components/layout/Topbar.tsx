@@ -4,6 +4,7 @@ import { Bell, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -250,11 +251,25 @@ function normalizeTicketStatus(status: string): string {
   return status
 }
 
+function isTicketAccessErrorMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return normalized.includes("access denied") || normalized.includes("ticket not found") || normalized.includes("not found")
+}
+
 export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname() ?? ""
   const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [ticketAccessNotice, setTicketAccessNotice] = useState<{
+    open: boolean
+    message: string
+    redirectPath: string
+  }>({
+    open: false,
+    message: "",
+    redirectPath: "/technician/tickets",
+  })
 
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
@@ -328,8 +343,16 @@ export function Topbar({ user }: TopbarProps) {
         if (normalizeTicketStatus(ticket.status) === "Pending") {
           await updateTicketStatus(item.ticket_id, "In Progress", undefined, user.id)
         }
-      } catch {
-        // Keep notification navigation resilient even if auto-open cannot complete here.
+      } catch (error) {
+        const rawMessage = error instanceof Error ? error.message : "We could not open that ticket right now."
+        setTicketAccessNotice({
+          open: true,
+          message: isTicketAccessErrorMessage(rawMessage)
+            ? "That ticket is no longer assigned to your technician account or it has already moved to another queue. Open your current Assigned Tickets list to continue."
+            : "We could not open that technician ticket right now. Please try again from your Assigned Tickets list.",
+          redirectPath: "/technician/tickets",
+        })
+        return
       }
     }
 
@@ -408,6 +431,20 @@ export function Topbar({ user }: TopbarProps) {
           </DropdownMenu>
         ) : null}
       </div>
+
+      <ActionFeedbackDialog
+        open={ticketAccessNotice.open}
+        status="info"
+        title="Ticket Unavailable"
+        message={ticketAccessNotice.message}
+        onOk={() => {
+          const redirectPath = ticketAccessNotice.redirectPath
+          setTicketAccessNotice((current) => ({ ...current, open: false }))
+          if (redirectPath) {
+            router.push(redirectPath)
+          }
+        }}
+      />
     </header>
   )
 }

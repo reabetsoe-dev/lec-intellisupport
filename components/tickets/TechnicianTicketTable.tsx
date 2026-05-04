@@ -143,6 +143,16 @@ function toRow(ticket: Ticket): TicketRow {
   }
 }
 
+function solveActionHint(status: string): string {
+  if (status === "Pending") {
+    return "Open the ticket first to start work."
+  }
+  if (status === "In Progress") {
+    return "Press Solved after you finish the fix."
+  }
+  return "Solved was pressed by the technician."
+}
+
 export function TechnicianTicketTable() {
   const [assignedTickets, setAssignedTickets] = useState<Ticket[]>([])
   const [activeFilter, setActiveFilter] = useState<TicketViewFilter>("all")
@@ -444,7 +454,7 @@ export function TechnicianTicketTable() {
                         <Button
                           size="sm"
                           type="button"
-                          className="h-8 w-full bg-[#1C7C54] text-white hover:bg-[#155E40]"
+                          className="h-8 w-full bg-[#1C7C54] text-white hover:bg-[#155E40] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A] disabled:hover:border-[#B9D5C6] disabled:hover:bg-[#EAF4EE] disabled:hover:text-[#6D8E7A]"
                           disabled={busyTicketId === ticket.id || ticket.status !== "In Progress"}
                           onClick={() => setSolvedTicket(ticket)}
                         >
@@ -453,11 +463,12 @@ export function TechnicianTicketTable() {
                           ) : null}
                           Solved
                         </Button>
+                        <p className="text-[11px] text-[#5B7A9B]">{solveActionHint(ticket.status)}</p>
                         <Button
                           size="sm"
                           type="button"
                           variant="outline"
-                          className="h-8 w-full border-[#C89A4D] bg-white text-[#8B5A12]"
+                          className="h-8 w-full border-[#C89A4D] bg-white text-[#8B5A12] disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56] disabled:hover:border-[#E4D0A6] disabled:hover:bg-[#F7F0DF] disabled:hover:text-[#A48A56]"
                           disabled={busyTicketId === ticket.id || ticket.status === "Pending Review" || ticket.status === "Solved"}
                           onClick={() => void openReassignDialog(ticket)}
                         >
