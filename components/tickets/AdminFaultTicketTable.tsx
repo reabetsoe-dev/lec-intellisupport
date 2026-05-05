@@ -222,6 +222,9 @@ export function AdminFaultTicketTable() {
     unassigned: rows.filter((row) => row.technician_id === null).length,
     highPriority: rows.filter((row) => row.priority === "High" || row.priority === "Critical").length,
   }
+  const actionRequiredTickets = filteredRows
+    .filter((row) => row.status === "Pending Review" || row.status === "Pending")
+    .slice(0, 4)
 
   const refreshRow = async (ticketId: number) => {
     const all = await getAllTickets()
@@ -357,6 +360,28 @@ export function AdminFaultTicketTable() {
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Assigned {summary.assigned}</span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Unassigned {summary.unassigned}</span>
           <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">High/Critical {summary.highPriority}</span>
+        </div>
+        <div className="rounded-lg border border-[#D9C38D] bg-[#FFF8E8] px-3 py-2 text-sm text-[#7A4B08]">
+          <p className="font-semibold">Needs Your Action</p>
+          {actionRequiredTickets.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {actionRequiredTickets.map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-md border border-[#E8D3A3] bg-white/70 px-2 py-1.5">
+                  <p className="truncate text-xs text-[#8A6A21]">{ticket.tracking_id} - {ticket.title}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-[#C89A4D] bg-white text-xs text-[#8B5A12]"
+                    onClick={() => setViewTicket(ticket)}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1">No tickets are currently waiting on reporter confirmation.</p>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">

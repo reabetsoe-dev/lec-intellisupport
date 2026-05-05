@@ -196,8 +196,13 @@ export function TechnicianTicketTable() {
     () => ({
       pending: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending").length,
       inProgress: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "In Progress").length,
+      pendingReview: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending Review").length,
       solved: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Solved").length,
     }),
+    [assignedTickets]
+  )
+  const pendingActionTickets = useMemo(
+    () => assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending").slice(0, 4),
     [assignedTickets]
   )
 
@@ -211,9 +216,32 @@ export function TechnicianTicketTable() {
           <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
             In Progress {summary.inProgress}
           </span>
+          <span className="inline-flex items-center rounded border border-[#D9C38D] bg-[#FFF7E5] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
+            Pending Review {summary.pendingReview}
+          </span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
             Solved {summary.solved}
           </span>
+        </div>
+        <div className="rounded-lg border border-[#BFD1E4] bg-white px-3 py-2 text-sm text-[#234A71]">
+          <p className="font-semibold">Needs Your Action</p>
+          {pendingActionTickets.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {pendingActionTickets.map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-md border border-[#D8E4F0] bg-[#F8FBFF] px-2 py-1.5">
+                  <p className="truncate text-xs text-[#345F85]">{formatTrackingId(ticket.id)} - {ticket.title}</p>
+                  <Button size="sm" className="h-7 bg-[#0A63B8] text-xs text-white hover:bg-[#084C8C]" asChild>
+                    <Link href={`/technician/tickets/${ticket.id}`}>Start Work</Link>
+                  </Button>
+                </div>
+              ))}
+              {summary.pending > pendingActionTickets.length ? (
+                <p className="text-xs text-[#5A7CA0]">+{summary.pending - pendingActionTickets.length} more pending ticket(s)</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-1">No pending tickets waiting for acceptance.</p>
+          )}
         </div>
 
         <div className="flex justify-start">

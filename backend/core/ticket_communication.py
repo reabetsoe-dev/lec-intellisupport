@@ -20,6 +20,20 @@ def can_view_internal_messages(user: User) -> bool:
     return is_staff_user(user)
 
 
+def is_assigned_technician_for_ticket(user: User, ticket: Ticket) -> bool:
+    if user.role != User.ROLE_TECHNICIAN:
+        return False
+    if not ticket.technician_id:
+        return False
+    return ticket.technician.user_id == user.id
+
+
+def can_manage_discussion_participants(user: User, ticket: Ticket) -> bool:
+    if user.role in {User.ROLE_ADMIN_FAULT, User.ROLE_MANAGER, User.ROLE_ADMIN_CONSUMABLES}:
+        return True
+    return is_assigned_technician_for_ticket(user, ticket)
+
+
 def get_primary_mention_handle(user: User) -> str:
     email_prefix = user.email.split("@", 1)[0].strip().lower()
     if email_prefix:

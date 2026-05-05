@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUpRight,
   BellDot,
+  CheckCircle2,
   Clock3,
   LoaderCircle,
   MessageSquare,
   MessageSquarePlus,
+  PauseCircle,
   Shield,
   Star,
   TriangleAlert,
@@ -17,6 +19,7 @@ import {
 
 import { TicketConversationThread } from "@/components/tickets/TicketConversationThread"
 import { TicketMessageComposer } from "@/components/tickets/TicketMessageComposer"
+import { TicketLifecycleRail } from "@/components/tickets/TicketLifecycleRail"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +36,6 @@ import {
   addDiscussionParticipant,
   createTicketMessage,
   escalateTicket,
-  escalateTicketByAdmin,
   getTechnicians,
   getTicketById,
   getTicketMessages,
@@ -115,6 +117,19 @@ function statusBadgeClass(status: string): string {
     return "border-[#D9BC7D] bg-[#FFF6E4] text-[#8A5A00]"
   }
   return "border-[#9AD0B1] bg-[#EAF8F0] text-[#1E6A40]"
+}
+
+function statusMeta(status: string): { icon: typeof Clock3; waitingFor: string } {
+  if (status === "Pending") {
+    return { icon: Clock3, waitingFor: "Technician acceptance" }
+  }
+  if (status === "In Progress") {
+    return { icon: LoaderCircle, waitingFor: "Technician work completion" }
+  }
+  if (status === "Pending Review") {
+    return { icon: PauseCircle, waitingFor: "Reporter confirmation" }
+  }
+  return { icon: CheckCircle2, waitingFor: "No pending action" }
 }
 
 function priorityBadgeClass(priority: string): string {
@@ -249,6 +264,8 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   const [escalationTarget, setEscalationTarget] = useState("")
   const [reviewRating, setReviewRating] = useState("")
   const [reviewComment, setReviewComment] = useState("")
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const [reviewModalMode, setReviewModalMode] = useState<"confirm" | "reopen">("confirm")
   const mainScrollRef = useRef<HTMLDivElement | null>(null)
   const internalScrollRef = useRef<HTMLDivElement | null>(null)
   const mainBottomRef = useRef<HTMLDivElement | null>(null)
@@ -313,6 +330,47 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   const canPostDiscussion = isStaffRole || Boolean(conversation?.permissions.can_post_discussion)
   const canShowDiscussionFab = canForceShowDiscussionFab(resolvedRole)
   const detailStatus = ticket ? normalizeTicketStatus(ticket.status) : "Pending"
+  const isAssignedTechnician =
+    Boolean(ticket) && currentUser?.role === "technician" && ticket?.technician_user_id === currentUser?.id
+  const previousStatusRef = useRef<string>(detailStatus)
+
+  const statusInfo = useMemo(() => statusMeta(detailStatus), [detailStatus])
+  const StatusIcon = statusInfo.icon
+
+  const systemMessages = useMemo<TicketChatMessage[]>(() => {
+    if (!ticket) {
+      return []
+    }
+    const messages: TicketChatMessage[] = []
+    const nowIso = new Date().toISOString()
+    messages.push({
+      id: -1000 - ticket.id,
+      ticket_id: ticket.id,
+      sender: { id: 0, name: "System", role: "manager", email: "", mention_handle: "system" },
+      message_type: "REPLY",
+      content: `[SYSTEM] Waiting for: ${statusInfo.waitingFor}.`,
+      parent_message_id: null,
+      is_internal: false,
+      created_at: ticket.updated_at ?? nowIso,
+      mention_tokens: [],
+      children: [],
+    })
+    if (detailStatus === "Pending Review") {
+      messages.push({
+        id: -2000 - ticket.id,
+        ticket_id: ticket.id,
+        sender: { id: 0, name: "System", role: "manager", email: "", mention_handle: "system" },
+        message_type: "REPLY",
+        content: "[SYSTEM] Resolution submitted. Reporter review is required before closure.",
+        parent_message_id: null,
+        is_internal: false,
+        created_at: ticket.updated_at ?? nowIso,
+        mention_tokens: [],
+        children: [],
+      })
+    }
+    return messages
+  }, [ticket, detailStatus, statusInfo.waitingFor])
 
   const loadWorkspace = useCallback(async (viewer: AuthUser) => {
     const [ticketPayload, conversationPayload, technicianPayload] = await Promise.all([
@@ -323,9 +381,9 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
     setTicket(ticketPayload)
     setConversation(conversationPayload)
     setPriorityValue(ticketPayload.priority)
-    setTechnicians(
-      technicianPayload.filter((item) => item.user_id !== viewer.id && item.is_available)
-    )
+    const activeTechnicians = technicianPayload.filter((item) => item.user_id !== viewer.id && item.is_active)
+    const checkedInTechnicians = activeTechnicians.filter((item) => item.is_available)
+    setTechnicians(checkedInTechnicians.length > 0 ? checkedInTechnicians : activeTechnicians)
   }, [ticketId])
 
   useEffect(() => {
@@ -388,8 +446,8 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   )
 
   const mainRenderMessages = useMemo(
-    () => [...replyThread, ...clientMainMessages],
-    [replyThread, clientMainMessages]
+    () => [...systemMessages, ...replyThread, ...clientMainMessages],
+    [systemMessages, replyThread, clientMainMessages]
   )
 
   const discussionRenderMessages = useMemo(
@@ -771,33 +829,8 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
         type: "success",
         message:
           nextStatus === "In Progress"
-            ? "Ticket accepted and reporter notified."
-            : "Ticket marked solved and moved to reporter review.",
-      })
-    } catch (error) {
-      setFlash({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to update ticket status.",
-      })
-    } finally {
-      setWorkflowBusy(false)
-    }
-  }
-
-  const handleAdminStatusUpdate = async (nextStatus: "In Progress" | "Pending Review") => {
-    if (!ticket || !currentUser) {
-      return
-    }
-    try {
-      setWorkflowBusy(true)
-      await updateTicketStatus(ticket.id, nextStatus, currentUser.id)
-      await refreshAll()
-      setFlash({
-        type: "success",
-        message:
-          nextStatus === "In Progress"
-            ? "Ticket moved to In Progress."
-            : "Ticket moved to Pending Review.",
+            ? "Work started. Ticket moved to In Progress."
+            : "Ticket marked as resolved and moved to reporter review.",
       })
     } catch (error) {
       setFlash({
@@ -842,8 +875,9 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
           return
         }
         await escalateTicket(ticket.id, currentUser.id, Number(escalationTarget), escalationComment.trim())
-      } else if (currentUser.role === "admin_fault") {
-        await escalateTicketByAdmin(ticket.id, currentUser.id, escalationComment.trim())
+      } else {
+        setFlash({ type: "error", message: "Only the assigned technician can escalate this ticket." })
+        return
       }
       setEscalationComment("")
       setEscalationTarget("")
@@ -901,6 +935,19 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
 
   const showMainConversation = !canViewInternal || conversationView === "main"
   const showInternalConversation = canViewInternal && conversationView === "internal"
+
+  useEffect(() => {
+    if (!ticket) {
+      return
+    }
+    if (previousStatusRef.current !== detailStatus) {
+      setFlash({
+        type: "success",
+        message: `Status updated: ${previousStatusRef.current} -> ${detailStatus}. Waiting for: ${statusInfo.waitingFor}.`,
+      })
+      previousStatusRef.current = detailStatus
+    }
+  }, [detailStatus, statusInfo.waitingFor, ticket])
 
   useEffect(() => {
     if (!conversation) {
@@ -1017,6 +1064,44 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
         </div>
       ) : null}
 
+      {detailStatus === "Pending Review" ? (
+        <div className="rounded-2xl border border-[#E1A94F] bg-[#FFF3D9] px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[#8A4E00]">Action Required: Confirm Resolution</p>
+              <p className="mt-1 text-sm text-[#9A620D]">Waiting for: Reporter confirmation</p>
+            </div>
+            {currentUser.role === "employee" ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setReviewModalMode("confirm")
+                    setReviewModalOpen(true)
+                  }}
+                  disabled={workflowBusy}
+                  className="bg-[#1C7C54] text-white hover:bg-[#155E40]"
+                >
+                  Confirm Resolution
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setReviewModalMode("reopen")
+                    setReviewModalOpen(true)
+                  }}
+                  disabled={workflowBusy}
+                  className="border-[#C98F2A] text-[#8A5A00] hover:bg-[#FFF5DF]"
+                >
+                  Reopen Issue
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="space-y-6">
         <Card className="rounded-2xl border-[#C8D7E8] bg-[linear-gradient(180deg,#F8FBFF_0%,#F0F6FB_100%)] py-0 shadow-sm">
         <CardHeader className="border-b border-[#D7E4F0] px-6 py-5">
@@ -1032,10 +1117,14 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge className={cn("rounded-full border px-3 py-1", statusBadgeClass(detailStatus))}>
+                <StatusIcon className={cn("mr-1 h-3.5 w-3.5", detailStatus === "In Progress" ? "animate-spin" : "")} />
                 Status: {detailStatus}
               </Badge>
               <Badge className={cn("rounded-full border px-3 py-1", priorityBadgeClass(ticket.priority))}>
                 Priority: {ticket.priority}
+              </Badge>
+              <Badge variant="outline" className="border-[#D8C8A1] bg-[#FFF8E8] text-[#7A5700]">
+                Waiting for: {statusInfo.waitingFor}
               </Badge>
               <Badge variant="outline" className="border-[#BFD1E4] bg-white text-[#295985]">
                 Category: {ticket.category}
@@ -1051,6 +1140,11 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
           <div className="rounded-xl border border-[#D7E4F0] bg-white p-3">
             <p className="text-xs font-medium text-[#6A87A4]">Assigned Technician</p>
             <p className="mt-1 font-semibold text-[#21476D]">{ticket.technician_name || "Unassigned"}</p>
+            {!ticket.technician_id ? (
+              <p className="mt-2 text-xs text-[#7A5700]">
+                {ticket.assignment_notice || "No technician available. Awaiting assignment."}
+              </p>
+            ) : null}
           </div>
           <div className="rounded-xl border border-[#D7E4F0] bg-white p-3">
             <p className="text-xs font-medium text-[#6A87A4]">Branch / Location</p>
@@ -1061,6 +1155,9 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
             <p className="mt-1 font-semibold text-[#21476D]">{formatDateTime(ticket.updated_at)}</p>
           </div>
         </CardContent>
+        <div className="px-6 pb-4">
+          <TicketLifecycleRail status={detailStatus} waitingFor={statusInfo.waitingFor} />
+        </div>
         <div
           id={conversationSectionId}
           tabIndex={-1}
@@ -1185,8 +1282,8 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
               showInternalConversation ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
             )}
           >
-            <Card className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-3xl border-[#D7E4F0] bg-[#efeae2] py-0 shadow-sm">
-              <CardHeader className="border-b border-[#D7E4F0] bg-white/90 px-5 py-4 backdrop-blur">
+            <Card className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-3xl border-[#8FA1B3] bg-[#D5DEE7] py-0 shadow-sm">
+              <CardHeader className="border-b border-[#9EB0C2] bg-[#C8D3DE] px-5 py-4">
                 <div className="flex items-center gap-3">
                   <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#e8e8e8] text-[#4b5563]">
                     <Shield className="h-5 w-5" />
@@ -1194,7 +1291,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                   <div>
                     <CardTitle className="text-base font-semibold text-[#173A5D]">Internal conversation</CardTitle>
                     <p className="text-sm text-[#5A7CA0]">
-                      Staff-only discussion, internal notes, participants, and mentions.
+                      Internal Only: staff discussion, notes, participants, and mentions.
                     </p>
                   </div>
                 </div>
@@ -1349,7 +1446,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                 <CardTitle className="text-lg font-semibold text-[#173A5D]">Role Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 px-6 py-5">
-                {currentUser.role === "technician" ? (
+                {currentUser.role === "technician" && isAssignedTechnician ? (
                   <>
                     <div className="rounded-2xl border border-[#D7E4F0] bg-[#F8FBFF] p-4">
                       <p className="text-sm font-semibold text-[#173A5D]">Technician Workflow</p>
@@ -1366,7 +1463,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                           {workflowBusy && detailStatus === "Pending" ? (
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
                           ) : null}
-                          Accept Ticket
+                          Start Work
                         </Button>
                         <Button
                           type="button"
@@ -1377,7 +1474,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                           {workflowBusy && detailStatus === "In Progress" ? (
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
                           ) : null}
-                          Mark Solved
+                          Mark as Resolved
                         </Button>
                       </div>
                     </div>
@@ -1425,6 +1522,16 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                   </>
                 ) : null}
 
+                {currentUser.role === "technician" && !isAssignedTechnician ? (
+                  <div className="rounded-2xl border border-[#D7E4F0] bg-[#F8FBFF] p-4">
+                    <p className="text-sm font-semibold text-[#173A5D]">Limited Technician Access</p>
+                    <p className="mt-2 text-sm leading-6 text-[#5A7CA0]">
+                      You can view and comment on this ticket, but only the assigned technician can start work, resolve,
+                      or escalate it.
+                    </p>
+                  </div>
+                ) : null}
+
                 {currentUser.role === "admin_fault" ? (
                   <>
                     <div className="rounded-2xl border border-[#D7E4F0] bg-[#F8FBFF] p-4">
@@ -1455,52 +1562,14 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                         </Button>
                       </div>
                     </div>
-
-                    <div className="rounded-2xl border border-[#D7E4F0] bg-[#F8FBFF] p-4">
-                      <p className="text-sm font-semibold text-[#173A5D]">Status Control</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          onClick={() => void handleAdminStatusUpdate("In Progress")}
-                          disabled={workflowBusy || detailStatus !== "Pending"}
-                          className="bg-[#0A63B8] text-white hover:bg-[#084C8C]"
-                        >
-                          Accept Ticket
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={() => void handleAdminStatusUpdate("Pending Review")}
-                          disabled={workflowBusy || detailStatus !== "In Progress"}
-                          className="bg-[#B07A18] text-white hover:bg-[#8F6313]"
-                        >
-                          Send For Review
-                        </Button>
-                      </div>
-                    </div>
-
                     <div className="rounded-2xl border border-[#E5D2AB] bg-[#FFF9EC] p-4">
                       <p className="inline-flex items-center gap-2 text-sm font-semibold text-[#7A5700]">
                         <TriangleAlert className="h-4 w-4" />
-                        Auto Escalation
+                        Workflow Ownership
                       </p>
                       <p className="mt-1 text-sm text-[#8A6A21]">
-                        The system will re-route this ticket to the best available technician based on skill and workload.
+                        Only the currently assigned technician can start work, resolve, or escalate this ticket.
                       </p>
-                      <textarea
-                        value={escalationComment}
-                        onChange={(event) => setEscalationComment(event.target.value)}
-                        placeholder="Explain why the ticket should be escalated."
-                        className="mt-3 min-h-24 w-full rounded-xl border border-[#D5C08A] bg-white px-3 py-2 text-sm text-[#173A5D]"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => void handleEscalate()}
-                        disabled={workflowBusy || detailStatus === "Pending" || detailStatus === "Pending Review" || detailStatus === "Solved"}
-                        className="mt-3 bg-[#9A6400] text-white hover:bg-[#7F5200]"
-                      >
-                        <ArrowUpRight className="mr-2 h-4 w-4" />
-                        Escalate Ticket
-                      </Button>
                     </div>
                   </>
                 ) : null}
@@ -1575,20 +1644,26 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         type="button"
-                        onClick={() => void handleProblemReview(true)}
+                        onClick={() => {
+                          setReviewModalMode("confirm")
+                          setReviewModalOpen(true)
+                        }}
                         disabled={workflowBusy}
                         className="bg-[#1C7C54] text-white hover:bg-[#155E40]"
                       >
-                        Approve and Close
+                        Confirm Resolution
                       </Button>
                       <Button
                         type="button"
-                        onClick={() => void handleProblemReview(false)}
+                        onClick={() => {
+                          setReviewModalMode("reopen")
+                          setReviewModalOpen(true)
+                        }}
                         disabled={workflowBusy}
                         variant="outline"
                         className="border-[#C98F2A] text-[#8A5A00] hover:bg-[#FFF5DF]"
                       >
-                        Needs More Work
+                        Reopen Issue
                       </Button>
                     </div>
                   </div>
@@ -1615,6 +1690,81 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
       {canShowDiscussionFab ? (
         <DiscussionFab onClick={activateDiscussionFromFab} />
       ) : null}
+
+      <Dialog
+        open={reviewModalOpen}
+        onOpenChange={(open) => {
+          setReviewModalOpen(open)
+          if (!open) {
+            setReviewComment("")
+            setReviewRating("")
+          }
+        }}
+      >
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-[#1D3F63]">
+              {reviewModalMode === "confirm" ? "Confirm Resolution" : "Reopen Issue"}
+            </DialogTitle>
+            <DialogDescription className="text-[#4A6887]">
+              Provide your rating and comment to {reviewModalMode === "confirm" ? "close" : "reopen"} this ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-[#173A5D]">Rating (1-5)</label>
+              <select
+                value={reviewRating}
+                onChange={(event) => setReviewRating(event.target.value)}
+                className="mt-1 h-10 w-full rounded-xl border border-[#BFD1E4] bg-white px-3 text-sm text-[#173A5D]"
+                disabled={workflowBusy}
+              >
+                <option value="">Select rating</option>
+                <option value="5">5 - Excellent</option>
+                <option value="4">4 - Good</option>
+                <option value="3">3 - Fair</option>
+                <option value="2">2 - Poor</option>
+                <option value="1">1 - Very Poor</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#173A5D]">Comment</label>
+              <textarea
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                placeholder={
+                  reviewModalMode === "confirm"
+                    ? "Share final feedback before closing."
+                    : "Explain what still needs to be fixed."
+                }
+                className="mt-1 min-h-24 w-full rounded-xl border border-[#BFD1E4] bg-white px-3 py-2 text-sm text-[#173A5D]"
+                disabled={workflowBusy}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-[#93AECA] bg-white text-[#20466D]"
+              onClick={() => setReviewModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className={reviewModalMode === "confirm" ? "bg-[#1C7C54] text-white hover:bg-[#155E40]" : "bg-[#B07A18] text-white hover:bg-[#8F6313]"}
+              onClick={async () => {
+                await handleProblemReview(reviewModalMode === "confirm")
+                setReviewModalOpen(false)
+              }}
+              disabled={workflowBusy}
+            >
+              {reviewModalMode === "confirm" ? "Confirm Resolution" : "Reopen Issue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={inviteDialogOpen}

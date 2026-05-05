@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -310,6 +311,34 @@ class Ticket(models.Model):
 
     def __str__(self) -> str:
         return f"Ticket #{self.pk} - {self.title}"
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.technician_id:
+            return
+        technician = self.technician
+        if (
+            technician is None
+            or technician.user is None
+            or technician.user.role != User.ROLE_TECHNICIAN
+            or not technician.user.is_active
+        ):
+            self.technician = None
+            self.status = self.STATUS_PENDING
+            raise ValidationError({"technician": "Ticket can only be assigned to an active technician user."})
+
+    def save(self, *args, **kwargs):
+        if self.technician_id:
+            technician = self.technician
+            if (
+                technician is None
+                or technician.user is None
+                or technician.user.role != User.ROLE_TECHNICIAN
+                or not technician.user.is_active
+            ):
+                self.technician = None
+                self.status = self.STATUS_PENDING
+        return super().save(*args, **kwargs)
 
 
 class TicketAssignmentHistory(models.Model):

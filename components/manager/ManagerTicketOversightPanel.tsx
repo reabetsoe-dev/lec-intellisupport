@@ -102,7 +102,7 @@ export function ManagerTicketOversightPanel() {
       .slice(0, 200)
       .map((ticket) => {
         const reporter = ticket.caller_name || ticket.employee_name || `Employee #${ticket.employee_id}`
-        const technician = ticket.technician_name || "Admin Fault Queue"
+        const technician = ticket.technician_name || "Unassigned"
         return `<tr>
           <td>${escapeHtml(formatTrackingId(ticket.id))}</td>
           <td>${escapeHtml(formatDateLabel(ticket.updated_at))}</td>
@@ -335,7 +335,7 @@ export function ManagerTicketOversightPanel() {
                     <TableCell className="py-3 text-xs font-semibold text-[#345F85]">{ticket.normalized_status}</TableCell>
                     <TableCell className="py-3 text-xs font-semibold text-[#345F85]">{ticket.priority}</TableCell>
                     <TableCell className="py-3 text-xs text-[#1F4469]">
-                      {ticket.technician_name || "Admin Fault Queue"}
+                      {ticket.technician_name || "Unassigned"}
                     </TableCell>
                   </TableRow>
                 ))

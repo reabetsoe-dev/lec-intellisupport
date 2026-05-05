@@ -74,6 +74,10 @@ function chatBubbleClassName(isCurrentUser: boolean) {
     : "bg-[#f1f5f9] text-[#243b53]"
 }
 
+function systemBlockClassName() {
+  return "border-[#C9D6E3] bg-[#EEF3F8] text-[#2A4B69]"
+}
+
 function noteBlockClassName(isCurrentUser: boolean) {
   // Notes should not look like chat bubbles; keep them distinct and softer.
   return isCurrentUser ? "bg-[#fff6d9] border-[#E3D4A0]" : "bg-[#f8fafc] border-[#E3D4A0]"
@@ -145,6 +149,9 @@ export function TicketConversationThread({
       {groupedMessages.map((message, idx) => {
         const isCurrentUser = message.sender.id === currentUserId
         const isNote = message.message_type === "INTERNAL_NOTE"
+        const isSystemMessage =
+          message.sender.name.trim().toLowerCase() === "system" ||
+          message.content.trim().toLowerCase().startsWith("[system]")
 
         const prev = idx > 0 ? groupedMessages[idx - 1] : null
         const timeDiffMs =
@@ -164,7 +171,7 @@ export function TicketConversationThread({
 
         const clientStatus = message.clientStatus
         const canReply =
-          !message.clientStatus || message.clientStatus === "sent"
+          (!message.clientStatus || message.clientStatus === "sent") && !isSystemMessage
 
         const isLast = idx === groupedMessages.length - 1
         const animClass = isLast
@@ -172,6 +179,23 @@ export function TicketConversationThread({
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-2"
           : "opacity-100 translate-y-0"
+
+        if (isSystemMessage) {
+          return (
+            <div
+              key={`${message.message_type}:${message.id}`}
+              className={cn("w-full transition-all duration-200", topSpacingClass, animClass)}
+            >
+              <div className={cn("mx-auto w-full max-w-[80%] rounded-xl border px-4 py-2 text-center", systemBlockClassName())}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide">System Update</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
+                  {message.content.replace(/^\[system\]\s*/i, "")}
+                </p>
+                <p className="mt-1 text-[10px] text-slate-500">{formatDateTime(message.created_at)}</p>
+              </div>
+            </div>
+          )
+        }
 
         if (isNote) {
           return (
@@ -258,7 +282,14 @@ export function TicketConversationThread({
           >
             <div className={cn("group flex w-full", isCurrentUser ? "justify-end" : "justify-start")}>
               <div className={cn("w-full max-w-[65%]")}>
-                <div className={cn("rounded-2xl px-4 py-2 shadow-sm", chatBubbleClassName(isCurrentUser))}>
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-2 shadow-sm",
+                    variant === "discussion" && !isCurrentUser
+                      ? "border border-[#7C8A99] bg-[#DCE2E8] text-[#1F3347]"
+                      : chatBubbleClassName(isCurrentUser)
+                  )}
+                >
                   {showSenderName ? (
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold text-inherit/80">{message.sender.name}</p>

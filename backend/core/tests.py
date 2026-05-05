@@ -86,7 +86,7 @@ class TicketAutoAssignmentTests(TestCase):
             "reporter_reviewed_problem": True,
         }
 
-    def test_new_ticket_waits_in_queue_when_only_available_technician_is_already_busy(self):
+    def test_new_ticket_assigns_using_active_fallback_when_only_busy_technician_exists(self):
         technician = self._create_technician(
             name="Busy Technician",
             email="busy-tech@example.com",
@@ -108,10 +108,10 @@ class TicketAutoAssignmentTests(TestCase):
         response = self.client.post("/api/tickets", self._create_ticket_payload(), format="json")
 
         self.assertEqual(response.status_code, 201)
-        self.assertIsNone(response.data["technician_id"])
-        self.assertIn("Technicians are currently busy", response.data["routing_note"])
+        self.assertEqual(response.data["technician_id"], technician.id)
+        self.assertIn("auto-assigned", str(response.data.get("routing_note", "")).lower())
 
-    def test_new_ticket_mentions_working_hours_when_submitted_outside_schedule(self):
+    def test_new_ticket_assigns_even_when_submitted_outside_schedule_if_active_technician_exists(self):
         schedule = default_working_hours_schedule()
         current_day_key = DAY_KEYS[timezone.localtime().weekday()]
         schedule[current_day_key]["enabled"] = False
@@ -127,21 +127,39 @@ class TicketAutoAssignmentTests(TestCase):
         response = self.client.post("/api/tickets", self._create_ticket_payload(title="Projector fault"), format="json")
 
         self.assertEqual(response.status_code, 201)
-        self.assertIsNone(response.data["technician_id"])
-        self.assertIn("08:00 to 16:30", response.data["routing_note"])
-        self.assertIn("working hours", response.data["routing_note"].lower())
+        self.assertIsNotNone(response.data["technician_id"])
+        self.assertIn("auto-assigned", str(response.data.get("routing_note", "")).lower())
+
+    def test_new_ticket_assigns_when_all_technicians_are_checked_out(self):
+        self._create_technician(
+            name="Checked Out One",
+            email="checked-out-one@example.com",
+            is_available=False,
+        )
+        self._create_technician(
+            name="Checked Out Two",
+            email="checked-out-two@example.com",
+            is_available=False,
+        )
+
+        response = self.client.post("/api/tickets", self._create_ticket_payload(title="Scanner issue"), format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNotNone(response.data["technician_id"])
+        assigned_technician = Technician.objects.select_related("user").get(id=response.data["technician_id"])
+        self.assertTrue(assigned_technician.user.is_active)
 
     def test_check_in_auto_assigns_waiting_ticket_and_notifies_employee(self):
+        create_response = self.client.post("/api/tickets", self._create_ticket_payload(title="Printer offline"), format="json")
+        self.assertEqual(create_response.status_code, 201)
+        self.assertIsNone(create_response.data["technician_id"])
+
         technician = self._create_technician(
             name="Checked In Technician",
             email="checked-in-tech@example.com",
             is_available=False,
             password="SafePassword123!",
         )
-
-        create_response = self.client.post("/api/tickets", self._create_ticket_payload(title="Printer offline"), format="json")
-        self.assertEqual(create_response.status_code, 201)
-        self.assertIsNone(create_response.data["technician_id"])
 
         checkpoint_response = self.client.post(
             "/api/auth/technician-checkpoint",

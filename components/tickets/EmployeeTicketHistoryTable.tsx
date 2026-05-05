@@ -108,7 +108,7 @@ function toDateValue(value?: string | null): number {
 
 function formatAssignee(technicianName?: string | null): string {
   const cleanName = (technicianName || "").trim()
-  return cleanName || "Support Team"
+  return cleanName || "Unassigned"
 }
 
 function normalizeName(value?: string | null): string {
@@ -265,6 +265,7 @@ export function EmployeeTicketHistoryTable() {
     pendingReview: rows.filter((row) => row.status === "Pending Review").length,
     solved: rows.filter((row) => row.status === "Solved").length,
   }
+  const needsYourAction = rows.filter((row) => row.status === "Pending Review")
 
   const openTicketDetails = async (ticket: TicketRecord) => {
     setSelectedRow(ticket)
@@ -365,6 +366,14 @@ export function EmployeeTicketHistoryTable() {
             <span className="inline-flex items-center rounded border border-[#9ED4B2] bg-[#ECF9F1] px-2 py-1 text-xs font-semibold text-[#1E7A45]">
               Solved {summary.solved}
             </span>
+          </div>
+          <div className="rounded-lg border border-[#D9C38D] bg-[#FFF8E8] px-3 py-2">
+            <p className="text-xs font-semibold tracking-wide text-[#8B5A12] uppercase">Needs Your Action</p>
+            <p className="mt-1 text-sm text-[#7A4B08]">
+              {needsYourAction.length === 0
+                ? "No tickets are waiting for your review."
+                : `${needsYourAction.length} ticket(s) are waiting for your confirmation.`}
+            </p>
           </div>
         </div>
 

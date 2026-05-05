@@ -37,7 +37,9 @@ export type Ticket = {
   logged_by_admin_id?: number | null
   logged_by_admin_name?: string | null
   technician_id?: number | null
+  technician_user_id?: number | null
   technician_name?: string | null
+  assignment_notice?: string | null
   employee_name?: string | null
   routed_to_role?: UserRole
   routing_note?: string
@@ -69,6 +71,7 @@ export type TicketDetail = Ticket & {
   comments: TicketComment[]
   can_view_internal_messages?: boolean
   can_manage_discussion_participants?: boolean
+  can_perform_workflow_actions?: boolean
 }
 
 export type TicketMessageType = "REPLY" | "INTERNAL_NOTE" | "DISCUSSION"
@@ -113,6 +116,7 @@ export type TicketMessagesResponse = {
     can_post_discussion: boolean
     can_post_internal_note: boolean
     can_post_reply: boolean
+    can_perform_workflow_actions?: boolean
   }
 }
 
@@ -362,8 +366,14 @@ export type BusinessHoursConfig = {
 
 export type AppNotification = {
   id: number
+  title?: string
   message: string
   type: "MENTION" | "REPLY" | "DISCUSSION" | "SYSTEM"
+  category?: "Action Required" | "Assigned to You" | "Messages" | "Completed"
+  priority?: "Critical" | "Action Required" | "Info"
+  action_label?: string
+  sticky?: boolean
+  is_new?: boolean
   is_read: boolean
   ticket_id?: number | null
   ticket_message_id?: number | null
@@ -491,7 +501,6 @@ export type ChatbotResponse = {
   confidence?: number
   needs_clarification?: boolean
   category?: string | null
-  recommended_technician?: string
   intent?: string
 }
 

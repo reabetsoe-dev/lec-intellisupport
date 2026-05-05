@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
+import { TicketLifecycleRail } from "@/components/tickets/TicketLifecycleRail"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -132,7 +133,7 @@ function workflowHint(status: string): string {
     return "Opening this ticket starts work automatically and moves it to In Progress."
   }
   if (status === "In Progress") {
-    return "Actively being handled. Click Solved when fix is completed and ready for reporter review."
+    return "Actively being handled. Click Mark as Resolved when fix is completed and ready for reporter review."
   }
   if (status === "Pending Review") {
     return "Waiting for reporter rating/review before final closure."
@@ -209,6 +210,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   })
 
   const detailStatus = ticket ? normalizeTicketStatus(ticket.status) : "Pending"
+  const waitingForLabel =
+    detailStatus === "Pending"
+      ? "Technician acceptance"
+      : detailStatus === "In Progress"
+        ? "Technician work completion"
+        : detailStatus === "Pending Review"
+          ? "Reporter confirmation"
+          : "No pending action"
   const timelineItems = useMemo(() => ticket?.comments ?? [], [ticket])
 
   useEffect(() => {
@@ -369,6 +378,9 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
             <p className="mt-1 font-semibold text-[#21476D]">{ticket.reporter_reviewed_problem ? "Yes" : "No"}</p>
           </div>
         </CardContent>
+        <div className="px-6 pb-4">
+          <TicketLifecycleRail status={detailStatus} waitingFor={waitingForLabel} />
+        </div>
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.9fr_1.1fr]">
@@ -392,14 +404,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
                 disabled={actionLoading || autoStarting || detailStatus !== "Pending"}
                 onClick={() => void handleStatusUpdate("In Progress")}
               >
-                {autoStarting ? "Starting..." : actionLoading ? "Saving..." : "Accept"}
+                {autoStarting ? "Starting..." : actionLoading ? "Saving..." : "Start Work"}
               </Button>
               <Button
                 className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
                 disabled={actionLoading || autoStarting || detailStatus !== "In Progress"}
                 onClick={() => void handleStatusUpdate("Solved")}
               >
-                {actionLoading ? "Saving..." : "Solved"}
+                {actionLoading ? "Saving..." : "Mark as Resolved"}
               </Button>
               <Button
                 variant="outline"
@@ -411,7 +423,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               </Button>
             </div>
             <p>
-              Opening a pending ticket starts it automatically. Solved sends the ticket for reporter rating/review.
+              Opening a pending ticket starts it automatically. Mark as Resolved sends the ticket for reporter rating/review.
               Escalate transfers ownership to another technician.
             </p>
           </CardContent>

@@ -19,9 +19,11 @@ from .serializers import (
 from .ticket_communication import (
     bootstrap_discussion_participants,
     build_message_threads,
+    can_manage_discussion_participants,
     can_view_internal_messages,
     create_notification,
     ensure_discussion_participant,
+    is_assigned_technician_for_ticket,
     mentionable_users_for_ticket,
     notify_for_ticket_message,
     participants_for_ticket,
@@ -57,7 +59,8 @@ def ticket_detail_view(request, ticket_id: int):
 
     payload = _ticket_detail_to_dict(ticket)
     payload["can_view_internal_messages"] = can_view_internal_messages(request.user)
-    payload["can_manage_discussion_participants"] = can_view_internal_messages(request.user)
+    payload["can_manage_discussion_participants"] = can_manage_discussion_participants(request.user, ticket)
+    payload["can_perform_workflow_actions"] = is_assigned_technician_for_ticket(request.user, ticket)
     return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -82,10 +85,11 @@ def ticket_messages_view(request, ticket_id: int):
                 "mentionable_users": MentionableUserSerializer(mentionable_users, many=True).data,
                 "permissions": {
                     "can_view_internal_messages": can_view_internal_messages(request.user),
-                    "can_manage_discussion_participants": can_view_internal_messages(request.user),
+                    "can_manage_discussion_participants": can_manage_discussion_participants(request.user, ticket),
                     "can_post_discussion": can_view_internal_messages(request.user),
                     "can_post_internal_note": can_view_internal_messages(request.user),
                     "can_post_reply": True,
+                    "can_perform_workflow_actions": is_assigned_technician_for_ticket(request.user, ticket),
                 },
             },
             status=status.HTTP_200_OK,
@@ -142,7 +146,7 @@ def ticket_participants_view(request, ticket_id: int):
     if not ticket:
         return Response({"message": "Ticket not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
 
-    if not can_view_internal_messages(request.user):
+    if not can_manage_discussion_participants(request.user, ticket):
         return Response({"message": "Only staff can manage discussion participants."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == "GET":
