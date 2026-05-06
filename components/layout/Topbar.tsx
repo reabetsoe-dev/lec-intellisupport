@@ -4,6 +4,7 @@ import { Bell, ChevronRight, ExternalLink, Volume2, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,10 +14,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getTicketDetailPathByRole, type AuthUser } from "@/lib/auth"
 import {
+  getTicketById,
   getNotifications,
   markNotificationsRead,
   markNotificationRead,
   type AppNotification,
+  updateTicketStatus,
 } from "@/lib/api"
 
 const topbarConfig: Array<{
@@ -463,6 +466,25 @@ export function Topbar({ user }: TopbarProps) {
         await markNotificationRead(item.id)
       } catch {
         void syncNotifications()
+      }
+    }
+
+    if (user.role === "technician" && item.ticket_id) {
+      try {
+        const ticket = await getTicketById(item.ticket_id, { technicianUserId: user.id })
+        if (normalizeTicketStatus(ticket.status) === "Pending") {
+          await updateTicketStatus(item.ticket_id, "In Progress", undefined, user.id)
+        }
+      } catch (error) {
+        const rawMessage = error instanceof Error ? error.message : "We could not open that ticket right now."
+        setTicketAccessNotice({
+          open: true,
+          message: isTicketAccessErrorMessage(rawMessage)
+            ? "That ticket is no longer assigned to your technician account or it has already moved to another queue. Open your current Assigned Tickets list to continue."
+            : "We could not open that technician ticket right now. Please try again from your Assigned Tickets list.",
+          redirectPath: "/technician/tickets",
+        })
+        return
       }
     }
 

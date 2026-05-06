@@ -20,7 +20,7 @@ const quickActions: Array<{
   {
     href: "/technician/tickets",
     title: "Assigned Tickets",
-    description: "Open the technician queue and work through active faults.",
+    description: "View the technician queue and work through active faults.",
     icon: ClipboardList,
   },
   {
@@ -33,31 +33,32 @@ const quickActions: Array<{
 
 export default function TechnicianDashboardPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-5">
       <EmployeePageHero
         title="Technician Dashboard"
         description="Service operations workspace for managing assigned tickets, progressing resolutions, and escalating faults when required."
+        compact
       />
 
       <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
+        <CardHeader className="px-5 py-4">
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-2">
+        <CardContent className="grid grid-cols-1 gap-3 px-5 pb-5 md:grid-cols-2">
           {quickActions.map((action) => {
             const Icon = action.icon
             return (
               <Link
                 key={`${action.href}-${action.title}`}
                 href={action.href}
-                className={getInterfaceActionCardClassName()}
+                className={getInterfaceActionCardClassName(false, "min-h-[92px] gap-2 p-3")}
               >
-                <span className={getInterfaceCardIconClassName()}>
+                <span className={getInterfaceCardIconClassName(false, "h-9 w-9")}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className={getInterfaceCardTitleClassName()}>{action.title}</span>
-                  <span className={getInterfaceCardDescriptionClassName()}>{action.description}</span>
+                  <span className={getInterfaceCardTitleClassName(false, "text-[15px]")}>{action.title}</span>
+                  <span className={getInterfaceCardDescriptionClassName(false, "leading-5")}>{action.description}</span>
                 </span>
               </Link>
             )
@@ -65,12 +66,12 @@ export default function TechnicianDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="space-y-3">
-        <div>
+      <div className="space-y-2">
+        <div className="space-y-1">
           <h2 className="text-lg font-semibold text-[#0B1F3A]">Assigned Tickets</h2>
           <p className="text-sm text-[#4A6A96]">
-            Opening a pending ticket starts it automatically and the system will wait until that job is completed
-            before assigning you another waiting report.
+            Opening a ticket from a notification or ticket link starts it automatically. Waiting reports move across
+            as soon as technician capacity opens up.
           </p>
         </div>
         <TechnicianTicketTable />

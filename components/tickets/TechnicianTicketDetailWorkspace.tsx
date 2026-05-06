@@ -400,14 +400,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
           <CardContent className="space-y-3 px-6 pb-6 text-sm text-[#3A6288]">
             <div className="flex flex-wrap gap-2">
               <Button
-                className="bg-[#1E5EA5] text-white hover:bg-[#174D87]"
+                className="bg-[#1E5EA5] text-white hover:bg-[#174D87] disabled:border disabled:border-[#BCD0E8] disabled:bg-[#EAF1F9] disabled:text-[#6E87A4] disabled:hover:border-[#BCD0E8] disabled:hover:bg-[#EAF1F9] disabled:hover:text-[#6E87A4]"
                 disabled={actionLoading || autoStarting || detailStatus !== "Pending"}
                 onClick={() => void handleStatusUpdate("In Progress")}
               >
                 {autoStarting ? "Starting..." : actionLoading ? "Saving..." : "Start Work"}
               </Button>
               <Button
-                className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
+                className="bg-[#1E7A45] text-white hover:bg-[#18643A] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A] disabled:hover:border-[#B9D5C6] disabled:hover:bg-[#EAF4EE] disabled:hover:text-[#6D8E7A]"
                 disabled={actionLoading || autoStarting || detailStatus !== "In Progress"}
                 onClick={() => void handleStatusUpdate("Solved")}
               >
@@ -415,7 +415,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               </Button>
               <Button
                 variant="outline"
-                className="border-[#C89A4D] bg-white text-[#8B5A12]"
+                className="border-[#C89A4D] bg-white text-[#8B5A12] disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56] disabled:hover:border-[#E4D0A6] disabled:hover:bg-[#F7F0DF] disabled:hover:text-[#A48A56]"
                 disabled={actionLoading || autoStarting || detailStatus === "Pending Review" || detailStatus === "Solved"}
                 onClick={() => setEscalationDialogOpen(true)}
               >

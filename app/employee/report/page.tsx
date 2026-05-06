@@ -1,8 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import { AssetFaultQrScanner } from "@/components/inventory/AssetFaultQrScanner"
 import { AiIntakeDraftEditor } from "@/components/intake/AiIntakeDraftEditor"
 import { EmployeeBackButton } from "@/components/layout/EmployeeBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
@@ -58,6 +59,46 @@ export default function EmployeeReportPage() {
     status: "success",
     message: "",
   })
+
+  useEffect(() => {
+    const hostname = window.location.hostname
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+    const needsHttpsTunnel = window.location.protocol !== "https:" && !isLocalhost
+
+    if (!needsHttpsTunnel) {
+      return
+    }
+
+    let cancelled = false
+
+    const redirectToNgrokTunnel = async () => {
+      try {
+        const response = await fetch("/api/dev-ngrok-url", { cache: "no-store" })
+        if (!response.ok || cancelled) {
+          return
+        }
+
+        const payload = (await response.json()) as { publicUrl?: unknown }
+        if (typeof payload.publicUrl !== "string" || !payload.publicUrl.startsWith("https://")) {
+          return
+        }
+
+        const nextUrl = new URL(payload.publicUrl)
+        nextUrl.pathname = window.location.pathname
+        nextUrl.search = window.location.search
+        nextUrl.hash = window.location.hash
+        window.location.replace(nextUrl.toString())
+      } catch {
+        // Stay on the local page if the dev tunnel is not running.
+      }
+    }
+
+    void redirectToNgrokTunnel()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const showResultDialog = (
     status: "success" | "error",
@@ -187,6 +228,8 @@ export default function EmployeeReportPage() {
         title="Report Fault"
         description="Describe the issue in natural language, let AI draft the ticket, then confirm the final version before submission."
       />
+
+      <AssetFaultQrScanner />
 
       <Card className="mx-auto w-full max-w-[900px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">

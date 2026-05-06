@@ -138,6 +138,7 @@ export type Technician = {
   user_id: number
   name: string
   email: string
+  notification_email: string
   branch: string
   department: string
   skillset: string
@@ -1255,6 +1256,7 @@ export async function getTechnicians(): Promise<Technician[]> {
 export async function createTechnician(payload: {
   name: string
   email: string
+  notification_email?: string
   skillset: string
   is_available?: boolean
 }): Promise<Technician> {
@@ -1282,6 +1284,7 @@ export async function updateTechnicianDetails(
   payload: {
     name: string
     email: string
+    notification_email?: string
     skillset: string
   }
 ): Promise<Technician> {
