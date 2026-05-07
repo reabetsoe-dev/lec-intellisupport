@@ -1000,8 +1000,10 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
 
   const showMainConversation = !canViewInternal || conversationView === "main"
   const showInternalConversation = canViewInternal && conversationView === "internal"
+  const hasConversation = conversation !== null
 
   useEffect(() => {
+<<<<<<< Updated upstream
     if (!ticket) {
       return
     }
@@ -1016,6 +1018,9 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
 
   useEffect(() => {
     if (!conversation) {
+=======
+    if (!hasConversation) {
+>>>>>>> Stashed changes
       return
     }
     const paneKey = showMainConversation
@@ -1043,6 +1048,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   }, [
     showMainConversation,
     showInternalConversation,
+    hasConversation,
     internalComposerMode,
     // Use lengths to avoid re-triggering auto-scroll on status-only updates.
     mainRenderMessages.length,
@@ -1334,9 +1340,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                setConversationView("main")
-              }}
+              onClick={activateReplyComposer}
               className={cn("border shadow-none", actionButtonClass(showMainConversation, "reply"))}
             >
               <MessageSquare className="mr-2 h-4 w-4" />
@@ -1346,10 +1350,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  setConversationView("internal")
-                  setInternalComposerMode("DISCUSSION")
-                }}
+                onClick={() => activateInternalComposer("DISCUSSION")}
                 className={cn("border shadow-none", actionButtonClass(showInternalConversation, "discussion"))}
               >
                 <Users className="mr-2 h-4 w-4" />

@@ -179,7 +179,7 @@ export function AssetFaultQrScanner() {
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setScanError("Live camera scanning is blocked in this browser. Open the ngrok HTTPS link in Chrome/Safari, or use Scan from photo.")
+      setScanError("Live camera scanning is blocked in this browser. Open the Cloudflare HTTPS link in Chrome/Safari, or use Scan from photo.")
       return
     }
 

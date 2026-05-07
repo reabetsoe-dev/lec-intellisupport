@@ -209,6 +209,16 @@ export function EmployeeAssignedConsumablesPanel() {
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumables</CardTitle>
       </CardHeader>
       <CardContent className="px-6 py-5">
+        {error ? (
+          <div role="alert" className="mb-4 rounded-lg border border-[#EDB0B0] bg-[#FFEAEA] px-4 py-3 text-sm text-[#8A2D2D]">
+            {error}
+          </div>
+        ) : null}
+        {success ? (
+          <div className="mb-4 rounded-lg border border-[#BEE3CF] bg-[#F3FBF6] px-4 py-3 text-sm text-[#176B4A]">
+            {success}
+          </div>
+        ) : null}
         {loading ? (
           <p className="py-6 text-center text-sm text-[#1E3A6D]">Loading assigned consumables...</p>
         ) : rows.length === 0 ? (

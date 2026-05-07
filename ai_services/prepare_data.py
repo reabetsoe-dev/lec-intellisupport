@@ -1,23 +1,21 @@
-import pandas as pd
+from training_data import load_training_frame
 
-# Load the data
-data = pd.read_csv("data/tickets.csv")
+data = load_training_frame()
 
-# Separate inputs and labels
-X = data["text"]        # Input (what the user writes)
-y_category = data["category"]  # Output 1
-y_severity = data["severity"]  # Output 2
-y_service_type = data["service_type"]  # Output 3
+X = data["description"]
+y_category = data["category"]
+y_priority = data["priority"]
 
-# Print to confirm
 print("INPUT (X):")
-print(X)
+print(X.head(20))
 
 print("\nCATEGORY LABELS:")
-print(y_category)
+print(y_category.head(20))
 
-print("\nSEVERITY LABELS:")
-print(y_severity)
+print("\nPRIORITY LABELS:")
+print(y_priority.head(20))
 
-print("\nSERVICE TYPE LABELS:")
-print(y_service_type)
+print("\nSOURCE DATASETS:")
+print(data["source_dataset"].value_counts())
+
+print(f"\nCLEANED ROWS READY FOR TRAINING: {len(data)}")
