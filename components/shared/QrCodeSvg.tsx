@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import QRCode from "qrcode"
 
 type QrCodeSvgProps = {
@@ -10,13 +11,15 @@ type QrCodeSvgProps = {
 }
 
 export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { // Generation of QR code
-  const [qrDataUrl, setQrDataUrl] = useState("")
-  const [hasError, setHasError] = useState(false)
+  const [qrCode, setQrCode] = useState({
+    value: "",
+    size: 0,
+    dataUrl: "",
+    hasError: false,
+  })
 
   useEffect(() => {
     let isActive = true
-
-    setQrDataUrl("")
 
     void QRCode.toDataURL(value, {
       width: size,
@@ -31,15 +34,23 @@ export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { //
         if (!isActive) {
           return
         }
-        setHasError(false)
-        setQrDataUrl(dataUrl)
+        setQrCode({
+          value,
+          size,
+          dataUrl,
+          hasError: false,
+        })
       })
       .catch(() => {
         if (!isActive) {
           return
         }
-        setHasError(true)
-        setQrDataUrl("")
+        setQrCode({
+          value,
+          size,
+          dataUrl: "",
+          hasError: true,
+        })
       })
 
     return () => {
@@ -47,7 +58,9 @@ export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { //
     }
   }, [size, value])
 
-  if (hasError) {
+  const isStale = qrCode.value !== value || qrCode.size !== size
+
+  if (!isStale && qrCode.hasError) {
     return (
       <div className={className}>
         <div className="flex min-h-[12rem] items-center justify-center rounded-2xl border border-dashed border-[#9CB9D5] bg-white px-6 text-center text-sm text-[#4F6F95]">
@@ -57,7 +70,7 @@ export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { //
     )
   }
 
-  if (!qrDataUrl) {
+  if (isStale || !qrCode.dataUrl) {
     return (
       <div className={className}>
         <div className="flex min-h-[12rem] items-center justify-center rounded-2xl border border-dashed border-[#9CB9D5] bg-white px-6 text-center text-sm text-[#4F6F95]">
@@ -69,11 +82,12 @@ export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { //
 
   return (
     <div className={className}>
-      <img
-        src={qrDataUrl}
+      <Image
+        src={qrCode.dataUrl}
         alt="Technician access QR code"
         width={size}
         height={size}
+        unoptimized
         className="mx-auto block h-auto w-full max-w-full"
         style={{ imageRendering: "pixelated" }}
       />

@@ -73,7 +73,7 @@ export default function EmployeeReportPage() {
 
     const redirectToNgrokTunnel = async () => {
       try {
-        const response = await fetch("/api/dev-ngrok-url", { cache: "no-store" })
+        const response = await fetch("/api/public-app-url", { cache: "no-store" })
         if (!response.ok || cancelled) {
           return
         }

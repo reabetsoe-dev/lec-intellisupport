@@ -21,7 +21,10 @@ function buildPrintableHtml(options: PdfReportOptions, generatedAt: string, acti
   const subtitle = options.subtitle ? `<p class="subtitle">${escapeHtml(options.subtitle)}</p>` : ""
   const downloadName = toPdfFileName(options.fileName)
   const saveButtonHtml = '<button type="button" class="secondary" id="save-btn">Download Report</button>'
-  const toolbarTip = "Use Print for printer/PDF output, or Download Report to save this report file directly."
+  const toolbarTip =
+    action === "save"
+      ? "Download Report saves a PDF file directly; Print opens printer/PDF output."
+      : "Use Print for printer/PDF output, or Download Report to save this report file directly."
 
   return `<!doctype html>
 <html lang="en">
