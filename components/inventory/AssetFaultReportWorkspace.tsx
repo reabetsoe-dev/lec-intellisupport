@@ -101,6 +101,13 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
   } | null>(null)
 
   const normalizedAssetCode = useMemo(() => normalizeAssetCode(assetCode), [assetCode])
+  const scannedAssetId = useMemo(() => {
+    const matched = /^AST-(\d+)$/.exec(normalizedAssetCode)
+    if (!matched) {
+      return null
+    }
+    return Number.parseInt(matched[1], 10)
+  }, [normalizedAssetCode])
 
   useEffect(() => {
     setSession(getStoredUserSession())
@@ -121,7 +128,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
 
         const matchedConsumable = consumables.find((item) => {
           const currentCode = normalizeAssetCode(item.asset_tag || `AST-${item.id}`)
-          return currentCode === normalizedAssetCode
+          return currentCode === normalizedAssetCode || (scannedAssetId !== null && item.id === scannedAssetId)
         })
 
         if (matchedConsumable) {
@@ -155,7 +162,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     return () => {
       active = false
     }
-  }, [normalizedAssetCode])
+  }, [normalizedAssetCode, scannedAssetId])
 
   const troubleshootingDomain = useMemo(
     () => inferTroubleshootingDomain(asset?.assetType || ""),

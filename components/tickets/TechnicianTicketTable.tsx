@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Filter, LoaderCircle } from "lucide-react"
+import { AlertTriangle, Filter, LoaderCircle } from "lucide-react"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -16,21 +16,8 @@ import { getStoredUserSession } from "@/lib/auth"
 import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
-const statusBadgeStyles: Record<string, string> = {
-  Pending: "text-[#B26B00]",
-  "In Progress": "text-[#6D3CC4]",
-  "Pending Review": "text-[#B26B00]",
-  Solved: "text-[#1E7A45]",
-}
-
-const priorityBadgeStyles: Record<string, string> = {
-  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092] hover:!border-[#9CC4EA] hover:!bg-[#DDEEFF] hover:!text-[#2E6092] hover:!shadow-none",
-  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A] hover:!border-[#93D8C1] hover:!bg-[#DDF8EF] hover:!text-[#177F5A] hover:!shadow-none",
-  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00] hover:!border-[#F4D88D] hover:!bg-[#FFF5D8] hover:!text-[#9A6A00] hover:!shadow-none",
-  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939] hover:!border-[#F4B5B5] hover:!bg-[#FFE5E5] hover:!text-[#A33939] hover:!shadow-none",
-}
-
-type TicketViewFilter = "all" | "pending" | "in_progress" | "solved"
+type TicketViewFilter = "all" | "awaiting_start" | "in_progress" | "waiting_employee" | "solved"
+type WorkflowState = "Awaiting Start" | "In Progress" | "Waiting for Employee" | "Solved" | "Other"
 
 type EscalationCommentPreview = {
   ticketId: number
@@ -46,6 +33,19 @@ type ActionDialogState = {
   message: string
 }
 
+type SlaState = {
+  label: string
+  toneClassName: string
+  isUrgent: boolean
+  remainingHours: number
+}
+
+type NextActionState = {
+  label: "Start Work" | "Waiting for Employee" | "View Ticket" | "Reassign"
+  hint: string
+  toneClassName: string
+}
+
 type TicketRow = {
   id: number
   trackingId: string
@@ -55,17 +55,70 @@ type TicketRow = {
   branch: string
   updated: string
   priority: string
-  status: string
+  workflowState: WorkflowState
   escalationTarget: string
   raw: Ticket
+  sla: SlaState
+  nextAction: NextActionState
+}
+
+const priorityBadgeStyles: Record<string, string> = {
+  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
+  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]",
+  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]",
+  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]",
+}
+
+const workflowBadgeStyles: Record<WorkflowState, string> = {
+  "Awaiting Start": "border-[#E6C589] bg-[#FFF6E5] text-[#8A5A0D]",
+  "In Progress": "border-[#9CC4EA] bg-[#EAF4FF] text-[#1F4E7A]",
+  "Waiting for Employee": "border-[#F2C27F] bg-[#FFF4E6] text-[#8A4B08]",
+  Solved: "border-[#98D4B7] bg-[#EAF9F0] text-[#1E7A45]",
+  Other: "border-[#CBD5E1] bg-[#F8FAFC] text-[#334155]",
+}
+
+const workflowRowStyles: Record<WorkflowState, string> = {
+  "Awaiting Start": "border-l-4 border-l-[#D0891B] bg-[#FFFDF8]",
+  "In Progress": "border-l-4 border-l-[#2F7FC9] bg-[#FAFDFF]",
+  "Waiting for Employee": "border-l-4 border-l-[#E39A3A] bg-[#FFFCF7]",
+  Solved: "border-l-4 border-l-[#3EA56D] bg-[#FBFFFC]",
+  Other: "border-l-4 border-l-[#CBD5E1] bg-[#FCFDFE]",
 }
 
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "pending", label: "Pending" },
+  { key: "all", label: "All Tickets" },
+  { key: "awaiting_start", label: "Awaiting Start" },
   { key: "in_progress", label: "In Progress" },
+  { key: "waiting_employee", label: "Waiting for Employee" },
   { key: "solved", label: "Solved" },
 ]
+
+const slaTargetHoursByPriority: Record<string, number> = {
+  Critical: 4,
+  High: 8,
+  Medium: 24,
+  Low: 48,
+}
+
+function parseDateMs(value?: string | null): number | null {
+  if (!value) {
+    return null
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date.getTime()
+}
+
+function formatHoursForLabel(hours: number): string {
+  const positiveHours = Math.max(0, Math.ceil(hours))
+  if (positiveHours >= 24) {
+    const days = Math.ceil(positiveHours / 24)
+    return `${days}d`
+  }
+  return `${positiveHours}h`
+}
 
 function formatDateLabel(value?: string | null): string {
   if (!value) {
@@ -94,12 +147,29 @@ function normalizeTicketStatus(status: string): string {
     return "In Progress"
   }
   if (normalized === "pending review" || normalized === "awaiting review") {
-    return "Solved"
+    return "Pending Review"
   }
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
     return "Pending"
   }
   return status
+}
+
+function toWorkflowState(status: string): WorkflowState {
+  const normalizedStatus = normalizeTicketStatus(status)
+  if (normalizedStatus === "Pending") {
+    return "Awaiting Start"
+  }
+  if (normalizedStatus === "In Progress") {
+    return "In Progress"
+  }
+  if (normalizedStatus === "Pending Review") {
+    return "Waiting for Employee"
+  }
+  if (normalizedStatus === "Solved") {
+    return "Solved"
+  }
+  return "Other"
 }
 
 function extractEscalationReason(commentText: string): string {
@@ -127,7 +197,98 @@ function formatTrackingId(id: number): string {
   return `TK-${String(id).padStart(5, "0")}`
 }
 
-function toRow(ticket: Ticket): TicketRow {
+function calculateSlaState(ticket: Ticket, workflowState: WorkflowState, nowTs: number): SlaState {
+  if (workflowState === "Solved") {
+    return {
+      label: "Completed",
+      toneClassName: "border-[#BDE3CC] bg-[#F1FCF5] text-[#1E7A45]",
+      isUrgent: false,
+      remainingHours: Number.POSITIVE_INFINITY,
+    }
+  }
+
+  const referenceMs =
+    parseDateMs(ticket.last_activity_at) ??
+    parseDateMs(ticket.accepted_at) ??
+    parseDateMs(ticket.assigned_at) ??
+    parseDateMs(ticket.created_at) ??
+    parseDateMs(ticket.updated_at)
+
+  const elapsedHours = referenceMs ? Math.max(0, (nowTs - referenceMs) / (1000 * 60 * 60)) : 0
+  const targetHours = slaTargetHoursByPriority[ticket.priority] ?? 24
+  const remainingHours = targetHours - elapsedHours
+
+  if (remainingHours <= 0) {
+    return {
+      label: `Overdue ${formatHoursForLabel(Math.abs(remainingHours))}`,
+      toneClassName: "border-[#E8A9A9] bg-[#FFF1F1] text-[#9F2D2D]",
+      isUrgent: true,
+      remainingHours,
+    }
+  }
+
+  if (remainingHours <= 2) {
+    return {
+      label: `${formatHoursForLabel(remainingHours)} left`,
+      toneClassName: "border-[#F0C38A] bg-[#FFF5E8] text-[#8A5408]",
+      isUrgent: true,
+      remainingHours,
+    }
+  }
+
+  return {
+    label: `${formatHoursForLabel(remainingHours)} left`,
+    toneClassName: "border-[#BFD7EC] bg-[#F4F9FF] text-[#24517A]",
+    isUrgent: false,
+    remainingHours,
+  }
+}
+
+function determineNextAction(workflowState: WorkflowState, sla: SlaState, ticket: Ticket): NextActionState {
+  if (workflowState === "Awaiting Start") {
+    return {
+      label: "Start Work",
+      hint: "Open the ticket and begin troubleshooting.",
+      toneClassName: "border-[#E3B36C] bg-[#FFF3DF] text-[#8A570A]",
+    }
+  }
+
+  if (workflowState === "Waiting for Employee") {
+    return {
+      label: "Waiting for Employee",
+      hint: "Blocked until reporter confirms or reopens.",
+      toneClassName: "border-[#F0C38A] bg-[#FFF5E8] text-[#8A5408]",
+    }
+  }
+
+  if (workflowState === "Solved") {
+    return {
+      label: "View Ticket",
+      hint: "Completed. Keep notes available for audit.",
+      toneClassName: "border-[#BDE3CC] bg-[#F1FCF5] text-[#1E7A45]",
+    }
+  }
+
+  if (workflowState === "In Progress" && (sla.isUrgent || (ticket.escalation_level ?? 0) > 0)) {
+    return {
+      label: "Reassign",
+      hint: "At-risk workflow. Hand over if specialist support is needed.",
+      toneClassName: "border-[#F0C38A] bg-[#FFF5E8] text-[#8A5408]",
+    }
+  }
+
+  return {
+    label: "View Ticket",
+    hint: "Continue diagnostics, updates, and final resolution.",
+    toneClassName: "border-[#BFD7EC] bg-[#F4F9FF] text-[#24517A]",
+  }
+}
+
+function toRow(ticket: Ticket, nowTs: number): TicketRow {
+  const workflowState = toWorkflowState(ticket.status)
+  const sla = calculateSlaState(ticket, workflowState, nowTs)
+  const nextAction = determineNextAction(workflowState, sla, ticket)
+
   return {
     id: ticket.id,
     trackingId: formatTrackingId(ticket.id),
@@ -135,22 +296,52 @@ function toRow(ticket: Ticket): TicketRow {
     title: ticket.title,
     description: ticket.description || "No fault description provided.",
     branch: ticket.location || "N/A",
-    updated: ticket.updated_at || ticket.created_at || "",
+    updated: ticket.last_activity_at || ticket.updated_at || ticket.created_at || "",
     priority: ticket.priority,
-    status: normalizeTicketStatus(ticket.status),
+    workflowState,
     escalationTarget: ticket.latest_escalation_target || "Current queue",
     raw: ticket,
+    sla,
+    nextAction,
   }
 }
 
-function solveActionHint(status: string): string {
-  if (status === "Pending") {
-    return "Open the ticket first to start work."
+function getWorkflowSortRank(workflowState: WorkflowState): number {
+  if (workflowState === "Awaiting Start") {
+    return 0
   }
-  if (status === "In Progress") {
-    return "Press Solved after you finish the fix."
+  if (workflowState === "In Progress") {
+    return 1
   }
-  return "Solved was pressed by the technician."
+  if (workflowState === "Waiting for Employee") {
+    return 2
+  }
+  if (workflowState === "Solved") {
+    return 3
+  }
+  return 4
+}
+
+function compareRows(left: TicketRow, right: TicketRow): number {
+  const leftUrgentRank = left.sla.isUrgent ? 0 : 1
+  const rightUrgentRank = right.sla.isUrgent ? 0 : 1
+  if (leftUrgentRank !== rightUrgentRank) {
+    return leftUrgentRank - rightUrgentRank
+  }
+
+  const leftWorkflowRank = getWorkflowSortRank(left.workflowState)
+  const rightWorkflowRank = getWorkflowSortRank(right.workflowState)
+  if (leftWorkflowRank !== rightWorkflowRank) {
+    return leftWorkflowRank - rightWorkflowRank
+  }
+
+  const leftSla = Number.isFinite(left.sla.remainingHours) ? left.sla.remainingHours : Number.POSITIVE_INFINITY
+  const rightSla = Number.isFinite(right.sla.remainingHours) ? right.sla.remainingHours : Number.POSITIVE_INFINITY
+  if (leftSla !== rightSla) {
+    return leftSla - rightSla
+  }
+
+  return right.id - left.id
 }
 
 export function TechnicianTicketTable() {
@@ -213,37 +404,38 @@ export function TechnicianTicketTable() {
     intervalMs: 12000,
   })
 
-  const filteredTickets = useMemo(() => {
+  const allRows = useMemo(() => {
+    const nowTs = Date.now()
+    return assignedTickets.map((ticket) => toRow(ticket, nowTs)).sort(compareRows)
+  }, [assignedTickets])
+
+  const filteredRows = useMemo(() => {
     if (activeFilter === "all") {
-      return assignedTickets
+      return allRows
     }
-    if (activeFilter === "pending") {
-      return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending")
+    if (activeFilter === "awaiting_start") {
+      return allRows.filter((row) => row.workflowState === "Awaiting Start")
     }
     if (activeFilter === "in_progress") {
-      return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "In Progress")
+      return allRows.filter((row) => row.workflowState === "In Progress")
     }
-    return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Solved")
-  }, [activeFilter, assignedTickets])
+    if (activeFilter === "waiting_employee") {
+      return allRows.filter((row) => row.workflowState === "Waiting for Employee")
+    }
+    return allRows.filter((row) => row.workflowState === "Solved")
+  }, [activeFilter, allRows])
 
-  const rows = useMemo(() => {
-    return filteredTickets.map(toRow)
-  }, [filteredTickets])
-
-  const activeFilterLabel = filterOptions.find((option) => option.key === activeFilter)?.label ?? "All"
+  const activeFilterLabel = filterOptions.find((option) => option.key === activeFilter)?.label ?? "All Tickets"
 
   const summary = useMemo(
     () => ({
-      pending: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending").length,
-      inProgress: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "In Progress").length,
-      pendingReview: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending Review").length,
-      solved: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Solved").length,
+      awaitingStart: allRows.filter((row) => row.workflowState === "Awaiting Start").length,
+      inProgress: allRows.filter((row) => row.workflowState === "In Progress").length,
+      waitingEmployee: allRows.filter((row) => row.workflowState === "Waiting for Employee").length,
+      solved: allRows.filter((row) => row.workflowState === "Solved").length,
+      urgent: allRows.filter((row) => row.sla.isUrgent && row.workflowState !== "Solved").length,
     }),
-    [assignedTickets]
-  )
-  const pendingActionTickets = useMemo(
-    () => assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending").slice(0, 4),
-    [assignedTickets]
+    [allRows]
   )
 
   const handleConfirmSolved = async () => {
@@ -322,43 +514,30 @@ export function TechnicianTicketTable() {
 
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
-      <CardHeader className="gap-3 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4 md:grid-cols-[1fr_auto]">
+      <CardHeader className="space-y-3 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded border border-[#C89A4D] bg-[#FFF2DE] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
-            Pending {summary.pending}
+          <span className="inline-flex items-center rounded border border-[#E6C589] bg-[#FFF6E5] px-2 py-1 text-xs font-semibold text-[#8A5A0D]">
+            Awaiting Start {summary.awaitingStart}
           </span>
-          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+          <span className="inline-flex items-center rounded border border-[#9CC4EA] bg-[#EAF4FF] px-2 py-1 text-xs font-semibold text-[#1F4E7A]">
             In Progress {summary.inProgress}
           </span>
-          <span className="inline-flex items-center rounded border border-[#D9C38D] bg-[#FFF7E5] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
-            Pending Review {summary.pendingReview}
+          <span className="inline-flex items-center rounded border border-[#F2C27F] bg-[#FFF4E6] px-2 py-1 text-xs font-semibold text-[#8A4B08]">
+            Waiting for Employee {summary.waitingEmployee}
           </span>
-          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
+          <span className="inline-flex items-center rounded border border-[#98D4B7] bg-[#EAF9F0] px-2 py-1 text-xs font-semibold text-[#1E7A45]">
             Solved {summary.solved}
           </span>
-        </div>
-        <div className="rounded-lg border border-[#BFD1E4] bg-white px-3 py-2 text-sm text-[#234A71]">
-          <p className="font-semibold">Needs Your Action</p>
-          {pendingActionTickets.length > 0 ? (
-            <div className="mt-2 space-y-1.5">
-              {pendingActionTickets.map((ticket) => (
-                <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-md border border-[#D8E4F0] bg-[#F8FBFF] px-2 py-1.5">
-                  <p className="truncate text-xs text-[#345F85]">{formatTrackingId(ticket.id)} - {ticket.title}</p>
-                  <Button size="sm" className="h-7 bg-[#0A63B8] text-xs text-white hover:bg-[#084C8C]" asChild>
-                    <Link href={`/technician/tickets/${ticket.id}`}>Start Work</Link>
-                  </Button>
-                </div>
-              ))}
-              {summary.pending > pendingActionTickets.length ? (
-                <p className="text-xs text-[#5A7CA0]">+{summary.pending - pendingActionTickets.length} more pending ticket(s)</p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="mt-1">No pending tickets waiting for acceptance.</p>
-          )}
+          <span className="inline-flex items-center gap-1 rounded border border-[#E3A5A5] bg-[#FFF1F1] px-2 py-1 text-xs font-semibold text-[#9F2D2D]">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Urgent {summary.urgent}
+          </span>
         </div>
 
-        <div className="flex justify-start md:justify-end">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm text-[#3F6288]">
+            One unified operational queue shows what needs action, what is blocked, and what is completed.
+          </p>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" size="sm" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
@@ -366,7 +545,7 @@ export function TechnicianTicketTable() {
                 Filter: {activeFilterLabel}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 border-[#93AECA] bg-white">
+            <DropdownMenuContent align="end" className="w-52 border-[#93AECA] bg-white">
               {filterOptions.map((option) => (
                 <DropdownMenuItem
                   key={option.key}
@@ -385,73 +564,81 @@ export function TechnicianTicketTable() {
       </CardHeader>
 
       <CardContent className="overflow-x-auto p-0 [&_th]:whitespace-nowrap [&_td]:align-top">
-        <Table className="min-w-[1250px] table-fixed">
+        <Table className="min-w-[1080px] table-fixed">
           <TableHeader>
             <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-              <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
-              <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
-              <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
-              <TableHead className="w-[318px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
-              <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-              <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
-              <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation</TableHead>
-              <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+              <TableHead className="w-[360px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Ticket</TableHead>
+              <TableHead className="w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Workflow State</TableHead>
+              <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+              <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">SLA / Urgency</TableHead>
+              <TableHead className="w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Next Action</TableHead>
+              <TableHead className="w-[190px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading assigned tickets...
                 </TableCell>
               </TableRow>
             ) : loadError ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-rose-600">
                   {loadError}
                 </TableCell>
               </TableRow>
-            ) : rows.length === 0 ? (
+            ) : filteredRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
                   No tickets found for this filter.
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((ticket) => (
-                <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE]">
-                  <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">{ticket.trackingId}</TableCell>
-                  <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated)}</TableCell>
-                  <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.reporter}</TableCell>
-                  <TableCell className="py-3 text-xs text-[#2A5D8D]">
-                    <div className="max-w-[290px] space-y-1">
-                      <Link href={`/technician/tickets/${ticket.id}`} className="block truncate font-semibold underline underline-offset-2">
+              filteredRows.map((ticket) => (
+                <TableRow
+                  key={ticket.id}
+                  className={cn(
+                    "border-b border-[#C5D5E6]",
+                    workflowRowStyles[ticket.workflowState],
+                    ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "ring-1 ring-inset ring-[#F2C6C6]"
+                  )}
+                >
+                  <TableCell className="px-4 py-3 text-xs text-[#2A5D8D]">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex rounded border border-[#B8CDE1] bg-white px-1.5 py-0.5 font-semibold text-[#2A5D8D]">
+                          {ticket.trackingId}
+                        </span>
+                        <span className="text-[#4A6887]">Updated {formatDateLabel(ticket.updated)}</span>
+                      </div>
+                      <Link href={`/technician/tickets/${ticket.id}`} className="block truncate text-sm font-semibold underline underline-offset-2">
                         {ticket.title}
                       </Link>
                       <p className="line-clamp-2 text-[#4A6887]">{ticket.description}</p>
+                      <p className="text-[11px] text-[#5A7CA0]">
+                        Reporter: <span className="font-medium text-[#1F4469]">{ticket.reporter}</span> | Branch:{" "}
+                        <span className="font-medium text-[#1F4469]">{ticket.branch}</span>
+                      </p>
                     </div>
                   </TableCell>
-                  <TableCell className={cn("py-3 text-xs font-semibold", statusBadgeStyles[ticket.status] ?? "text-[#345F85]")}>
-                    {ticket.status}
-                  </TableCell>
-                  <TableCell className="py-3">
-                    <Badge
-                      className={cn(
-                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                        priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                      )}
-                    >
-                      {ticket.priority}
-                    </Badge>
-                  </TableCell>
+
                   <TableCell className="py-3 text-xs text-[#1F4469]">
-                    {ticket.raw.latest_escalation_comment ? (
-                      <div className="space-y-2">
-                        <p>{ticket.escalationTarget}</p>
+                    <div className="space-y-2">
+                      <Badge
+                        className={cn(
+                          "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                          workflowBadgeStyles[ticket.workflowState]
+                        )}
+                      >
+                        {ticket.workflowState}
+                      </Badge>
+                      <p className="text-[11px] text-[#5A7CA0]">Escalation target: {ticket.escalationTarget}</p>
+                      {ticket.raw.latest_escalation_comment ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                          className="h-7 border-[#93AECA] bg-white px-2.5 text-[11px] text-[#20466D]"
                           onClick={() =>
                             setCommentPreview({
                               ticketId: ticket.id,
@@ -465,51 +652,86 @@ export function TechnicianTicketTable() {
                             })
                           }
                         >
-                          View Comment
+                          View Escalation
                         </Button>
-                      </div>
-                    ) : (
-                      <span className="text-[#4A6887]">No escalation comment</span>
-                    )}
+                      ) : (
+                        <p className="text-[11px] text-[#6C87A3]">No escalation comment</p>
+                      )}
+                    </div>
                   </TableCell>
+
+                  <TableCell className="py-3">
+                    <Badge
+                      className={cn(
+                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                        priorityBadgeStyles[ticket.priority] ?? priorityBadgeStyles.Medium
+                      )}
+                    >
+                      {ticket.priority}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell className="py-3">
+                    <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", ticket.sla.toneClassName)}>
+                      {ticket.sla.label}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell className="py-3 text-xs text-[#1F4469]">
+                    <div className="space-y-1.5">
+                      <Badge className={cn("rounded-sm border px-2 py-0.5 text-[11px] font-semibold", ticket.nextAction.toneClassName)}>
+                        {ticket.nextAction.label}
+                      </Badge>
+                      <p className="text-[11px] leading-4 text-[#5A7CA0]">{ticket.nextAction.hint}</p>
+                    </div>
+                  </TableCell>
+
                   <TableCell className="py-2">
                     <div className="flex flex-col gap-1.5">
-                      <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]" asChild>
+                      <Button
+                        size="sm"
+                        variant={ticket.workflowState === "Awaiting Start" ? "default" : "outline"}
+                        className={
+                          ticket.workflowState === "Awaiting Start"
+                            ? "h-8 bg-[#0A63B8] text-white hover:bg-[#084C8C]"
+                            : "h-8 border-[#93AECA] bg-white text-[#20466D]"
+                        }
+                        asChild
+                      >
                         <Link href={`/technician/tickets/${ticket.id}`}>
-                          {ticket.status === "Pending" ? "Open & Start" : "Open"}
+                          {ticket.workflowState === "Awaiting Start" ? "Start Work" : "View Ticket"}
                         </Link>
                       </Button>
-                        <Button
-                          size="sm"
-                          type="button"
-                          className="h-8 w-full bg-[#1C7C54] text-white hover:bg-[#155E40] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A] disabled:hover:border-[#B9D5C6] disabled:hover:bg-[#EAF4EE] disabled:hover:text-[#6D8E7A]"
-                          disabled={busyTicketId === ticket.id || ticket.status !== "In Progress"}
-                          onClick={() => setSolvedTicket(ticket)}
-                        >
-                          {busyTicketId === ticket.id && busyAction === "solve" ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : null}
-                          Solved
-                        </Button>
-                        <p className="text-[11px] text-[#5B7A9B]">{solveActionHint(ticket.status)}</p>
-                        <Button
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                          className="h-8 w-full border-[#C89A4D] bg-white text-[#8B5A12] disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56] disabled:hover:border-[#E4D0A6] disabled:hover:bg-[#F7F0DF] disabled:hover:text-[#A48A56]"
-                          disabled={busyTicketId === ticket.id || ticket.status === "Pending Review" || ticket.status === "Solved"}
-                          onClick={() => void openReassignDialog(ticket)}
-                        >
-                          {busyTicketId === ticket.id && busyAction === "reassign_open" ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : null}
-                          Reassign
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+                      <Button
+                        size="sm"
+                        type="button"
+                        className="h-8 w-full bg-[#1C7C54] text-white hover:bg-[#155E40] disabled:border disabled:border-[#B9D5C6] disabled:bg-[#EAF4EE] disabled:text-[#6D8E7A]"
+                        disabled={busyTicketId === ticket.id || ticket.workflowState !== "In Progress"}
+                        onClick={() => setSolvedTicket(ticket)}
+                      >
+                        {busyTicketId === ticket.id && busyAction === "solve" ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Solved
+                      </Button>
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        className="h-8 w-full border-[#C89A4D] bg-white text-[#8B5A12] disabled:border-[#E4D0A6] disabled:bg-[#F7F0DF] disabled:text-[#A48A56]"
+                        disabled={busyTicketId === ticket.id || ticket.workflowState === "Waiting for Employee" || ticket.workflowState === "Solved"}
+                        onClick={() => void openReassignDialog(ticket)}
+                      >
+                        {busyTicketId === ticket.id && busyAction === "reassign_open" ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Reassign
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>

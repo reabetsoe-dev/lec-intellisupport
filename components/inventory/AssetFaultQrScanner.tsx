@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { buildAssetFaultReportPath } from "@/lib/asset-qr"
+import { buildAssetFaultReportPath, parseAssetScanToken } from "@/lib/asset-qr"
 
 function getFaultReportPathFromScan(value: string): string | null {
   const trimmedValue = value.trim()
@@ -29,12 +29,25 @@ function getFaultReportPathFromScan(value: string): string | null {
     const parsedUrl = new URL(trimmedValue, baseUrl)
     const segments = parsedUrl.pathname.split("/").filter(Boolean)
     const assetCode = segments[0] === "asset-qr" && segments[1] === "report" ? segments[2] : ""
+    const assetScanToken = segments[0] === "asset-scan" ? segments[1] : ""
 
     if (assetCode) {
       return buildAssetFaultReportPath(decodeURIComponent(assetCode))
     }
+
+    if (assetScanToken) {
+      const tokenPayload = parseAssetScanToken(decodeURIComponent(assetScanToken))
+      if (tokenPayload) {
+        return buildAssetFaultReportPath(`AST-${tokenPayload.asset_id}`)
+      }
+    }
   } catch {
-    return null
+    // Continue with non-URL parsing paths below.
+  }
+
+  const tokenPayload = parseAssetScanToken(trimmedValue)
+  if (tokenPayload) {
+    return buildAssetFaultReportPath(`AST-${tokenPayload.asset_id}`)
   }
 
   if (/^[A-Za-z0-9][A-Za-z0-9._-]{1,80}$/.test(trimmedValue)) {
@@ -114,18 +127,22 @@ export function AssetFaultQrScanner() {
   }, [])
 
   const openFaultReport = useCallback(
-    (scanValue: string) => {
+    (scanValue: string, options?: { showInvalidCodeError?: boolean }) => {
+      const showInvalidCodeError = options?.showInvalidCodeError ?? true
       const reportPath = getFaultReportPathFromScan(scanValue)
       if (!reportPath) {
-        setScanError("This QR code is not an asset fault reporting code.")
+        if (showInvalidCodeError) {
+          setScanError("This QR code is not an asset fault reporting code. Use the Asset Fault QR labels.")
+        }
         scanLockedRef.current = false
-        return
+        return false
       }
 
       scanLockedRef.current = true
       stopCamera()
       setScannerOpen(false)
       router.push(reportPath)
+      return true
     },
     [router, stopCamera]
   )
@@ -150,8 +167,10 @@ export function AssetFaultQrScanner() {
       })
 
       if (code?.data) {
-        openFaultReport(code.data)
-        return
+        const opened = openFaultReport(code.data, { showInvalidCodeError: false })
+        if (opened) {
+          return
+        }
       }
     }
 
@@ -245,7 +264,7 @@ export function AssetFaultQrScanner() {
         return
       }
 
-      openFaultReport(decodedValue)
+      openFaultReport(decodedValue, { showInvalidCodeError: true })
     } catch (error) {
       setScanError(error instanceof Error ? error.message : "Unable to read that QR image.")
     } finally {

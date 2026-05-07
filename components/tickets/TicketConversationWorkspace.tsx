@@ -1644,8 +1644,7 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
                           Mark as Resolved
                         </Button>
                       </div>
-                    </>
-                  ) : null}
+                    </div>
 
                     <div className="rounded-2xl border border-[#E5D2AB] bg-[#FFF9EC] p-4">
                       <p className="inline-flex items-center gap-2 text-sm font-semibold text-[#7A5700]">
@@ -1859,7 +1858,10 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
             <Button
               type="button"
               className="bg-[#1C7C54] text-white hover:bg-[#155E40]"
-              onClick={() => void handleConfirmSolved()}
+              onClick={() => {
+                setSolvedConfirmOpen(false)
+                void handleTechnicianStatusUpdate("Solved")
+              }}
               disabled={workflowBusy || autoStarting || detailStatus !== "In Progress"}
             >
               Solved
