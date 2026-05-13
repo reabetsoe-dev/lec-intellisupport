@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { CornerDownRight, MessageSquareReply, ShieldEllipsis } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -74,6 +74,10 @@ function chatBubbleClassName(isCurrentUser: boolean) {
     : "bg-[#f1f5f9] text-[#243b53]"
 }
 
+function systemBlockClassName() {
+  return "border-[#D8E2EC] bg-white text-[#2A4B69]"
+}
+
 function noteBlockClassName(isCurrentUser: boolean) {
   // Notes should not look like chat bubbles; keep them distinct and softer.
   return isCurrentUser ? "bg-[#fff6d9] border-[#E3D4A0]" : "bg-[#f8fafc] border-[#E3D4A0]"
@@ -83,14 +87,41 @@ function isRetryableFailedMessage(message: TicketConversationThreadProps["messag
   return message.clientStatus === "failed" && typeof message.clientId === "string" && message.clientId.length > 0
 }
 
+function isSystemUpdateMessage(message: TicketConversationThreadProps["messages"][number]) {
+  return (
+    message.sender.name.trim().toLowerCase() === "system" ||
+    message.content.trim().toLowerCase().startsWith("[system]")
+  )
+}
+
+function SystemUpdateCard({
+  message,
+  className,
+}: {
+  message: TicketConversationThreadProps["messages"][number]
+  className?: string
+}) {
+  return (
+    <div className={cn("w-full transition-all duration-200 opacity-100 translate-y-0", className)}>
+      <div className={cn("mx-auto w-full max-w-[42rem] rounded-lg border px-3 py-2", systemBlockClassName())}>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#6A8096]">System Update</p>
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-5">
+          {message.content.replace(/^\[system\]\s*/i, "")}
+        </p>
+        <p className="mt-1 text-[10px] text-slate-500">{formatDateTime(message.created_at)}</p>
+      </div>
+    </div>
+  )
+}
+
 export function TicketConversationThread({
   messages,
   currentUserId,
   onReply,
   onRetryFailedMessage,
   emptyState,
-  variant = "main",
 }: TicketConversationThreadProps) {
+  const [showSystemUpdates, setShowSystemUpdates] = useState(false)
   const flattenedAndSorted = useMemo(() => {
     const flat = flattenMessages(messages)
 
@@ -114,21 +145,10 @@ export function TicketConversationThread({
     return Array.from(byKey.values())
   }, [messages])
 
-  const groupedMessages = flattenedAndSorted
+  const systemUpdateMessages = flattenedAndSorted.filter(isSystemUpdateMessage)
+  const groupedMessages = flattenedAndSorted.filter((message) => !isSystemUpdateMessage(message))
 
-  const [animateIn, setAnimateIn] = useState(false)
-  const lastMessageKey = groupedMessages.length
-    ? `${groupedMessages[groupedMessages.length - 1].message_type}:${groupedMessages[groupedMessages.length - 1].id}:${groupedMessages[groupedMessages.length - 1].created_at}`
-    : "empty"
-
-  useEffect(() => {
-    // Trigger a subtle fade+slide animation when the newest message changes.
-    setAnimateIn(false)
-    const rafId = window.requestAnimationFrame(() => setAnimateIn(true))
-    return () => window.cancelAnimationFrame(rafId)
-  }, [lastMessageKey])
-
-  if (groupedMessages.length === 0) {
+  if (groupedMessages.length === 0 && systemUpdateMessages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
         <CornerDownRight className="h-5 w-5 text-slate-400" />
@@ -142,6 +162,48 @@ export function TicketConversationThread({
 
   return (
     <div className="flex flex-col">
+      {systemUpdateMessages.length > 0 ? (
+        <div className={cn("mb-3 flex flex-col", groupedMessages.length === 0 ? "mb-0" : "")}>
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSystemUpdates((current) => !current)}
+              className="border-[#BFD1E4] bg-white text-[#0A4A8A] transition-all duration-200 hover:bg-[#F7FBFF]"
+            >
+              {showSystemUpdates ? "Hide System Updates" : "Show System Updates"}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              "grid transition-all duration-200 ease-in-out",
+              showSystemUpdates ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="mt-3 flex flex-col">
+                {systemUpdateMessages.map((message, idx) => (
+                  <SystemUpdateCard
+                    key={`${message.message_type}:${message.id}`}
+                    message={message}
+                    className={idx === 0 ? "mt-0" : "mt-3"}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {groupedMessages.length === 0 ? (
+        <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+          <CornerDownRight className="h-5 w-5 text-slate-400" />
+          <p className="mt-2 text-sm font-semibold text-slate-600">Start the conversation</p>
+          <p className="mt-1 text-xs text-gray-400">{emptyState}</p>
+        </div>
+      ) : null}
+
       {groupedMessages.map((message, idx) => {
         const isCurrentUser = message.sender.id === currentUserId
         const isNote = message.message_type === "INTERNAL_NOTE"
@@ -166,12 +228,7 @@ export function TicketConversationThread({
         const canReply =
           !message.clientStatus || message.clientStatus === "sent"
 
-        const isLast = idx === groupedMessages.length - 1
-        const animClass = isLast
-          ? animateIn
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-2"
-          : "opacity-100 translate-y-0"
+        const animClass = "opacity-100 translate-y-0"
 
         if (isNote) {
           return (
@@ -258,7 +315,14 @@ export function TicketConversationThread({
           >
             <div className={cn("group flex w-full", isCurrentUser ? "justify-end" : "justify-start")}>
               <div className={cn("w-full max-w-[65%]")}>
-                <div className={cn("rounded-2xl px-4 py-2 shadow-sm", chatBubbleClassName(isCurrentUser))}>
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-2 shadow-sm",
+                    message.message_type === "DISCUSSION" && !isCurrentUser
+                      ? "border border-[#7C8A99] bg-[#DCE2E8] text-[#1F3347]"
+                      : chatBubbleClassName(isCurrentUser)
+                  )}
+                >
                   {showSenderName ? (
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold text-inherit/80">{message.sender.name}</p>

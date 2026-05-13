@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { ChatbotFaultAssistant } from "@/components/chatbot/ChatbotFaultAssistant"
 import { Sidebar } from "@/components/layout/Sidebar"
@@ -19,9 +19,10 @@ type AppShellProps = {
   children: React.ReactNode
 }
 
-export function AppShell({ children }: AppShellProps) {
+function AppShellContent({ children }: AppShellProps) {
   const rawPathname = usePathname()
   const pathname = rawPathname ?? ""
+  const searchParams = useSearchParams()
   const router = useRouter()
   const isLoginPage = pathname.startsWith("/login")
   const isForgotPasswordPage = pathname.startsWith("/forgot-password")
@@ -30,7 +31,7 @@ export function AppShell({ children }: AppShellProps) {
   const isAssetScanPage = pathname.startsWith("/asset-scan/")
   const isAssetQrReportPage = pathname.startsWith("/asset-qr/report/")
   const isTechnicianAccessPage = pathname.startsWith("/technician-access")
-  const [isSwitchLoginMode, setIsSwitchLoginMode] = useState(false)
+  const isSwitchLoginMode = isLoginPage && isSwitchLoginRequest(searchParams)
   const isPublicPage =
     pathname === "/" ||
     isLoginPage ||
@@ -53,23 +54,6 @@ export function AppShell({ children }: AppShellProps) {
       window.removeEventListener("lec-auth-session-change", refreshSession)
     }
   }, [])
-
-  useEffect(() => {
-    const syncSwitchMode = () => {
-      if (typeof window === "undefined") {
-        setIsSwitchLoginMode(false)
-        return
-      }
-      const currentParams = new URLSearchParams(window.location.search)
-      setIsSwitchLoginMode(isLoginPage && isSwitchLoginRequest(currentParams))
-    }
-
-    syncSwitchMode()
-    window.addEventListener("popstate", syncSwitchMode)
-    return () => {
-      window.removeEventListener("popstate", syncSwitchMode)
-    }
-  }, [isLoginPage, pathname])
 
   useEffect(() => {
     if (!isPublicPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
@@ -115,12 +99,12 @@ export function AppShell({ children }: AppShellProps) {
   const displayUserName = getDisplayUserName(user)
 
   return (
-    <div className="flex min-h-screen flex-col md:h-screen md:flex-row md:overflow-hidden">
+    <div className="flex min-h-screen flex-col overflow-x-hidden md:h-screen md:flex-row md:overflow-hidden">
       <Sidebar user={user} />
-      <div className="lec-shell-bg flex min-h-0 flex-1 flex-col">
+      <div className="lec-shell-bg flex min-h-0 min-w-0 flex-1 flex-col">
         <Topbar user={user} />
-        <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-24 sm:px-4 md:p-6 md:pb-6">
-          <div className="mx-auto w-full max-w-[1400px]">
+        <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-24 sm:px-4 md:p-6 md:pb-6">
+          <div className="mx-auto min-w-0 w-full max-w-[1400px]">
             {children}
           </div>
         </main>
@@ -129,5 +113,13 @@ export function AppShell({ children }: AppShellProps) {
         ) : null}
       </div>
     </div>
+  )
+}
+
+export function AppShell({ children }: AppShellProps) {
+  return (
+    <Suspense fallback={<>{children}</>}>
+      <AppShellContent>{children}</AppShellContent>
+    </Suspense>
   )
 }

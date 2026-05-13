@@ -5,9 +5,11 @@ import Link from "next/link"
 import {
   AlertCircle,
   CheckCircle2,
+  Circle,
+  CircleCheckBig,
   ClipboardList,
   Loader2,
-  LogIn,
+  QrCode,
   ShieldCheck,
   Wrench,
 } from "lucide-react"
@@ -25,8 +27,8 @@ import {
   toAssetQrReportAsset,
   type AssetQrReportAsset,
 } from "@/lib/assetQrAssets"
-import { getCommonProblems, getFaultCategoryOptions } from "@/lib/assetQrKnowledgeBase"
-import { buildSwitchLoginHref, getStoredUserSession, type AuthUser } from "@/lib/auth"
+import { getFaultCategoryOptions, getTroubleshootingSteps } from "@/lib/assetQrKnowledgeBase"
+import { getStoredUserSession, type AuthUser } from "@/lib/auth"
 
 type AssetFaultReportWorkspaceProps = {
   assetCode: string
@@ -40,10 +42,9 @@ type ReportFormState = {
   category: string
   title: string
   description: string
-  priority: ReportUrgency
-  branch: string
-  department: string
+  urgency: ReportUrgency
   confirmAsset: boolean
+  attachment: File | null
 }
 
 const URGENCY_OPTIONS: ReportUrgency[] = ["Low", "Medium", "High", "Critical"]
@@ -52,10 +53,9 @@ const initialFormState: ReportFormState = {
   category: "",
   title: "",
   description: "",
-  priority: "Medium",
-  branch: "",
-  department: "",
+  urgency: "Medium",
   confirmAsset: false,
+  attachment: null,
 }
 
 function formatDateOrFallback(value: string | null): string {
@@ -84,12 +84,11 @@ function locationFromAsset(asset: AssetQrReportAsset): string {
 }
 
 export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspaceProps) {
-  const [sessionReady, setSessionReady] = useState(false)
   const [session, setSession] = useState<AuthUser | null>(null)
   const [loadingAsset, setLoadingAsset] = useState(true)
   const [assetError, setAssetError] = useState("")
   const [asset, setAsset] = useState<AssetQrReportAsset | null>(null)
-  const [selectedProblemId, setSelectedProblemId] = useState("")
+  const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({})
   const [showReportForm, setShowReportForm] = useState(false)
   const [form, setForm] = useState<ReportFormState>(initialFormState)
   const [submitError, setSubmitError] = useState("")
@@ -102,27 +101,19 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
   } | null>(null)
 
   const normalizedAssetCode = useMemo(() => normalizeAssetCode(assetCode), [assetCode])
-  const reportPath = useMemo(
-    () => `/asset-qr/report/${encodeURIComponent(normalizedAssetCode)}`,
-    [normalizedAssetCode]
-  )
-  const employeeLoginHref = useMemo(
-    () => buildSwitchLoginHref({ nextPath: reportPath }),
-    [reportPath]
-  )
-  const requiresEmployeeLogin = !session || session.role !== "employee"
+  const scannedAssetId = useMemo(() => {
+    const matched = /^AST-(\d+)$/.exec(normalizedAssetCode)
+    if (!matched) {
+      return null
+    }
+    return Number.parseInt(matched[1], 10)
+  }, [normalizedAssetCode])
 
   useEffect(() => {
     setSession(getStoredUserSession())
-    setSessionReady(true)
   }, [])
 
   useEffect(() => {
-    if (!sessionReady || requiresEmployeeLogin) {
-      setLoadingAsset(false)
-      return
-    }
-
     let active = true
 
     const resolveAsset = async () => {
@@ -137,7 +128,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
 
         const matchedConsumable = consumables.find((item) => {
           const currentCode = normalizeAssetCode(item.asset_tag || `AST-${item.id}`)
-          return currentCode === normalizedAssetCode
+          return currentCode === normalizedAssetCode || (scannedAssetId !== null && item.id === scannedAssetId)
         })
 
         if (matchedConsumable) {
@@ -171,16 +162,15 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     return () => {
       active = false
     }
-  }, [normalizedAssetCode, requiresEmployeeLogin, sessionReady])
+  }, [normalizedAssetCode, scannedAssetId])
 
   const troubleshootingDomain = useMemo(
-    () => inferTroubleshootingDomain(`${asset?.assetType || ""} ${asset?.assetName || ""}`),
-    [asset?.assetName, asset?.assetType]
+    () => inferTroubleshootingDomain(asset?.assetType || ""),
+    [asset?.assetType]
   )
-  const commonProblems = useMemo(() => getCommonProblems(troubleshootingDomain), [troubleshootingDomain])
-  const selectedCommonProblem = useMemo(
-    () => commonProblems.find((problem) => problem.id === selectedProblemId) ?? null,
-    [commonProblems, selectedProblemId]
+  const troubleshootingSteps = useMemo(
+    () => getTroubleshootingSteps(troubleshootingDomain),
+    [troubleshootingDomain]
   )
   const categoryOptions = useMemo(
     () => getFaultCategoryOptions(troubleshootingDomain),
@@ -199,24 +189,9 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     })
   }, [categoryOptions])
 
-  useEffect(() => {
-    if (!asset) {
-      return
-    }
-
-    setForm((current) => ({
-      ...current,
-      branch: current.branch || asset.branch || locationFromAsset(asset),
-      department: current.department || asset.department || "",
-    }))
-  }, [asset])
-
-  useEffect(() => {
-    if (commonProblems.some((problem) => problem.id === selectedProblemId)) {
-      return
-    }
-    setSelectedProblemId("")
-  }, [commonProblems, selectedProblemId])
+  const totalSteps = troubleshootingSteps.length
+  const completedSteps = troubleshootingSteps.filter((step) => checkedSteps[step.id]).length
+  const allTroubleshootingStepsChecked = totalSteps > 0 && completedSteps === totalSteps
 
   const step1State: StepState = "done"
   const step2State: StepState = showReportForm ? "done" : "active"
@@ -227,27 +202,13 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       session &&
       session.role === "employee" &&
       form.confirmAsset &&
-      form.branch.trim() &&
-      form.department.trim() &&
       form.category.trim() &&
       form.title.trim() &&
       form.description.trim()
   )
 
-  const handleProblemSelection = (problemId: string) => {
-    setSelectedProblemId(problemId)
-
-    const problem = commonProblems.find((item) => item.id === problemId)
-    if (!problem || !asset) {
-      return
-    }
-
-    setForm((current) => ({
-      ...current,
-      category: problem.category || current.category || categoryOptions[0] || "Other",
-      title: `${asset.assetName}: ${problem.label}`,
-      description: `Observed issue: ${problem.label}.\nInitial check: ${problem.quickCheck}.`,
-    }))
+  const toggleTroubleshootingStep = (stepId: string) => {
+    setCheckedSteps((current) => ({ ...current, [stepId]: !current[stepId] }))
   }
 
   const submitFaultReport = async () => {
@@ -271,11 +232,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       return
     }
 
-    if (!form.branch.trim() || !form.department.trim()) {
-      setSubmitError("Branch and department are required.")
-      return
-    }
-
     try {
       setSubmitting(true)
       setSubmitError("")
@@ -284,15 +240,16 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
         assetCode: asset.assetCode,
         assetName: asset.assetName,
         assetType: asset.assetType,
-        location: form.branch.trim(),
-        department: form.department.trim(),
+        location: locationFromAsset(asset),
+        department: asset.department,
         category: form.category.trim(),
         title: form.title.trim(),
         description: form.description.trim(),
-        urgency: form.priority,
+        urgency: form.urgency,
         employeeId: session.id,
         employeeName: session.name,
         employeeEmail: session.login_identifier || "",
+        attachment: form.attachment,
       })
 
       setSubmissionResult({
@@ -308,57 +265,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     }
   }
 
-  if (!sessionReady) {
-    return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#F6FAFF_0%,_#EAF2FF_48%,_#E3EEFF_100%)] px-4 py-5 md:px-6 md:py-7">
-        <div className="mx-auto w-full max-w-2xl">
-          <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm">
-            <CardContent className="flex items-center gap-2 px-5 py-6 text-sm text-[#29567F]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking employee session...
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    )
-  }
-
-  if (requiresEmployeeLogin) {
-    return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#F6FAFF_0%,_#EAF2FF_48%,_#E3EEFF_100%)] px-4 py-5 md:px-6 md:py-7">
-        <div className="mx-auto w-full max-w-2xl">
-          <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm">
-            <CardHeader className="px-5 py-4 md:px-6">
-              <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
-                <LogIn className="h-5 w-5 text-[#0E5EA2]" />
-                Employee Login Required
-              </CardTitle>
-              <p className="text-sm text-[#56789B]">
-                Sign in as an employee to continue with this asset fault report and link the ticket to your account.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3 px-5 pb-6 md:px-6">
-              <p className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-3 py-2 text-sm text-[#244A6E]">
-                Asset code: <span className="font-semibold">{normalizedAssetCode}</span>
-              </p>
-              {session ? (
-                <p className="text-sm text-[#8B5A19]">
-                  You are signed in as <span className="font-semibold">{session.name}</span> ({session.role}). Please switch to an employee account.
-                </p>
-              ) : null}
-              <Button asChild className="h-11 w-full bg-[#0E5EA2] text-white hover:bg-[#0A4E87] sm:w-auto">
-                <Link href={employeeLoginHref}>
-                  <LogIn className="h-4 w-4" />
-                  Continue to Employee Login
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#F6FAFF_0%,_#EAF2FF_48%,_#E3EEFF_100%)] px-4 py-5 md:px-6 md:py-7">
       <div className="mx-auto w-full max-w-5xl space-y-5">
@@ -369,6 +275,10 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 <CardTitle className="text-[24px] leading-tight font-semibold md:text-[30px]">LEC Asset Fault Reporting</CardTitle>
                 <p className="mt-1 text-sm text-[#CFE8FF] md:text-base">Scan, troubleshoot, and submit a fault report for this specific asset.</p>
               </div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#D9EEFF]">
+                <QrCode className="h-3.5 w-3.5" />
+                QR Flow 2
+              </span>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
@@ -453,44 +363,38 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
             <CardHeader className="px-5 py-4 md:px-6">
               <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
                 <Wrench className="h-5 w-5 text-[#0E5EA2]" />
-                Common Asset Problems
+                Troubleshooting Checklist
               </CardTitle>
               <p className="text-sm text-[#56789B]">
-                Select the common problem for this asset. If it still persists, submit a fault report below.
+                Complete these checks first. If the issue still persists, submit a fault report below.
               </p>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
-              <div className="space-y-2">
-                <Label htmlFor="asset-common-problem" className="text-[#10385E]">
-                  Common problem for this asset
-                </Label>
-                <select
-                  id="asset-common-problem"
-                  value={selectedProblemId}
-                  onChange={(event) => handleProblemSelection(event.target.value)}
-                  className="h-11 w-full rounded-md border border-[#9FC3E7] bg-white px-3 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
-                >
-                  <option value="">Select a common problem</option>
-                  {commonProblems.map((problem) => (
-                    <option key={problem.id} value={problem.id}>
-                      {problem.label}
-                    </option>
-                  ))}
-                </select>
+              <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#264E74]">
+                Completed {completedSteps} of {totalSteps} checks.
               </div>
 
-              {selectedCommonProblem ? (
-                <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3">
-                  <p className="text-xs font-semibold tracking-[0.12em] text-[#5E7FA5] uppercase">Quick Check</p>
-                  <p className="mt-1 text-sm font-medium text-[#264E74]">{selectedCommonProblem.quickCheck}</p>
-                </div>
-              ) : null}
-
-              <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#264E74]">
-                Selected category:{" "}
-                <span className="font-semibold text-[#163D63]">
-                  {selectedCommonProblem?.category || "Not selected"}
-                </span>
+              <div className="space-y-2">
+                {troubleshootingSteps.map((step) => {
+                  const checked = Boolean(checkedSteps[step.id])
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => toggleTroubleshootingStep(step.id)}
+                      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-all ${
+                        checked
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-[#C8DCF0] bg-white text-[#22496F] hover:bg-[#F7FBFF]"
+                      }`}
+                    >
+                      <span className="mt-[2px]">
+                        {checked ? <CircleCheckBig className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                      </span>
+                      <span className="text-sm font-medium">{step.text}</span>
+                    </button>
+                  )
+                })}
               </div>
 
               {!showReportForm ? (
@@ -502,6 +406,11 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                   >
                     Still not solved? Report this fault
                   </Button>
+                  {allTroubleshootingStepsChecked ? (
+                    <p className="text-xs text-[#55789D]">
+                      You completed all checklist items. You can still report if the issue remains unresolved.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </CardContent>
@@ -520,45 +429,13 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               </p>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
+              {session?.role !== "employee" ? (
+                <div className="rounded-xl border border-[#F0C28B] bg-[#FFF9F0] px-4 py-3 text-sm text-[#8B5A19]">
+                  Please sign in with an employee account to submit this fault report.
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="fault-branch" className="text-[#10385E]">
-                    Branch
-                  </Label>
-                  <Input
-                    id="fault-branch"
-                    value={form.branch}
-                    onChange={(event) => setForm((current) => ({ ...current, branch: event.target.value }))}
-                    placeholder="Branch"
-                    className="border-[#9FC3E7]"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fault-department" className="text-[#10385E]">
-                    Department
-                  </Label>
-                  <Input
-                    id="fault-department"
-                    value={form.department}
-                    onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))}
-                    placeholder="Department"
-                    className="border-[#9FC3E7]"
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="fault-asset" className="text-[#10385E]">
-                    Affected Asset
-                  </Label>
-                  <Input
-                    id="fault-asset"
-                    value={`${asset.assetName} (${asset.assetCode})`}
-                    readOnly
-                    className="border-[#9FC3E7] bg-[#F8FBFF] text-[#315B82]"
-                  />
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="fault-category" className="text-[#10385E]">
                     Problem category
@@ -578,14 +455,14 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="fault-priority" className="text-[#10385E]">
-                    Priority
+                  <Label htmlFor="fault-urgency" className="text-[#10385E]">
+                    Urgency level
                   </Label>
                   <select
-                    id="fault-priority"
-                    value={form.priority}
+                    id="fault-urgency"
+                    value={form.urgency}
                     onChange={(event) =>
-                      setForm((current) => ({ ...current, priority: event.target.value as ReportUrgency }))
+                      setForm((current) => ({ ...current, urgency: event.target.value as ReportUrgency }))
                     }
                     className="h-10 w-full rounded-md border border-[#9FC3E7] bg-white px-3 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                   >
@@ -622,6 +499,26 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                   placeholder="Describe what happens, error messages, and what has already been tried."
                   className="min-h-28 w-full rounded-md border border-[#9FC3E7] bg-white px-3 py-2 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fault-attachment" className="text-[#10385E]">
+                  Optional image/file upload
+                </Label>
+                <Input
+                  id="fault-attachment"
+                  type="file"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      attachment: event.target.files?.[0] ?? null,
+                    }))
+                  }
+                  className="border-[#9FC3E7]"
+                />
+                {form.attachment ? (
+                  <p className="text-xs text-[#54779A]">Selected file: {form.attachment.name}</p>
+                ) : null}
               </div>
 
               <label className="flex items-start gap-3 rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-3 py-3">

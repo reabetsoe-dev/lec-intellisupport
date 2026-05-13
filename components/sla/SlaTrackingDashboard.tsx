@@ -131,7 +131,7 @@ function computeLiveTicketSla(ticket: Ticket, metrics: PerformanceMetrics | null
   const assignedAt = parseIsoDate(ticket.assigned_at ?? ticket.created_at)
   const acceptedAt = parseIsoDate(ticket.accepted_at)
   const lastActivityAt = parseIsoDate(ticket.last_activity_at) ?? acceptedAt ?? assignedAt
-  const owner = ticket.technician_name || "Admin Fault Queue"
+  const owner = ticket.technician_name || "Unassigned"
 
   if (status === "Solved" || status === "Pending Review") {
     return {

@@ -20,8 +20,31 @@ type AiIntakeDraftEditorProps = {
 const categoryOptions = ["Hardware", "Software", "Network", "Security"] as const
 const priorityOptions = ["Low", "Medium", "High", "Critical"] as const
 
+function confidenceBannerClass(mode: TicketIntakeMode): string {
+  if (mode === "direct") {
+    return "border-[#9CD8C2] bg-[#EAF8F0] text-[#176B4A]"
+  }
+  if (mode === "follow_up") {
+    return "border-[#E5D2AB] bg-[#FFF9EC] text-[#7A5700]"
+  }
+  return "border-[#EDB0B0] bg-[#FFEAEA] text-[#8A2D2D]"
+}
+
+function confidenceMessage(mode: TicketIntakeMode, confidence: number): string {
+  const percent = Math.round(confidence * 100)
+  if (mode === "direct") {
+    return `AI intake is confident (${percent}%). Review the draft and submit.`
+  }
+  if (mode === "follow_up") {
+    return `AI intake needs a little confirmation (${percent}%). Review the follow-up prompts and adjust the draft before submitting.`
+  }
+  return `AI intake is low-confidence (${percent}%). Manual review is required before submission.`
+}
+
 export function AiIntakeDraftEditor({
   draft,
+  confidence,
+  intakeMode,
   followUpQuestions,
   submitting,
   submitLabel,
@@ -34,6 +57,10 @@ export function AiIntakeDraftEditor({
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Ticket Draft Preview</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 px-5 py-5">
+        <div className={`rounded-lg border px-4 py-3 text-sm ${confidenceBannerClass(intakeMode)}`}>
+          {confidenceMessage(intakeMode, confidence)}
+        </div>
+
         {followUpQuestions.length > 0 ? (
           <div className="rounded-lg border border-[#E5D2AB] bg-[#FFF9EC] px-4 py-3">
             <p className="text-sm font-semibold text-[#7A5700]">Follow-up Questions</p>

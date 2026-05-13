@@ -3,6 +3,11 @@ export type AssetScanTokenPayload = {
   asset_id: number
 }
 
+export const QR_PUBLIC_ORIGIN_STORAGE_KEY = "lec_asset_qr_public_origin"
+
+const QR_PUBLIC_ORIGIN_QUERY_PARAMS = ["qrOrigin", "cloudflareUrl", "publicUrl"]
+const LOCAL_QR_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"])
+
 function toBase64Url(value: string): string {
   if (typeof window === "undefined") {
     return Buffer.from(value, "utf-8")
@@ -74,43 +79,112 @@ export function buildAssetFaultReportPath(assetCode: string): string {
   return `/asset-qr/report/${encodeURIComponent(assetCode.trim())}`
 }
 
-function normalizeOrigin(value: string): string {
-  return value.trim().replace(/\/+$/g, "")
+export function normalizeQrOrigin(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const candidate = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null
+    }
+    return parsed.origin.replace(/\/+$/g, "")
+  } catch {
+    return null
+  }
 }
 
-function isLoopbackOrigin(origin: string): boolean {
+export function isLocalQrOrigin(value: string): boolean {
   try {
-    const parsed = new URL(origin)
-    const hostname = parsed.hostname.trim().toLowerCase()
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+    const parsed = new URL(value)
+    return LOCAL_QR_HOSTNAMES.has(parsed.hostname.toLowerCase())
   } catch {
-    return false
+    return true
+  }
+}
+
+function normalizeOrigin(value: string): string {
+  return normalizeQrOrigin(value) ?? value.trim().replace(/\/+$/g, "")
+}
+
+function getBrowserQrOriginOverride(): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  try {
+    const searchParams = new URLSearchParams(window.location.search)
+    for (const paramName of QR_PUBLIC_ORIGIN_QUERY_PARAMS) {
+      const normalized = normalizeQrOrigin(searchParams.get(paramName) ?? "")
+      if (normalized && !isLocalQrOrigin(normalized)) {
+        window.localStorage.setItem(QR_PUBLIC_ORIGIN_STORAGE_KEY, normalized)
+        return normalized
+      }
+    }
+
+    const storedOrigin = normalizeQrOrigin(window.localStorage.getItem(QR_PUBLIC_ORIGIN_STORAGE_KEY) ?? "")
+    return storedOrigin && !isLocalQrOrigin(storedOrigin) ? storedOrigin : null
+  } catch {
+    return null
   }
 }
 
 export function getQrBaseOrigin(): string {
-  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  const normalizedConfiguredOrigin = configuredOrigin ? normalizeOrigin(configuredOrigin) : ""
-
-  if (typeof window !== "undefined" && window.location.origin) {
-    const browserOrigin = normalizeOrigin(window.location.origin)
-
-    if (!isLoopbackOrigin(browserOrigin)) {
-      return browserOrigin
-    }
-
-    if (normalizedConfiguredOrigin && !isLoopbackOrigin(normalizedConfiguredOrigin)) {
-      return normalizedConfiguredOrigin
-    }
-
-    return browserOrigin
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_CLOUDFLARE_TUNNEL_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (configuredOrigin) {
+    return normalizeOrigin(configuredOrigin)
   }
 
-  if (normalizedConfiguredOrigin) {
-    return normalizedConfiguredOrigin
+  const browserOverride = getBrowserQrOriginOverride()
+  if (browserOverride) {
+    return browserOverride
+  }
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return normalizeOrigin(window.location.origin)
   }
 
   return "http://127.0.0.1:3000"
+}
+
+export async function resolveQrBaseOrigin(): Promise<string> {
+  if (typeof window === "undefined") {
+    return getQrBaseOrigin()
+  }
+
+  const browserOverride = getBrowserQrOriginOverride()
+  if (browserOverride) {
+    return browserOverride
+  }
+
+  try {
+    const response = await fetch("/api/public-app-url", { cache: "no-store" })
+    if (!response.ok) {
+      return getQrBaseOrigin()
+    }
+
+    const payload = (await response.json()) as { publicUrl?: unknown; fallbackOrigin?: unknown }
+    if (typeof payload.publicUrl === "string" && payload.publicUrl.trim()) {
+      return normalizeOrigin(payload.publicUrl)
+    }
+    if (
+      typeof payload.fallbackOrigin === "string" &&
+      payload.fallbackOrigin.trim() &&
+      !isLocalQrOrigin(payload.fallbackOrigin)
+    ) {
+      return normalizeOrigin(payload.fallbackOrigin)
+    }
+  } catch {
+    // Fall back to the browser origin when the helper route is unavailable.
+  }
+
+  return getQrBaseOrigin()
 }
 
 export function getClientOrigin(): string {

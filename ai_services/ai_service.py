@@ -472,7 +472,6 @@ def _format_troubleshooting_reply(
         "Troubleshooting steps:\n"
         f"{numbered_steps}\n"
         "Collect before escalation: exact error text, screenshot, affected users, and branch/location.\n"
-        f"Escalation path: {recommended_technician}.\n"
         f"If unresolved: {escalation_text}"
     )
 
@@ -515,7 +514,6 @@ def _format_intent_issue_reply(intent: dict, category: str, recommended_technici
 def _low_confidence_reply(category_hint: str) -> str:
     normalized_category = _normalize_category(category_hint)
     safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
-    queue_hint = TECHNICIAN_MAPPING.get(safe_category, "Service Desk")
     starter_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])[:2]
     starter_steps_block = "\n".join([f"{idx}. {step}" for idx, step in enumerate(starter_steps, start=1)])
     return (
@@ -523,7 +521,7 @@ def _low_confidence_reply(category_hint: str) -> str:
         "Start with these checks:\n"
         f"{starter_steps_block}\n"
         "Please provide the exact symptom, error text, and affected system.\n"
-        f"Current best category hint: {safe_category.title()} (queue: {queue_hint}).\n"
+        f"Current best category hint: {safe_category.title()}.\n"
         "If business operations are blocked right now, proceed with manual fault reporting immediately."
     )
 
@@ -820,13 +818,10 @@ def classify_issue(data: ClassifyRequest):
     classification = classify_with_models(text)
     category = classification["category"]
     priority = classification["priority"]
-    # Fallback technician recommendation (static)
-    recommended_technician = TECHNICIAN_MAPPING.get(category, "Unassigned")
 
     return {
         "category": category,
         "priority": priority,
-        "recommended_technician": recommended_technician,
         "confidence": classification["confidence"],
         "category_confidence": classification["category_confidence"],
         "priority_confidence": classification["priority_confidence"],
@@ -882,7 +877,6 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         return {
             "reply": _not_understood_reply(),
             "category": None,
-            "recommended_technician": "Service Desk",
             "confidence": 0.0,
             "needs_clarification": True,
         }
@@ -918,7 +912,6 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             "reply": reply,
             "intent": matched_intent_tag,
             "category": category,
-            "recommended_technician": recommended_technician,
             "confidence": 1.0,
             "needs_clarification": needs_clarification,
         }
@@ -927,7 +920,6 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         return {
             "reply": _clarification_reply(),
             "category": None,
-            "recommended_technician": "Service Desk",
             "confidence": 0.0,
             "needs_clarification": True,
         }
@@ -939,14 +931,12 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             return {
                 "reply": _not_understood_reply(),
                 "category": None,
-                "recommended_technician": "Service Desk",
                 "confidence": 0.0,
                 "needs_clarification": True,
             }
         return {
             "reply": _low_confidence_reply("SOFTWARE"),
             "category": "SOFTWARE",
-            "recommended_technician": TECHNICIAN_MAPPING.get("SOFTWARE", "Service Desk"),
             "confidence": 0.0,
             "needs_clarification": True,
         }
@@ -978,7 +968,6 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     return {
         "reply": reply,
         "category": category,
-        "recommended_technician": recommended_technician,
         "confidence": confidence,
         "needs_clarification": needs_clarification,
     }

@@ -1,14 +1,15 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import { AssetQrImage } from "@/components/inventory/AssetQrImage"
+import { QrPublicOriginControl } from "@/components/inventory/QrPublicOriginControl"
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
-import { buildAssetScanPath, buildAssetScanToken, buildAssetScanUrl, getQrBaseOrigin } from "@/lib/asset-qr"
+import { buildAssetScanPath, buildAssetScanToken, buildAssetScanUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
 
 function getAssetType(asset: Consumable): string {
   return asset.subcategory || asset.device_type || asset.printer_type || asset.item_name || "N/A"
@@ -18,7 +19,7 @@ function getAssetName(asset: Consumable): string {
   return `${asset.brand || ""} ${asset.model_number || ""}`.trim() || asset.item_name || "N/A"
 }
 
-export default function InventoryLabelPrintPage() {
+function InventoryLabelPrintContent() {
   const searchParams = useSearchParams()
   const [assets, setAssets] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,19 +29,33 @@ export default function InventoryLabelPrintPage() {
 
   const assetIdParam = searchParams.get("assetId")
   const autoPrintEnabled = searchParams.get("autoprint") === "1"
+  const qrOriginIsLocal = origin ? isLocalQrOrigin(origin) : true
 
   const triggerPrint = useCallback(() => {
-    if (autoPrintRef.current) {
+    if (autoPrintRef.current || qrOriginIsLocal) {
       return
     }
     autoPrintRef.current = true
     window.requestAnimationFrame(() => {
       window.print()
     })
-  }, [])
+  }, [qrOriginIsLocal])
 
   useEffect(() => {
-    setOrigin(getQrBaseOrigin())
+    let active = true
+
+    const loadOrigin = async () => {
+      const nextOrigin = await resolveQrBaseOrigin()
+      if (active) {
+        setOrigin(nextOrigin)
+      }
+    }
+
+    void loadOrigin()
+
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -80,7 +95,7 @@ export default function InventoryLabelPrintPage() {
   }, [assetIdParam, assets])
 
   useEffect(() => {
-    if (!autoPrintEnabled || autoPrintRef.current) {
+    if (!autoPrintEnabled || autoPrintRef.current || qrOriginIsLocal) {
       return
     }
 
@@ -103,10 +118,10 @@ export default function InventoryLabelPrintPage() {
     return () => {
       window.clearTimeout(fallbackTimer)
     }
-  }, [autoPrintEnabled, loading, triggerPrint])
+  }, [autoPrintEnabled, loading, qrOriginIsLocal, triggerPrint])
 
   useEffect(() => {
-    if (!autoPrintEnabled) {
+    if (!autoPrintEnabled || qrOriginIsLocal) {
       return
     }
     const onFocus = () => {
@@ -118,7 +133,7 @@ export default function InventoryLabelPrintPage() {
     return () => {
       window.removeEventListener("focus", onFocus)
     }
-  }, [autoPrintEnabled, triggerPrint])
+  }, [autoPrintEnabled, qrOriginIsLocal, triggerPrint])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#EFF7FF,_#DEEFFF_45%,_#D7E9FF_100%)] px-6 py-6">
@@ -146,6 +161,7 @@ export default function InventoryLabelPrintPage() {
                 </Button>
                 <Button
                   type="button"
+                  disabled={qrOriginIsLocal}
                   onClick={() => {
                     autoPrintRef.current = false
                     triggerPrint()
@@ -160,6 +176,8 @@ export default function InventoryLabelPrintPage() {
           </div>
         </div>
 
+        {origin ? <QrPublicOriginControl origin={origin} onOriginChange={setOrigin} /> : null}
+
         {!origin ? (
           <p className="rounded-2xl border border-[#B2D2F1] bg-white/85 px-5 py-4 text-[#325D89]">Preparing QR base URL...</p>
         ) : loading ? (
@@ -168,6 +186,10 @@ export default function InventoryLabelPrintPage() {
           <p className="rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">{error}</p>
         ) : labelAssets.length === 0 ? (
           <p className="rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">No assets available for label printing.</p>
+        ) : qrOriginIsLocal ? (
+          <p className="print:hidden rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">
+            Paste and apply the Cloudflare HTTPS URL before printing. Localhost QR labels are disabled.
+          </p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3 print:gap-2">
             {labelAssets.map((asset) => {
@@ -185,7 +207,12 @@ export default function InventoryLabelPrintPage() {
                   <p className="mt-1 text-[13px] text-[#2B5A86]">{asset.category || "General"} - {getAssetType(asset)}</p>
                   <div className="mt-2 border-t border-[#CEE2F6] pt-2">
                     <div className="flex items-start gap-3">
-                      <AssetQrImage value={absoluteScanUrl} size={164} className="h-[172px] w-[172px] shrink-0" />
+                      <div className="w-[172px] shrink-0">
+                        <AssetQrImage value={absoluteScanUrl} size={164} className="h-[172px] w-[172px]" />
+                        <p className="mt-1 break-all text-[9px] leading-tight text-[#052042]">
+                          <span className="font-semibold">Public URL:</span> {absoluteScanUrl}
+                        </p>
+                      </div>
                       <div className="space-y-1 text-[12px] text-[#1A436B]">
                         <p>
                           <span className="font-semibold text-[#052042]">Tag:</span> {asset.asset_tag || "N/A"}
@@ -199,9 +226,14 @@ export default function InventoryLabelPrintPage() {
                         <p>
                           <span className="font-semibold text-[#052042]">Qty:</span> {asset.quantity ?? 0}
                         </p>
+                        <p className="break-all">
+                          <span className="font-semibold text-[#052042]">Public URL:</span> {absoluteScanUrl}
+                        </p>
                       </div>
                     </div>
-                    <p className="mt-2 break-all text-[11px] text-[#345B7E]">{absoluteScanUrl}</p>
+                    <p className="mt-2 break-all text-[11px] text-[#345B7E]">
+                      <span className="font-semibold text-[#052042]">QR encodes:</span> {absoluteScanUrl}
+                    </p>
                     <p className="mt-1 text-[11px] text-[#45688B]">Relative path: {relativeScanPath}</p>
                   </div>
                 </article>
@@ -211,5 +243,13 @@ export default function InventoryLabelPrintPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function InventoryLabelPrintPage() {
+  return (
+    <Suspense fallback={null}>
+      <InventoryLabelPrintContent />
+    </Suspense>
   )
 }

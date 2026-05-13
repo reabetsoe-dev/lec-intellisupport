@@ -26,6 +26,7 @@ export type CreateTicketPayload = {
 
 export type Ticket = {
   id: number
+  success?: boolean
   title: string
   description: string
   category: string
@@ -37,7 +38,9 @@ export type Ticket = {
   logged_by_admin_id?: number | null
   logged_by_admin_name?: string | null
   technician_id?: number | null
+  technician_user_id?: number | null
   technician_name?: string | null
+  assignment_notice?: string | null
   employee_name?: string | null
   routed_to_role?: UserRole
   routing_note?: string
@@ -55,6 +58,8 @@ export type Ticket = {
   last_activity_at?: string | null
   escalation_level?: number
   reassign_count?: number
+  workflow_state?: string
+  action_label?: string
 }
 
 export type TicketComment = {
@@ -69,6 +74,7 @@ export type TicketDetail = Ticket & {
   comments: TicketComment[]
   can_view_internal_messages?: boolean
   can_manage_discussion_participants?: boolean
+  can_perform_workflow_actions?: boolean
 }
 
 export type TicketMessageType = "REPLY" | "INTERNAL_NOTE" | "DISCUSSION"
@@ -113,6 +119,7 @@ export type TicketMessagesResponse = {
     can_post_discussion: boolean
     can_post_internal_note: boolean
     can_post_reply: boolean
+    can_perform_workflow_actions?: boolean
   }
 }
 
@@ -134,11 +141,13 @@ export type Technician = {
   user_id: number
   name: string
   email: string
+  notification_email: string
   branch: string
   department: string
   skillset: string
   is_active: boolean
   is_available: boolean
+  checked_in?: boolean
   availability_updated_at?: string | null
   last_check_in_at?: string | null
   last_check_out_at?: string | null
@@ -362,8 +371,14 @@ export type BusinessHoursConfig = {
 
 export type AppNotification = {
   id: number
+  title?: string
   message: string
   type: "MENTION" | "REPLY" | "DISCUSSION" | "SYSTEM"
+  category?: "Action Required" | "Assigned to You" | "Messages" | "Completed"
+  priority?: "Critical" | "Action Required" | "Info"
+  action_label?: string
+  sticky?: boolean
+  is_new?: boolean
   is_read: boolean
   ticket_id?: number | null
   ticket_message_id?: number | null
@@ -490,7 +505,6 @@ export type ChatbotResponse = {
   confidence?: number
   needs_clarification?: boolean
   category?: string | null
-  recommended_technician?: string
   intent?: string
 }
 
@@ -1170,6 +1184,7 @@ export async function updateTicketStatus(
 ): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
+    timeoutMs: 12_000,
     body: {
       status,
       accepted_by_admin_id: acceptedByAdminId,
@@ -1238,13 +1253,17 @@ export async function escalateTicketByAdmin(
   })
 }
 
-export async function getTechnicians(): Promise<Technician[]> {
-  return requestJson<Technician[]>(BACKEND_BASE_URL, "/api/technicians")
+export async function getTechnicians(options?: { reassignForTicketId?: number }): Promise<Technician[]> {
+  return requestJson<Technician[]>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery("/api/technicians", { reassign_for_ticket_id: options?.reassignForTicketId })
+  )
 }
 
 export async function createTechnician(payload: {
   name: string
   email: string
+  notification_email?: string
   skillset: string
   is_available?: boolean
 }): Promise<Technician> {
@@ -1272,6 +1291,7 @@ export async function updateTechnicianDetails(
   payload: {
     name: string
     email: string
+    notification_email?: string
     skillset: string
   }
 ): Promise<Technician> {

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   Building2,
-  Check,
   ChevronDown,
   CircleCheck,
   CircleDot,
@@ -41,11 +40,9 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   createTicketComment,
-  escalateTicketByAdmin,
   getAllTickets,
   type Ticket,
   updateTicketPriority,
-  updateTicketStatus,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { useAutoRefresh } from "@/lib/use-auto-refresh"
@@ -153,14 +150,9 @@ export function AdminFaultTicketTable() {
   })
 
   const [viewTicket, setViewTicket] = useState<TicketRecord | null>(null)
-  const [acceptingViewTicket, setAcceptingViewTicket] = useState(false)
-  const [sendingForReview, setSendingForReview] = useState(false)
   const [priorityTicket, setPriorityTicket] = useState<TicketRecord | null>(null)
   const [nextPriority, setNextPriority] = useState("Medium")
   const [savingPriority, setSavingPriority] = useState(false)
-  const [escalationTicket, setEscalationTicket] = useState<TicketRecord | null>(null)
-  const [escalationComment, setEscalationComment] = useState("")
-  const [escalating, setEscalating] = useState(false)
   const [commentDraft, setCommentDraft] = useState("")
   const [commentSaving, setCommentSaving] = useState(false)
   const [commentError, setCommentError] = useState("")
@@ -222,54 +214,15 @@ export function AdminFaultTicketTable() {
     unassigned: rows.filter((row) => row.technician_id === null).length,
     highPriority: rows.filter((row) => row.priority === "High" || row.priority === "Critical").length,
   }
+  const actionRequiredTickets = filteredRows
+    .filter((row) => row.status === "Pending Review" || row.status === "Pending")
+    .slice(0, 4)
 
   const refreshRow = async (ticketId: number) => {
     const all = await getAllTickets()
     const updated = all.find((item) => item.id === ticketId)
     if (!updated) return
     setRows((current) => current.map((row) => (row.id === ticketId ? toRow(updated) : row)))
-  }
-
-  const handleReceive = async (ticketId: number) => {
-    const user = getStoredUserSession()
-    const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
-    await updateTicketStatus(ticketId, "In Progress", acceptedByAdminId)
-    await refreshRow(ticketId)
-  }
-
-  const handleSendForReview = async (ticketId: number) => {
-    const user = getStoredUserSession()
-    const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
-    await updateTicketStatus(ticketId, "Pending Review", acceptedByAdminId)
-    await refreshRow(ticketId)
-  }
-
-  const handleAcceptFromDialog = async () => {
-    if (!viewTicket) return
-    try {
-      setAcceptingViewTicket(true)
-      await handleReceive(viewTicket.id)
-      showActionFeedback("success", `Ticket #${viewTicket.id} accepted and moved to In Progress.`)
-      setViewTicket(null)
-    } catch (actionError) {
-      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
-    } finally {
-      setAcceptingViewTicket(false)
-    }
-  }
-
-  const handleSendForReviewFromDialog = async () => {
-    if (!viewTicket) return
-    try {
-      setSendingForReview(true)
-      await handleSendForReview(viewTicket.id)
-      showActionFeedback("success", `Ticket #${viewTicket.id} moved to Pending Review for reporter approval.`)
-      setViewTicket(null)
-    } catch (actionError) {
-      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
-    } finally {
-      setSendingForReview(false)
-    }
   }
 
   const handlePrioritySubmit = async () => {
@@ -284,36 +237,6 @@ export function AdminFaultTicketTable() {
       showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to update priority.")
     } finally {
       setSavingPriority(false)
-    }
-  }
-
-  const submitEscalation = async () => {
-    if (!escalationTicket) return
-    const user = getStoredUserSession()
-    if (!user || user.role !== "admin_fault") {
-      showActionFeedback("error", "Admin Fault session required. Please login again.")
-      return
-    }
-    if (!escalationComment.trim()) {
-      showActionFeedback("error", "Please provide escalation details.")
-      return
-    }
-    try {
-      setEscalating(true)
-      const updatedTicket = await escalateTicketByAdmin(escalationTicket.id, user.id, escalationComment.trim())
-      await refreshRow(escalationTicket.id)
-      showActionFeedback(
-        "success",
-        updatedTicket.technician_name
-          ? `Ticket #${escalationTicket.id} auto-escalated to ${updatedTicket.technician_name}.`
-          : `Ticket #${escalationTicket.id} auto-escalated successfully.`
-      )
-      setEscalationTicket(null)
-      setEscalationComment("")
-    } catch (actionError) {
-      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
-    } finally {
-      setEscalating(false)
     }
   }
 
@@ -357,6 +280,28 @@ export function AdminFaultTicketTable() {
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Assigned {summary.assigned}</span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Unassigned {summary.unassigned}</span>
           <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">High/Critical {summary.highPriority}</span>
+        </div>
+        <div className="rounded-lg border border-[#D9C38D] bg-[#FFF8E8] px-3 py-2 text-sm text-[#7A4B08]">
+          <p className="font-semibold">Needs Your Action</p>
+          {actionRequiredTickets.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {actionRequiredTickets.map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-md border border-[#E8D3A3] bg-white/70 px-2 py-1.5">
+                  <p className="truncate text-xs text-[#8A6A21]">{ticket.tracking_id} - {ticket.title}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-[#C89A4D] bg-white text-xs text-[#8B5A12]"
+                    onClick={() => setViewTicket(ticket)}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1">No tickets are currently waiting on reporter confirmation.</p>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -444,32 +389,6 @@ export function AdminFaultTicketTable() {
                           >
                             Change Priority
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={ticket.status !== "In Progress"}
-                            onClick={() => {
-                              void (async () => {
-                                try {
-                                  await handleSendForReview(ticket.id)
-                                  showActionFeedback("success", `Ticket #${ticket.id} moved to Pending Review.`)
-                                } catch (actionError) {
-                                  showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
-                                }
-                              })()
-                            }}
-                          >
-                            Send For Review
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-[#2E6EA0] focus:text-[#2E6EA0]"
-                            disabled={ticket.status === "Pending"}
-                            onClick={() => {
-                              setEscalationTicket(ticket)
-                              setEscalationComment("")
-                            }}
-                          >
-                            Escalate
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -487,7 +406,7 @@ export function AdminFaultTicketTable() {
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold tracking-wide text-white sm:text-xl">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
               <DialogDescription className="text-xs text-[#D8E8F7] sm:text-sm">
-                Move ticket through workflow and send to reporter for final problem review.
+                Monitor ticket context and communicate with the reporter. Workflow actions stay with the assigned technician.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -627,35 +546,6 @@ export function AdminFaultTicketTable() {
 
           <DialogFooter className="shrink-0 border-t border-[#C8D8EA] bg-[#EDF3F8] px-3 py-2.5 sm:px-4">
             <div className="ml-auto flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <Button
-                onClick={() => void handleAcceptFromDialog()}
-                disabled={!viewTicket || viewTicket.status !== "Pending" || acceptingViewTicket}
-                className="min-w-28 bg-[#1E5EA5] text-sm text-white hover:bg-[#174D87]"
-              >
-                <Check className="mr-2 h-4 w-4" />
-                {acceptingViewTicket ? "Accepting..." : "Accept"}
-              </Button>
-              <Button
-                onClick={() => void handleSendForReviewFromDialog()}
-                disabled={!viewTicket || viewTicket.status !== "In Progress" || sendingForReview}
-                className="min-w-36 bg-[#C7922F] text-sm text-white hover:bg-[#AD7D26]"
-              >
-                {sendingForReview ? "Sending..." : "Send For Review"}
-              </Button>
-              <Button
-                type="button"
-                className="min-w-28 bg-[#D9B43A] text-sm text-[#1B2D4B] hover:bg-[#C9A32F]"
-                disabled={!viewTicket || viewTicket.status === "Pending" || viewTicket.status === "Pending Review"}
-                onClick={() => {
-                  if (!viewTicket) return
-                  setEscalationTicket(viewTicket)
-                  setEscalationComment("")
-                  setViewTicket(null)
-                }}
-              >
-                <TriangleAlert className="mr-2 h-4 w-4" />
-                Escalate
-              </Button>
               <Button variant="outline" className="min-w-24 border-[#AFC4DD] bg-white text-sm text-[#1C466D] hover:bg-[#EEF5FD]" onClick={() => setViewTicket(null)}>
                 <X className="mr-2 h-4 w-4" />
                 Close
@@ -682,35 +572,6 @@ export function AdminFaultTicketTable() {
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
             <Button onClick={() => void handlePrioritySubmit()} disabled={savingPriority}>{savingPriority ? "Saving..." : "Save Priority"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(escalationTicket)} onOpenChange={(open) => !open && setEscalationTicket(null)}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Escalate Ticket #{escalationTicket?.id}</DialogTitle>
-            <DialogDescription>Add escalation notes. Technician rerouting is automatic.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
-              <div><p className="text-xs text-slate-500">Caller</p><p className="font-medium text-slate-800">{escalationTicket?.requester}</p></div>
-              <div><p className="text-xs text-slate-500">Employee Account</p><p className="font-medium text-slate-800">{escalationTicket?.employee_name}</p></div>
-              <div className="md:col-span-2"><p className="text-xs text-slate-500">Fault</p><p className="font-medium text-slate-800">{escalationTicket?.title}</p><p className="mt-1 whitespace-pre-wrap text-slate-700">{escalationTicket?.description || "No description."}</p></div>
-            </div>
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              The system will automatically reroute this ticket to the best available technician based on skill and workload.
-            </p>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
-              <textarea className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800" value={escalationComment} onChange={(event) => setEscalationComment(event.target.value)} placeholder="Why this fault is being escalated and what checks were done." />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button className="bg-[#2E6EA0] text-white hover:bg-[#255C86]" disabled={escalating} onClick={() => void submitEscalation()}>
-              {escalating ? "Escalating..." : "Confirm Escalation"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,5 +1,6 @@
 import logging
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import DiscussionParticipant, Notification, TicketMessage, User
@@ -192,13 +193,70 @@ class DiscussionParticipantCreateSerializer(serializers.Serializer):
 class AppNotificationSerializer(serializers.ModelSerializer):
     ticket_id = serializers.IntegerField(read_only=True)
     ticket_message_id = serializers.IntegerField(read_only=True)
+    category = serializers.SerializerMethodField()
+    priority = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
+    action_label = serializers.SerializerMethodField()
+    sticky = serializers.SerializerMethodField()
+    is_new = serializers.SerializerMethodField()
+
+    def _message_text(self, obj: Notification) -> str:
+        return str(obj.message or "").strip().lower()
+
+    def get_category(self, obj: Notification) -> str:
+        message = self._message_text(obj)
+        if "assigned to you" in message or "awaits your acceptance" in message:
+            return "Assigned to You"
+        if "pending review" in message or "requires your review" in message:
+            return "Action Required"
+        if "marked solved" in message or "resolution submitted" in message:
+            return "Completed"
+        if obj.type in {Notification.TYPE_REPLY, Notification.TYPE_DISCUSSION, Notification.TYPE_MENTION}:
+            return "Messages"
+        return "Action Required" if "urgent" in message or "critical" in message else "Messages"
+
+    def get_priority(self, obj: Notification) -> str:
+        message = self._message_text(obj)
+        if "critical" in message or "urgent" in message or "sla breach" in message:
+            return "Critical"
+        if self.get_category(obj) in {"Action Required", "Assigned to You"}:
+            return "Action Required"
+        return "Info"
+
+    def get_title(self, obj: Notification) -> str:
+        category = self.get_category(obj)
+        if category == "Action Required":
+            return "Action required"
+        if category == "Assigned to You":
+            return "Ticket assigned"
+        if category == "Completed":
+            return "Ticket update"
+        return "New message"
+
+    def get_action_label(self, obj: Notification) -> str:
+        return "Open Ticket" if obj.ticket_id else "View"
+
+    def get_sticky(self, obj: Notification) -> bool:
+        return self.get_priority(obj) == "Critical"
+
+    def get_is_new(self, obj: Notification) -> bool:
+        if obj.is_read:
+            return False
+        # Highlight as "new" for the first 10 minutes.
+        return (timezone.now() - obj.created_at).total_seconds() <= 600
 
     class Meta:
         model = Notification
         fields = [
             "id",
+            "title",
             "message",
             "type",
+            "category",
+            "priority",
+            "action_label",
+            "sticky",
+            "is_new",
             "is_read",
             "ticket_id",
             "ticket_message_id",
