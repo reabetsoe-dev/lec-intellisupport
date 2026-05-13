@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { CornerDownRight, MessageSquareReply, ShieldEllipsis } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -75,7 +75,7 @@ function chatBubbleClassName(isCurrentUser: boolean) {
 }
 
 function systemBlockClassName() {
-  return "border-[#C9D6E3] bg-[#EEF3F8] text-[#2A4B69]"
+  return "border-[#D8E2EC] bg-white text-[#2A4B69]"
 }
 
 function noteBlockClassName(isCurrentUser: boolean) {
@@ -87,6 +87,33 @@ function isRetryableFailedMessage(message: TicketConversationThreadProps["messag
   return message.clientStatus === "failed" && typeof message.clientId === "string" && message.clientId.length > 0
 }
 
+function isSystemUpdateMessage(message: TicketConversationThreadProps["messages"][number]) {
+  return (
+    message.sender.name.trim().toLowerCase() === "system" ||
+    message.content.trim().toLowerCase().startsWith("[system]")
+  )
+}
+
+function SystemUpdateCard({
+  message,
+  className,
+}: {
+  message: TicketConversationThreadProps["messages"][number]
+  className?: string
+}) {
+  return (
+    <div className={cn("w-full transition-all duration-200 opacity-100 translate-y-0", className)}>
+      <div className={cn("mx-auto w-full max-w-[42rem] rounded-lg border px-3 py-2", systemBlockClassName())}>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#6A8096]">System Update</p>
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-5">
+          {message.content.replace(/^\[system\]\s*/i, "")}
+        </p>
+        <p className="mt-1 text-[10px] text-slate-500">{formatDateTime(message.created_at)}</p>
+      </div>
+    </div>
+  )
+}
+
 export function TicketConversationThread({
   messages,
   currentUserId,
@@ -94,6 +121,7 @@ export function TicketConversationThread({
   onRetryFailedMessage,
   emptyState,
 }: TicketConversationThreadProps) {
+  const [showSystemUpdates, setShowSystemUpdates] = useState(false)
   const flattenedAndSorted = useMemo(() => {
     const flat = flattenMessages(messages)
 
@@ -117,9 +145,10 @@ export function TicketConversationThread({
     return Array.from(byKey.values())
   }, [messages])
 
-  const groupedMessages = flattenedAndSorted
+  const systemUpdateMessages = flattenedAndSorted.filter(isSystemUpdateMessage)
+  const groupedMessages = flattenedAndSorted.filter((message) => !isSystemUpdateMessage(message))
 
-  if (groupedMessages.length === 0) {
+  if (groupedMessages.length === 0 && systemUpdateMessages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
         <CornerDownRight className="h-5 w-5 text-slate-400" />
@@ -133,12 +162,51 @@ export function TicketConversationThread({
 
   return (
     <div className="flex flex-col">
+      {systemUpdateMessages.length > 0 ? (
+        <div className={cn("mb-3 flex flex-col", groupedMessages.length === 0 ? "mb-0" : "")}>
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSystemUpdates((current) => !current)}
+              className="border-[#BFD1E4] bg-white text-[#0A4A8A] transition-all duration-200 hover:bg-[#F7FBFF]"
+            >
+              {showSystemUpdates ? "Hide System Updates" : "Show System Updates"}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              "grid transition-all duration-200 ease-in-out",
+              showSystemUpdates ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="mt-3 flex flex-col">
+                {systemUpdateMessages.map((message, idx) => (
+                  <SystemUpdateCard
+                    key={`${message.message_type}:${message.id}`}
+                    message={message}
+                    className={idx === 0 ? "mt-0" : "mt-3"}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {groupedMessages.length === 0 ? (
+        <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+          <CornerDownRight className="h-5 w-5 text-slate-400" />
+          <p className="mt-2 text-sm font-semibold text-slate-600">Start the conversation</p>
+          <p className="mt-1 text-xs text-gray-400">{emptyState}</p>
+        </div>
+      ) : null}
+
       {groupedMessages.map((message, idx) => {
         const isCurrentUser = message.sender.id === currentUserId
         const isNote = message.message_type === "INTERNAL_NOTE"
-        const isSystemMessage =
-          message.sender.name.trim().toLowerCase() === "system" ||
-          message.content.trim().toLowerCase().startsWith("[system]")
 
         const prev = idx > 0 ? groupedMessages[idx - 1] : null
         const timeDiffMs =
@@ -158,26 +226,9 @@ export function TicketConversationThread({
 
         const clientStatus = message.clientStatus
         const canReply =
-          (!message.clientStatus || message.clientStatus === "sent") && !isSystemMessage
+          !message.clientStatus || message.clientStatus === "sent"
 
         const animClass = "opacity-100 translate-y-0"
-
-        if (isSystemMessage) {
-          return (
-            <div
-              key={`${message.message_type}:${message.id}`}
-              className={cn("w-full transition-all duration-200", topSpacingClass, animClass)}
-            >
-              <div className={cn("mx-auto w-full max-w-[80%] rounded-xl border px-4 py-2 text-center", systemBlockClassName())}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide">System Update</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
-                  {message.content.replace(/^\[system\]\s*/i, "")}
-                </p>
-                <p className="mt-1 text-[10px] text-slate-500">{formatDateTime(message.created_at)}</p>
-              </div>
-            </div>
-          )
-        }
 
         if (isNote) {
           return (

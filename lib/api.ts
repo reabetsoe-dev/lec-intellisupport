@@ -26,6 +26,7 @@ export type CreateTicketPayload = {
 
 export type Ticket = {
   id: number
+  success?: boolean
   title: string
   description: string
   category: string
@@ -57,6 +58,8 @@ export type Ticket = {
   last_activity_at?: string | null
   escalation_level?: number
   reassign_count?: number
+  workflow_state?: string
+  action_label?: string
 }
 
 export type TicketComment = {
@@ -144,6 +147,7 @@ export type Technician = {
   skillset: string
   is_active: boolean
   is_available: boolean
+  checked_in?: boolean
   availability_updated_at?: string | null
   last_check_in_at?: string | null
   last_check_out_at?: string | null
@@ -1181,6 +1185,7 @@ export async function updateTicketStatus(
 ): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
+    timeoutMs: 12_000,
     body: {
       status,
       accepted_by_admin_id: acceptedByAdminId,
@@ -1249,8 +1254,11 @@ export async function escalateTicketByAdmin(
   })
 }
 
-export async function getTechnicians(): Promise<Technician[]> {
-  return requestJson<Technician[]>(BACKEND_BASE_URL, "/api/technicians")
+export async function getTechnicians(options?: { reassignForTicketId?: number }): Promise<Technician[]> {
+  return requestJson<Technician[]>(
+    BACKEND_BASE_URL,
+    buildPathWithQuery("/api/technicians", { reassign_for_ticket_id: options?.reassignForTicketId })
+  )
 }
 
 export async function createTechnician(payload: {

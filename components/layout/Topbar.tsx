@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, ChevronRight, ExternalLink, Volume2, X } from "lucide-react"
+import { AlertTriangle, Bell, ChevronRight, ExternalLink, Info, MessageSquare, Volume2, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
@@ -289,6 +289,25 @@ function priorityBadgeClass(priority: NotificationPriority): string {
   return "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
 }
 
+function priorityIconClass(priority: NotificationPriority): string {
+  if (priority === "Critical") {
+    return "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]"
+  }
+  if (priority === "Action Required") {
+    return "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]"
+  }
+  return "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+}
+
+function NotificationPriorityIcon({ priority }: { priority: NotificationPriority }) {
+  const Icon = priority === "Critical" ? AlertTriangle : priority === "Action Required" ? MessageSquare : Info
+  return (
+    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${priorityIconClass(priority)}`}>
+      <Icon className="h-5 w-5" />
+    </span>
+  )
+}
+
 function categoryOrder(category: NotificationCategory): number {
   if (category === "Action Required") return 0
   if (category === "Assigned to You") return 1
@@ -343,7 +362,7 @@ export function Topbar({ user }: TopbarProps) {
     (item: AppNotification) => {
       const priority = resolveNotificationPriority(item)
       const sticky = item.sticky === true || priority === "Critical"
-      const duration = priority === "Action Required" ? 10000 : 8000
+      const duration = priority === "Action Required" ? 12000 : 8000
       const toast: ToastNotification = {
         id: `${item.id}-${Date.now()}`,
         notificationId: item.id,
@@ -471,7 +490,7 @@ export function Topbar({ user }: TopbarProps) {
     if (user.role === "technician" && item.ticket_id) {
       try {
         const ticket = await getTicketById(item.ticket_id, { technicianUserId: user.id })
-        if (ticket.status === "Pending") {
+        if (ticket.status === "Pending" && ticket.technician_user_id === user.id) {
           await updateTicketStatus(item.ticket_id, "In Progress", undefined, user.id)
         }
       } catch {
@@ -513,7 +532,7 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-3 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur sm:px-4 md:px-6">
+    <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-3 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur sm:px-4 md:px-6">
       <div className="min-w-0 flex-1">
         <div className="inline-flex max-w-full items-center rounded-lg border border-white/30 bg-white/12 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-white">
@@ -543,7 +562,7 @@ export function Topbar({ user }: TopbarProps) {
                 ) : null}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[30rem] max-w-[94vw] p-0">
+            <DropdownMenuContent align="end" className="z-[70] w-[32rem] max-w-[94vw] overflow-hidden rounded-xl border-slate-200 p-0 shadow-2xl">
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -577,7 +596,7 @@ export function Topbar({ user }: TopbarProps) {
                   </div>
                 </div>
               </div>
-              <div className="max-h-[30rem] overflow-y-auto p-3">
+              <div className="max-h-[32rem] overflow-y-auto p-3">
                 {groupedNotifications.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">
                     No notifications yet.
@@ -592,9 +611,9 @@ export function Topbar({ user }: TopbarProps) {
                           return (
                             <div
                               key={item.id}
-                              className={`rounded-xl border p-3 ${
+                              className={`rounded-lg border p-3 transition-colors ${
                                 !item.is_read || item.is_new
-                                  ? "border-[#8FB5DC] bg-[#F2F8FF]"
+                                  ? "border-[#8FB5DC] bg-[#F2F8FF] shadow-[inset_3px_0_0_#0A63B8]"
                                   : "border-slate-200 bg-white"
                               }`}
                             >
@@ -605,30 +624,15 @@ export function Topbar({ user }: TopbarProps) {
                                     {formatNotificationType(item.type)}
                                   </Badge>
                                 </div>
-                                {!item.is_read ? (
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[#0A63B8]">Unread</span>
-                                ) : null}
+                                {!item.is_read ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0A63B8]" aria-label="Unread" /> : null}
                               </div>
                               <p className="mt-2 text-sm font-semibold text-slate-900">
                                 {item.title || "Notification"}
                               </p>
                               <p className="mt-1 text-sm leading-5 text-slate-700">{item.message}</p>
-                              <div className="mt-3 flex items-center justify-between gap-2">
-                                <p className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
-                                <div className="flex items-center gap-2">
-                                  {!item.is_read ? (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs"
-                                      onClick={() => {
-                                        void handleNotificationSelect(item)
-                                      }}
-                                    >
-                                      {item.action_label || "Open Ticket"}
-                                    </Button>
-                                  ) : null}
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <p className="min-w-0 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+                                <div className="flex shrink-0 flex-wrap items-center gap-2">
                                   {item.ticket_id ? (
                                     <Button
                                       type="button"
@@ -638,9 +642,21 @@ export function Topbar({ user }: TopbarProps) {
                                         void handleNotificationSelect(item)
                                       }}
                                     >
-                                      Open Ticket
+                                      {item.action_label || "Open Ticket"}
                                     </Button>
-                                  ) : null}
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      onClick={() => {
+                                        void handleNotificationSelect(item)
+                                      }}
+                                    >
+                                      {item.is_read ? "View" : "Mark Read"}
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -656,26 +672,45 @@ export function Topbar({ user }: TopbarProps) {
         ) : null}
       </div>
       {toasts.length > 0 ? (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-[120] flex w-[26rem] max-w-[94vw] flex-col gap-3">
+        <div className="pointer-events-none fixed right-3 top-44 z-[60] flex w-[30rem] max-w-[calc(100vw-1.5rem)] flex-col gap-3 sm:right-4 sm:top-40 md:right-6">
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`pointer-events-auto rounded-2xl border bg-white p-4 shadow-xl ${
+              className={`pointer-events-auto animate-in slide-in-from-top-2 fade-in duration-300 rounded-xl border bg-white p-4 shadow-2xl ${
                 toast.priority === "Critical"
-                  ? "border-[#E37F7F]"
+                  ? "border-[#E37F7F] shadow-[#A33939]/15"
                   : toast.priority === "Action Required"
-                    ? "border-[#E6C06D]"
-                    : "border-[#9CC4EA]"
+                    ? "border-[#E6C06D] shadow-[#9A6A00]/15"
+                    : "border-[#9CC4EA] shadow-[#2E6092]/15"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex items-start gap-3">
+                <NotificationPriorityIcon priority={toast.priority} />
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Badge className={priorityBadgeClass(toast.priority)}>{toast.priority}</Badge>
                     {toast.priority === "Critical" ? <Volume2 className="h-4 w-4 text-[#A33939]" /> : null}
                   </div>
                   <p className="mt-2 text-base font-semibold text-slate-900">{toast.title}</p>
                   <p className="mt-1 text-sm leading-6 text-slate-700">{toast.message}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {toast.ticketId ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 bg-[#0A63B8] text-white hover:bg-[#084C8C]"
+                        onClick={() => {
+                          void handleToastAction(toast)
+                        }}
+                      >
+                        {toast.actionLabel}
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => dismissToast(toast.id)}>
+                      Dismiss
+                    </Button>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -685,24 +720,6 @@ export function Topbar({ user }: TopbarProps) {
                 >
                   <X className="h-4 w-4" />
                 </button>
-              </div>
-              <div className="mt-3 flex items-center justify-end gap-2">
-                {toast.ticketId ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-9 bg-[#0A63B8] text-white hover:bg-[#084C8C]"
-                    onClick={() => {
-                      void handleToastAction(toast)
-                    }}
-                  >
-                    {toast.actionLabel}
-                    <ExternalLink className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : null}
-                <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => dismissToast(toast.id)}>
-                  Dismiss
-                </Button>
               </div>
             </div>
           ))}

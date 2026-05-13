@@ -1,6 +1,6 @@
 "use client"
 
-import { CheckCircle2, Circle, LoaderCircle, PauseCircle } from "lucide-react"
+import { CheckCircle2, Circle, PauseCircle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -31,9 +31,6 @@ function normalizeStatus(status: string): (typeof LIFECYCLE_STEPS)[number] {
 function stepIcon(step: (typeof LIFECYCLE_STEPS)[number], isCurrent: boolean, isDone: boolean) {
   if (isDone) {
     return CheckCircle2
-  }
-  if (isCurrent && step === "In Progress") {
-    return LoaderCircle
   }
   if (isCurrent && step === "Pending Review") {
     return PauseCircle
@@ -81,7 +78,7 @@ export function TicketLifecycleRail({
                       : "border-[#C9D8E7] bg-[#F4F8FC] text-[#5A7CA0]"
                 )}
               >
-                <Icon className={cn("h-3.5 w-3.5", isCurrent && step === "In Progress" ? "animate-spin" : "")} />
+                <Icon className="h-3.5 w-3.5" />
                 {step}
                 {actionLabel ? <span className="ml-1 text-[10px] font-medium">({actionLabel})</span> : null}
               </button>
