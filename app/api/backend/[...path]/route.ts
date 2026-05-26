@@ -15,6 +15,7 @@ const FORWARDED_REQUEST_HEADERS = new Set([
   "accept",
   "authorization",
   "content-type",
+  "x-lec-session-user-id",
 ])
 
 function buildForwardHeaders(requestHeaders: Headers): Headers {

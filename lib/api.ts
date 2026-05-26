@@ -456,6 +456,7 @@ export type ConsumableRequest = {
   rejectedBy?: string | null
   rejectedAt?: string | null
   rejectionReason?: string | null
+  expectedReturnDate?: string | null
 }
 
 export type ConsumableReturn = {
@@ -491,6 +492,7 @@ export type AssetQrFaultReportPayload = {
   employeeId?: number
   employeeName?: string
   employeeEmail?: string
+  attachment?: File | null
 }
 
 export type AssetQrFaultReportResponse = {
@@ -740,6 +742,30 @@ function getStoredToken(): string | null {
   }
 }
 
+function getStoredSessionUserId(): number | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as { id?: unknown }
+    return typeof parsed.id === "number" && Number.isFinite(parsed.id) ? parsed.id : null
+  } catch {
+    return null
+  }
+}
+
+function clearStoredAuthSession(): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+  window.dispatchEvent(new Event("lec-auth-session-change"))
+}
+
 function unwrapApiData<T>(payload: unknown): T {
   if (payload && typeof payload === "object" && "data" in payload) {
     return (payload as { data: T }).data
@@ -904,6 +930,7 @@ function resolveBrowserBackendProxyTarget(baseUrl: string, path: string): { base
 function buildRequestInit(options: RequestOptions): RequestInit {
   const authMode = options.authMode ?? "session"
   const token = authMode === "session" ? options.token ?? getStoredToken() : null
+  const sessionUserId = token ? getStoredSessionUserId() : null
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
   const hasBody = typeof options.body !== "undefined"
 
@@ -913,6 +940,7 @@ function buildRequestInit(options: RequestOptions): RequestInit {
       Accept: "application/json",
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(sessionUserId !== null ? { "X-LEC-Session-User-Id": String(sessionUserId) } : {}),
       ...(options.headers ?? {}),
     },
     body: hasBody
@@ -968,7 +996,13 @@ async function handleResponse<T>(response: Response, service: "backend" | "ai" |
   }
 
   if (!response.ok) {
-    const message = contentType.includes("text/html")
+    if (response.status === 401 && service === "backend") {
+      clearStoredAuthSession()
+    }
+
+    const message = response.status === 401
+      ? getDefaultErrorMessage(response.status)
+      : contentType.includes("text/html")
       ? getDefaultErrorMessage(response.status)
       : extractMessageFromPayload(payload) ?? getDefaultErrorMessage(response.status)
     throw new ApiError(message, {
@@ -1001,13 +1035,16 @@ function buildNetworkError(
   service: "backend" | "ai" | "unknown",
   error: unknown
 ): ApiError {
+  const isAbortError =
+    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
   const message =
-    error instanceof DOMException && error.name === "AbortError"
+    isAbortError
       ? "The request timed out. Please try again."
       : `Cannot reach service at ${baseUrl}. Ensure the server is running and reachable.`
 
   return new ApiError(message, {
-    code: error instanceof DOMException && error.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+    code: isAbortError ? "TIMEOUT" : "NETWORK_ERROR",
     service,
     retryable: true,
   })
@@ -1204,6 +1241,7 @@ export async function submitTicketProblemReview(
 ): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/problem-review`, {
     method: "PUT",
+    timeoutMs: 45_000,
     body: payload,
   })
 }
@@ -1535,6 +1573,7 @@ export async function createConsumableRequest(payload: {
   department: string
   notes: string
   employee_id: number
+  expected_return_date?: string | null
 }): Promise<ConsumableRequest> {
   return requestJson<ConsumableRequest>(BACKEND_BASE_URL, "/api/consumable-requests", {
     method: "POST",
@@ -1552,13 +1591,15 @@ export async function getConsumableRequests(employeeId?: number): Promise<Consum
 export async function approveConsumableRequestById(
   requestId: number,
   approvedById?: number,
-  assignmentType?: ConsumableAssignmentType
+  assignmentType?: ConsumableAssignmentType,
+  expectedReturnDate?: string | null
 ): Promise<ConsumableRequest> {
   return requestJson<ConsumableRequest>(BACKEND_BASE_URL, `/api/consumable-requests/${requestId}/approve`, {
     method: "PUT",
     body: {
       approved_by_id: approvedById,
       assignment_type: assignmentType,
+      expected_return_date: expectedReturnDate,
     },
   })
 }
@@ -1632,6 +1673,9 @@ export async function submitAssetQrFaultReport(
   }
   if (payload.employeeEmail) {
     formData.append("employeeEmail", payload.employeeEmail)
+  }
+  if (payload.attachment) {
+    formData.append("attachment", payload.attachment)
   }
 
   const response = await fetch("/api/asset-qr/report", {

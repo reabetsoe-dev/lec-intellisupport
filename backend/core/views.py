@@ -1753,6 +1753,16 @@ def _consume_inventory_assignments(*, consumable_id: int, employee_id: int, quan
         if remaining <= 0:
             break
 
+
+def _parse_expected_return_date(value) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
         if assignment.quantity_assigned <= remaining:
             remaining -= assignment.quantity_assigned
             assignment.delete()
@@ -5269,6 +5279,7 @@ def _consumable_request_to_dict(item: ConsumableRequest) -> dict:
         "rejectedBy": item.rejected_by.name if item.rejected_by else None,
         "rejectedAt": item.rejected_at.isoformat() if item.rejected_at else None,
         "rejectionReason": item.rejection_reason or None,
+        "expectedReturnDate": item.expected_return_date.isoformat() if item.expected_return_date else None,
     }
 
 
@@ -5311,6 +5322,9 @@ def consumable_requests_collection_view(request):
     ).strip().lower()
     department = str(request.data.get("department", "")).strip()
     notes = str(request.data.get("notes", "")).strip()
+    expected_return_date = _parse_expected_return_date(
+        request.data.get("expected_return_date", request.data.get("expectedReturnDate"))
+    )
     employee_id = request.data.get("employee_id")
     if not item_name or not quantity or not employee_id:
         return Response(
@@ -5334,6 +5348,19 @@ def consumable_requests_collection_view(request):
             {"message": "assignment_type must be one of: new, loan, exchange."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    if assignment_type == ConsumableRequest.ASSIGNMENT_TYPE_LOAN:
+        if expected_return_date is None:
+            return Response(
+                {"message": "expected_return_date is required for loan requests."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if expected_return_date < timezone.localdate():
+            return Response(
+                {"message": "expected_return_date cannot be in the past."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    else:
+        expected_return_date = None
 
     requester = User.objects.filter(
         id=employee_id,
@@ -5363,6 +5390,7 @@ def consumable_requests_collection_view(request):
         assignment_type=assignment_type,
         department=department,
         notes=notes,
+        expected_return_date=expected_return_date,
     )
     request_item.refresh_from_db()
     if requester.role == User.ROLE_TECHNICIAN:
@@ -5400,6 +5428,9 @@ def consumable_request_approve_view(request, request_id: int):
             return Response({"message": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
 
         assignment_type = str(request.data.get("assignment_type", item.assignment_type)).strip().lower()
+        expected_return_date = _parse_expected_return_date(
+            request.data.get("expected_return_date", request.data.get("expectedReturnDate", item.expected_return_date))
+        )
         if assignment_type not in {
             ConsumableRequest.ASSIGNMENT_TYPE_NEW,
             ConsumableRequest.ASSIGNMENT_TYPE_LOAN,
@@ -5409,6 +5440,19 @@ def consumable_request_approve_view(request, request_id: int):
                 {"message": "assignment_type must be one of: new, loan, exchange."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if assignment_type == ConsumableRequest.ASSIGNMENT_TYPE_LOAN:
+            if expected_return_date is None:
+                return Response(
+                    {"message": "expected_return_date is required before approving a loan request."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if expected_return_date < timezone.localdate():
+                return Response(
+                    {"message": "expected_return_date cannot be in the past."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            expected_return_date = None
 
         consumable = Consumable.objects.select_for_update().filter(id=item.consumable_id).first()
         if not consumable:
@@ -5425,9 +5469,19 @@ def consumable_request_approve_view(request, request_id: int):
 
         item.status = ConsumableRequest.STATUS_APPROVED
         item.assignment_type = assignment_type
+        item.expected_return_date = expected_return_date
         item.approved_by = approved_by_user
         item.approved_at = timezone.now()
-        item.save(update_fields=["status", "assignment_type", "approved_by", "approved_at", "updated_at"])
+        item.save(
+            update_fields=[
+                "status",
+                "assignment_type",
+                "expected_return_date",
+                "approved_by",
+                "approved_at",
+                "updated_at",
+            ]
+        )
 
         InventoryAssignment.objects.create(
             consumable=consumable,

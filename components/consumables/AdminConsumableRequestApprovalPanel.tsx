@@ -126,6 +126,7 @@ export function AdminConsumableRequestApprovalPanel({
   const [error, setError] = useState("")
   const [processingId, setProcessingId] = useState("")
   const [assignmentTypeByRequestId, setAssignmentTypeByRequestId] = useState<Record<string, "new" | "loan" | "exchange">>({})
+  const [expectedReturnDateByRequestId, setExpectedReturnDateByRequestId] = useState<Record<string, string>>({})
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({})
   const [returnRejectReasons, setReturnRejectReasons] = useState<Record<number, string>>({})
   const [processingReturnId, setProcessingReturnId] = useState<number | null>(null)
@@ -225,6 +226,15 @@ export function AdminConsumableRequestApprovalPanel({
       return
     }
 
+    const assignmentType = assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"
+    const expectedReturnDate = expectedReturnDateByRequestId[request.id] ?? request.expectedReturnDate ?? ""
+    if (assignmentType === "loan" && !expectedReturnDate) {
+      const nextMessage = "Expected return date is required before approving a loan request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
+      return
+    }
+
     setPendingAction({ kind: "approve-request", requestId, label: request.id })
   }
 
@@ -237,7 +247,11 @@ export function AdminConsumableRequestApprovalPanel({
       setProcessingId(requestId)
       setError("")
       const assignmentType = assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"
-      await approveConsumableRequestById(request.db_id, currentUser?.id, assignmentType)
+      const expectedReturnDate =
+        assignmentType === "loan"
+          ? (expectedReturnDateByRequestId[request.id] ?? request.expectedReturnDate ?? "")
+          : null
+      await approveConsumableRequestById(request.db_id, currentUser?.id, assignmentType, expectedReturnDate)
       await loadAll()
       showActionFeedback("success", `Request ${request.id} approved and stock updated.`)
     } catch (approveError) {
@@ -422,6 +436,7 @@ export function AdminConsumableRequestApprovalPanel({
                     <TableHead className="min-w-[210px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Item</TableHead>
                     <TableHead className="w-[70px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Qty</TableHead>
                     <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
+                    <TableHead className="w-[150px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Return Date</TableHead>
                     <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
                     <TableHead className="min-w-[260px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Decision Notes</TableHead>
                     <TableHead className="w-[140px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Action</TableHead>
@@ -430,7 +445,7 @@ export function AdminConsumableRequestApprovalPanel({
                 <TableBody>
                   {requests.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                      <TableCell colSpan={10} className="px-6 py-6 text-center text-sm text-slate-500">
                         No consumable requests found.
                       </TableCell>
                     </TableRow>
@@ -454,12 +469,19 @@ export function AdminConsumableRequestApprovalPanel({
                               <select
                                 className={compactFieldClass}
                                 value={assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const nextType = event.target.value as "new" | "loan" | "exchange"
                                   setAssignmentTypeByRequestId((current) => ({
                                     ...current,
-                                    [request.id]: event.target.value as "new" | "loan" | "exchange",
+                                    [request.id]: nextType,
                                   }))
-                                }
+                                  if (nextType !== "loan") {
+                                    setExpectedReturnDateByRequestId((current) => ({
+                                      ...current,
+                                      [request.id]: "",
+                                    }))
+                                  }
+                                }}
                               >
                                 <option value="new">New</option>
                                 <option value="loan">Loan</option>
@@ -469,6 +491,27 @@ export function AdminConsumableRequestApprovalPanel({
                               <Badge variant="outline" className="border-[#9CC4EA] bg-[#EAF3FF] text-[#2E6092]">
                                 {request.assignmentType}
                               </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3 text-xs text-[#234A71]">
+                            {request.status === "pending" &&
+                            (assignmentTypeByRequestId[request.id] ?? request.assignmentType) === "loan" ? (
+                              <input
+                                type="date"
+                                className={compactFieldClass}
+                                min={new Date().toISOString().slice(0, 10)}
+                                value={expectedReturnDateByRequestId[request.id] ?? request.expectedReturnDate ?? ""}
+                                onChange={(event) =>
+                                  setExpectedReturnDateByRequestId((current) => ({
+                                    ...current,
+                                    [request.id]: event.target.value,
+                                  }))
+                                }
+                              />
+                            ) : request.expectedReturnDate ? (
+                              <span>{new Date(request.expectedReturnDate).toLocaleDateString()}</span>
+                            ) : (
+                              <span>N/A</span>
                             )}
                           </TableCell>
                           <TableCell className="py-3">

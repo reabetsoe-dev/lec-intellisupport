@@ -622,6 +622,10 @@ class ConsumableRequest(models.Model):
     )
     rejected_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True, default="")
+    expected_return_date = models.DateField(null=True, blank=True)
+    return_reminder_before_sent_at = models.DateTimeField(null=True, blank=True)
+    return_reminder_due_sent_at = models.DateTimeField(null=True, blank=True)
+    return_reminder_after_sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

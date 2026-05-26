@@ -37,6 +37,7 @@ export function EmployeeConsumableRequestPanel() {
   const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
   const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
+  const [expectedReturnDate, setExpectedReturnDate] = useState("")
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [notes, setNotes] = useState("")
@@ -154,6 +155,12 @@ export function EmployeeConsumableRequestPanel() {
       return
     }
 
+    if (assignmentType === "loan" && !expectedReturnDate) {
+      const nextMessage = "Expected return date is required for loan requests."
+      showResultDialog("error", nextMessage)
+      return
+    }
+
     if (!user?.id) {
       const nextMessage = "Session expired. Please login again."
       showResultDialog("error", nextMessage)
@@ -170,9 +177,11 @@ export function EmployeeConsumableRequestPanel() {
         department,
         notes: composedNotes,
         employee_id: user.id,
+        expected_return_date: assignmentType === "loan" ? expectedReturnDate : null,
       })
       setItemName("")
       setAssignmentType("")
+      setExpectedReturnDate("")
       setBranch("")
       setDepartment("")
       setNotes("")
@@ -270,7 +279,13 @@ export function EmployeeConsumableRequestPanel() {
                     id="assignment-type"
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     value={assignmentType}
-                    onChange={(event) => setAssignmentType(event.target.value as "" | "new" | "loan" | "exchange")}
+                    onChange={(event) => {
+                      const nextType = event.target.value as "" | "new" | "loan" | "exchange"
+                      setAssignmentType(nextType)
+                      if (nextType !== "loan") {
+                        setExpectedReturnDate("")
+                      }
+                    }}
                   >
                     <option value="" disabled>
                       Select type
@@ -280,6 +295,22 @@ export function EmployeeConsumableRequestPanel() {
                     <option value="exchange">Exchange</option>
                   </select>
                 </div>
+
+                {assignmentType === "loan" ? (
+                  <div className="space-y-1">
+                    <label htmlFor="expected-return-date" className="text-xs font-semibold text-[#0B1F3A]">
+                      Expected Return Date
+                    </label>
+                    <input
+                      id="expected-return-date"
+                      type="date"
+                      value={expectedReturnDate}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={(event) => setExpectedReturnDate(event.target.value)}
+                      className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    />
+                  </div>
+                ) : null}
 
                 <div className="space-y-1">
                   <label htmlFor="branch" className="text-xs font-semibold text-[#0B1F3A]">
@@ -339,7 +370,8 @@ export function EmployeeConsumableRequestPanel() {
                   <TableHead className="w-[30%] px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
                   <TableHead className="w-[8%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Qty</TableHead>
                   <TableHead className="w-[14%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
-                  <TableHead className="w-[33%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
+                  <TableHead className="w-[18%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Return Date</TableHead>
+                  <TableHead className="w-[15%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
                   <TableHead className="w-[15%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -371,6 +403,9 @@ export function EmployeeConsumableRequestPanel() {
                           <Badge variant="outline" className="border-slate-300 bg-slate-50 text-[#0B1F3A] whitespace-nowrap">
                             {request.assignmentType}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-[#0B1F3A]">
+                          {request.expectedReturnDate ? new Date(request.expectedReturnDate).toLocaleDateString() : "N/A"}
                         </TableCell>
                         <TableCell className="text-xs text-[#0B1F3A]">
                           <Badge
