@@ -37,6 +37,7 @@ class User(models.Model):
     name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
     branch = models.CharField(max_length=120, blank=True, default="")
+    department = models.CharField(max_length=120, blank=True, default="")
     password_hash = models.CharField(max_length=255)
     must_change_password = models.BooleanField(default=False)
     role = models.CharField(max_length=32, choices=ROLE_CHOICES, default=ROLE_EMPLOYEE)

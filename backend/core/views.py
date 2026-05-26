@@ -147,6 +147,10 @@ def _infer_user_department(user: User) -> str:
     if not user:
         return ""
 
+    user_department = str(getattr(user, "department", "") or "").strip()
+    if user_department:
+        return user_department
+
     latest_request = (
         ConsumableRequest.objects.filter(employee=user)
         .exclude(department="")
@@ -2116,6 +2120,7 @@ def _user_to_dict(user: User) -> dict:
         "name": user.name,
         "email": user.email,
         "branch": user.branch,
+        "department": user.department,
         "role": user.role,
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,
@@ -3733,6 +3738,7 @@ def employees_collection_view(request):
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
     branch = str(request.data.get("branch", "")).strip()
+    department = str(request.data.get("department", "")).strip()
     raw_is_active = request.data.get("is_active", True)
     if isinstance(raw_is_active, str):
         is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
@@ -3754,6 +3760,7 @@ def employees_collection_view(request):
                 name=name,
                 email=email,
                 branch=branch,
+                department=department,
                 password_hash=make_password(secrets.token_urlsafe(24)),
                 must_change_password=True,
                 role=User.ROLE_EMPLOYEE,
@@ -3801,6 +3808,10 @@ def employee_detail_view(request, employee_id: int):
         if "branch" in request.data:
             employee.branch = str(request.data.get("branch", "")).strip()
             updated_fields.append("branch")
+
+        if "department" in request.data:
+            employee.department = str(request.data.get("department", "")).strip()
+            updated_fields.append("department")
 
         if "is_active" in request.data:
             raw_is_active = request.data.get("is_active")
