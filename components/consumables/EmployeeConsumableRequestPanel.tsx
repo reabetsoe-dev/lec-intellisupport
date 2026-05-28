@@ -197,7 +197,7 @@ export function EmployeeConsumableRequestPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="mx-auto flex w-full max-w-[760px] flex-wrap gap-2">
+      <div className="mx-auto flex w-full max-w-[760px] flex-wrap justify-center gap-2">
         <button
           type="button"
           onClick={() => setActiveView("request")}
