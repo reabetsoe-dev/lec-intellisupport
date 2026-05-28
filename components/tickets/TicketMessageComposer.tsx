@@ -154,14 +154,11 @@ export function TicketMessageComposer({
   }
 
   return (
-    <div className={cn("space-y-3", toneStyle.shell, className)}>
+    <div className={cn("space-y-2", toneStyle.shell, className)}>
       {modeLabel ? (
         <div>
           <span
-            className={cn(
-              "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-              toneStyle.indicator
-            )}
+            className={cn("inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold", toneStyle.indicator)}
           >
             {modeLabel}
           </span>
@@ -189,7 +186,7 @@ export function TicketMessageComposer({
       ) : null}
 
       {replyTarget ? (
-        <div className="flex items-start justify-between gap-3 rounded-2xl bg-[#f8fafc] px-3 py-2">
+        <div className="flex items-start justify-between gap-3 rounded-md bg-slate-50 px-3 py-2">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#4A6F95]">
               <CornerDownRight className="h-3.5 w-3.5" />
@@ -207,7 +204,7 @@ export function TicketMessageComposer({
       ) : null}
 
       <div className="relative">
-        <div className="flex items-end gap-3 rounded-[28px] bg-white p-2 shadow-sm ring-1 ring-slate-200">
+        <div className="flex items-end gap-2 rounded-lg bg-white p-2 shadow-sm ring-1 ring-slate-200">
           <textarea
             id={textareaId}
             value={draft}
@@ -225,7 +222,7 @@ export function TicketMessageComposer({
               }
             }}
             className={cn(
-              "min-h-[52px] max-h-40 w-full resize-none rounded-[24px] border px-4 py-3 text-sm outline-none transition focus:ring-2 disabled:cursor-not-allowed disabled:opacity-70",
+              "min-h-[48px] max-h-36 w-full resize-none rounded-md border px-3 py-2.5 text-sm outline-none transition focus:ring-2 disabled:cursor-not-allowed disabled:opacity-70",
               toneStyle.textarea,
               "transition-all focus:ring-2 focus:ring-green-400 focus:border-green-400"
             )}
@@ -235,7 +232,7 @@ export function TicketMessageComposer({
             onClick={onSubmit}
             disabled={disabled || submitting || !draft.trim()}
             className={cn(
-              "h-11 rounded-full px-5 shadow-none transition-transform active:scale-95 hover:brightness-110 hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18)]",
+              "h-10 rounded-md px-4 shadow-none transition-transform active:scale-95 hover:brightness-110 hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18)]",
               toneStyle.button,
               tone === "note" ? "hover:bg-[#604400]" : "hover:bg-green-600"
             )}
@@ -245,9 +242,9 @@ export function TicketMessageComposer({
         </div>
 
         {mentionSuggestions.length > 0 ? (
-          <div className="absolute left-3 right-3 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-[#C8D7E8] bg-white shadow-xl">
-            <div className="border-b border-[#E1EAF3] bg-[#F7FBFF] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#5A7CA0]">
-              Mention Someone
+          <div className="absolute left-3 right-3 bottom-full z-20 mb-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              Mentions
             </div>
             <div className="max-h-56 overflow-y-auto p-2">
               {mentionSuggestions.map((suggestion, index) => {
@@ -257,11 +254,11 @@ export function TicketMessageComposer({
                       key={`discussion-${index}`}
                       type="button"
                       onClick={handleInsertDiscussionMention}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition hover:bg-[#EEF6FF]"
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition hover:bg-slate-50"
                     >
                       <span>
                         <p className="text-sm font-semibold text-[#173A5D]">@discussion</p>
-                        <p className="text-xs text-[#5A7CA0]">Notify everyone already in this discussion.</p>
+                        <p className="text-xs text-[#5A7CA0]">Notify everyone in this thread.</p>
                       </span>
                       <Users className="h-4 w-4 text-[#5A7CA0]" />
                     </button>
@@ -274,11 +271,11 @@ export function TicketMessageComposer({
                       key={`invite-${index}`}
                       type="button"
                       onClick={() => onInviteToDiscussion?.()}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition hover:bg-[#EEF6FF]"
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition hover:bg-slate-50"
                     >
                       <span>
                         <p className="text-sm font-semibold text-[#173A5D]">Invite to discussion</p>
-                        <p className="text-xs text-[#5A7CA0]">Add a teammate by email and bring them into this thread.</p>
+                        <p className="text-xs text-[#5A7CA0]">Add a teammate by email.</p>
                       </span>
                       <UserPlus2 className="h-4 w-4 text-[#5A7CA0]" />
                     </button>
@@ -290,7 +287,7 @@ export function TicketMessageComposer({
                     key={suggestion.user.id}
                     type="button"
                     onClick={() => handleInsertMention(suggestion.user)}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition hover:bg-[#EEF6FF]"
+                    className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition hover:bg-slate-50"
                   >
                     <span>
                       <p className="text-sm font-semibold text-[#173A5D]">{suggestion.user.name}</p>
@@ -306,16 +303,14 @@ export function TicketMessageComposer({
       </div>
 
       {draft.includes("@") ? (
-        <div className={cn("rounded-2xl px-3 py-2", toneStyle.preview)}>
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#5A7CA0]">
-            Mention Preview
-          </p>
+        <div className={cn("rounded-md px-3 py-2", toneStyle.preview)}>
+          <p className="mb-1 text-xs font-semibold text-[#5A7CA0]">Preview</p>
           <p className="whitespace-pre-wrap text-sm leading-6 text-[#24486E]">{renderMentionPreview(draft)}</p>
         </div>
       ) : null}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="inline-flex items-center gap-2 text-xs text-[#5A7CA0]">
+        <p className="inline-flex items-center gap-2 text-xs text-slate-500">
           <MessageSquarePlus className="h-3.5 w-3.5" />
           Type <span className="font-semibold">@username</span> to mention staff members{tone === "discussion" ? ", or " : "."}
           {tone === "discussion" ? <span className="font-semibold">@discussion</span> : null}

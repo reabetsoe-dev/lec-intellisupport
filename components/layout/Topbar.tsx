@@ -308,6 +308,16 @@ function NotificationPriorityIcon({ priority }: { priority: NotificationPriority
   )
 }
 
+function compactNotificationMessage(item: AppNotification): string {
+  const message = item.message.trim()
+  const withoutTicketPrefix = message.replace(/^Ticket\s+#?\d+\s*[:.-]?\s*/i, "")
+  return withoutTicketPrefix.length > 96 ? `${withoutTicketPrefix.slice(0, 93)}...` : withoutTicketPrefix
+}
+
+function formatTicketRef(ticketId?: number | null): string {
+  return ticketId ? `TK-${String(ticketId).padStart(5, "0")}` : "No ticket"
+}
+
 function categoryOrder(category: NotificationCategory): number {
   if (category === "Action Required") return 0
   if (category === "Assigned to You") return 1
@@ -562,8 +572,8 @@ export function Topbar({ user }: TopbarProps) {
                 ) : null}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="z-[70] w-[32rem] max-w-[94vw] overflow-hidden rounded-xl border-slate-200 p-0 shadow-2xl">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <DropdownMenuContent align="end" className="z-[70] w-[30rem] max-w-[94vw] overflow-hidden rounded-lg border-slate-200 p-0 shadow-2xl">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Notifications</p>
@@ -596,48 +606,53 @@ export function Topbar({ user }: TopbarProps) {
                   </div>
                 </div>
               </div>
-              <div className="max-h-[32rem] overflow-y-auto p-3">
+              <div className="max-h-[30rem] overflow-y-auto p-2">
                 {groupedNotifications.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">
                     No notifications yet.
                   </div>
                 ) : (
                   groupedNotifications.map(([category, items]) => (
-                    <section key={category} className="mb-4 last:mb-0">
-                      <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{category}</p>
-                      <div className="space-y-2">
+                    <section key={category} className="mb-3 last:mb-0">
+                      <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{category}</p>
+                      <div className="space-y-1.5">
                         {items.map((item) => {
                           const priority = resolveNotificationPriority(item)
                           return (
                             <div
                               key={item.id}
-                              className={`rounded-lg border p-3 transition-colors ${
+                              className={`rounded-md border p-2.5 transition-colors ${
                                 !item.is_read || item.is_new
                                   ? "border-[#8FB5DC] bg-[#F2F8FF] shadow-[inset_3px_0_0_#0A63B8]"
                                   : "border-slate-200 bg-white"
                               }`}
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <Badge className={priorityBadgeClass(priority)}>{priority}</Badge>
-                                  <Badge className={notificationBadgeClass(item.type)}>
-                                    {formatNotificationType(item.type)}
-                                  </Badge>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <Badge className={priorityBadgeClass(priority)}>{priority}</Badge>
+                                    <Badge className={notificationBadgeClass(item.type)}>
+                                      {formatNotificationType(item.type)}
+                                    </Badge>
+                                    <span className="truncate text-xs font-semibold text-slate-600">
+                                      {formatTicketRef(item.ticket_id)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+                                    {item.title || "Notification"}
+                                  </p>
+                                  <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">
+                                    {compactNotificationMessage(item)}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
                                 </div>
-                                {!item.is_read ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0A63B8]" aria-label="Unread" /> : null}
-                              </div>
-                              <p className="mt-2 text-sm font-semibold text-slate-900">
-                                {item.title || "Notification"}
-                              </p>
-                              <p className="mt-1 text-sm leading-5 text-slate-700">{item.message}</p>
-                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                                <p className="min-w-0 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
-                                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {!item.is_read ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0A63B8]" aria-label="Unread" /> : null}
                                   {item.ticket_id ? (
                                     <Button
                                       type="button"
                                       size="sm"
-                                      className="h-8 bg-[#0A63B8] text-xs text-white hover:bg-[#084C8C]"
+                                      className="h-8 bg-[#0A63B8] px-3 text-xs text-white hover:bg-[#084C8C]"
                                       onClick={() => {
                                         void handleNotificationSelect(item)
                                       }}
@@ -649,7 +664,7 @@ export function Topbar({ user }: TopbarProps) {
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="h-8 text-xs"
+                                      className="h-8 px-3 text-xs"
                                       onClick={() => {
                                         void handleNotificationSelect(item)
                                       }}

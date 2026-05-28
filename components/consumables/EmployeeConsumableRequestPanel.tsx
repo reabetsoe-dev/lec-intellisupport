@@ -34,7 +34,7 @@ function toDisplayItemName(value: string): string {
 }
 
 export function EmployeeConsumableRequestPanel() {
-  const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
+  const [activeView, setActiveView] = useState<"request" | "history">("request")
   const [itemName, setItemName] = useState("")
   const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
   const [expectedReturnDate, setExpectedReturnDate] = useState("")
@@ -197,16 +197,14 @@ export function EmployeeConsumableRequestPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="mx-auto grid w-full max-w-[860px] grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="mx-auto flex w-full max-w-[760px] flex-wrap gap-2">
         <button
           type="button"
           onClick={() => setActiveView("request")}
           className={getInterfaceTileClassName(activeView === "request")}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "request")}>Request Consumable</p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>
-            Open the request form to submit a new consumable request.
-          </p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>Submit a new request.</p>
         </button>
         <button
           type="button"
@@ -214,46 +212,24 @@ export function EmployeeConsumableRequestPanel() {
           className={getInterfaceTileClassName(activeView === "history")}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "history")}>My Consumable Requests</p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>
-            View all your submitted requests and approval decisions.
-          </p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>Track decisions.</p>
         </button>
       </div>
 
       {activeView === "request" ? (
-        <Card className="mx-auto w-full max-w-[760px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
-          <CardHeader className="border-b border-[#0072CE]/15 px-4 py-2.5">
-            <CardTitle className="text-sm font-semibold text-[#0B1F3A]">Request Consumable</CardTitle>
+        <Card className="mx-auto w-full max-w-[760px] rounded-lg border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="border-b border-slate-200 px-4 py-3">
+            <CardTitle className="text-lg font-semibold text-slate-900">Request Consumable</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 py-2.5">
-            <form className="mx-auto w-full max-w-[650px] space-y-2" onSubmit={handleSubmit} autoComplete="off">
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label htmlFor="department" className="text-xs font-semibold text-[#0B1F3A]">
-                    Department
-                  </label>
-                  <select
-                    id="department"
-                    value={department}
-                    onChange={(event) => setDepartment(event.target.value)}
-                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
-                  >
-                    <option value="">Select department</option>
-                    {DEPARTMENT_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label htmlFor="item-name" className="text-xs font-semibold text-[#0B1F3A]">
+          <CardContent className="px-4 py-4">
+            <form className="mx-auto w-full max-w-[560px] space-y-4" onSubmit={handleSubmit} autoComplete="off">
+                <div className="space-y-1.5">
+                  <label htmlFor="item-name" className="text-sm font-semibold text-slate-900">
                     Item
                   </label>
                   <select
                     id="item-name"
-                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
                     value={itemName}
                     onChange={(event) => setItemName(event.target.value)}
                     disabled={loadingStock || selectableConsumables.length === 0}
@@ -268,16 +244,14 @@ export function EmployeeConsumableRequestPanel() {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label htmlFor="assignment-type" className="text-xs font-semibold text-[#0B1F3A]">
+                <div className="space-y-1.5">
+                  <label htmlFor="assignment-type" className="text-sm font-semibold text-slate-900">
                     Assignment Type
                   </label>
                   <select
                     id="assignment-type"
-                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
                     value={assignmentType}
                     onChange={(event) => {
                       const nextType = event.target.value as "" | "new" | "loan" | "exchange"
@@ -296,58 +270,80 @@ export function EmployeeConsumableRequestPanel() {
                   </select>
                 </div>
 
-                {assignmentType === "loan" ? (
-                  <div className="space-y-1">
-                    <label htmlFor="expected-return-date" className="text-xs font-semibold text-[#0B1F3A]">
-                      Expected Return Date
+              {assignmentType ? (
+                <>
+                  {assignmentType === "loan" ? (
+                    <div className="space-y-1.5">
+                      <label htmlFor="expected-return-date" className="text-sm font-semibold text-slate-900">
+                        Expected Return Date
+                      </label>
+                      <input
+                        id="expected-return-date"
+                        type="date"
+                        value={expectedReturnDate}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(event) => setExpectedReturnDate(event.target.value)}
+                        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="department" className="text-sm font-semibold text-slate-900">
+                      Department
                     </label>
-                    <input
-                      id="expected-return-date"
-                      type="date"
-                      value={expectedReturnDate}
-                      min={new Date().toISOString().slice(0, 10)}
-                      onChange={(event) => setExpectedReturnDate(event.target.value)}
-                      className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    <select
+                      id="department"
+                      value={department}
+                      onChange={(event) => setDepartment(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                    >
+                      <option value="">Select department</option>
+                      {DEPARTMENT_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="branch" className="text-sm font-semibold text-slate-900">
+                      Branch
+                    </label>
+                    <select
+                      id="branch"
+                      value={branch}
+                      onChange={(event) => setBranch(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                    >
+                      <option value="">Select branch</option>
+                      {BRANCH_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="notes" className="text-sm font-semibold text-slate-900">
+                      Reason
+                    </label>
+                    <textarea
+                      id="notes"
+                      className="min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      placeholder="Why do you need this consumable?"
                     />
                   </div>
-                ) : null}
+                </>
+              ) : null}
 
-                <div className="space-y-1">
-                  <label htmlFor="branch" className="text-xs font-semibold text-[#0B1F3A]">
-                    Branch
-                  </label>
-                  <select
-                    id="branch"
-                    value={branch}
-                    onChange={(event) => setBranch(event.target.value)}
-                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
-                  >
-                    <option value="">Select branch</option>
-                    {BRANCH_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label htmlFor="notes" className="text-xs font-semibold text-[#0B1F3A]">
-                  Reason
-                </label>
-                <textarea
-                  id="notes"
-                  className="min-h-14 w-full rounded-lg border border-[#0072CE]/30 px-2.5 py-1.5 text-sm text-[#0B1F3A]"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Why do you need this consumable?"
-                />
-              </div>
-
-              <div className="flex justify-center">
+              <div className="flex justify-end">
                 <Button
-                  className="h-9 w-44 rounded-lg bg-[#0072CE] text-sm font-semibold text-white hover:bg-[#005DA8]"
+                  className="h-10 w-full rounded-md bg-[#0072CE] text-sm font-semibold text-white hover:bg-[#005DA8] sm:w-44"
                   type="submit"
                 >
                   Submit Request
@@ -359,7 +355,7 @@ export function EmployeeConsumableRequestPanel() {
       ) : null}
 
       {activeView === "history" ? (
-        <Card className="mx-auto w-full max-w-[1200px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <Card className="mx-auto w-full max-w-[1200px] rounded-lg border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="border-b border-[#0072CE]/15 px-4 py-2.5">
             <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumable Requests</CardTitle>
           </CardHeader>
@@ -378,7 +374,7 @@ export function EmployeeConsumableRequestPanel() {
               <TableBody>
                 {myRequests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
+                    <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                       No requests submitted yet.
                     </TableCell>
                   </TableRow>
