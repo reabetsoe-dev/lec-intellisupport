@@ -25,12 +25,44 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const REFRESH_INTERVAL_MS = 15_000
 const DEFAULT_REQUEST_QUANTITY = 1
+const TECHNICIAN_ASSET_LABELS = ["Laptop", "Desktop", "Mouse", "Keyboard", "Gadget"] as const
+
+type TechnicianAssetLabel = (typeof TECHNICIAN_ASSET_LABELS)[number]
 
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
     .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join(" ")
+}
+
+function getTechnicianAssetLabel(item: Consumable): TechnicianAssetLabel | null {
+  const searchable = [
+    item.item_name,
+    item.category,
+    item.subcategory,
+    item.device_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+
+  if (searchable.includes("laptop")) {
+    return "Laptop"
+  }
+  if (searchable.includes("desktop")) {
+    return "Desktop"
+  }
+  if (searchable.includes("mouse")) {
+    return "Mouse"
+  }
+  if (searchable.includes("keyboard")) {
+    return "Keyboard"
+  }
+  if (searchable.includes("gadget")) {
+    return "Gadget"
+  }
+  return null
 }
 
 export function EmployeeConsumableRequestPanel() {
@@ -62,7 +94,18 @@ export function EmployeeConsumableRequestPanel() {
     if (!isTechnician) {
       return consumables
     }
-    return consumables.filter((item) => !item.item_name.toLowerCase().includes("paper"))
+    const optionsByLabel = new Map<TechnicianAssetLabel, Consumable>()
+    for (const item of consumables) {
+      const label = getTechnicianAssetLabel(item)
+      if (!label || optionsByLabel.has(label)) {
+        continue
+      }
+      optionsByLabel.set(label, item)
+    }
+    return TECHNICIAN_ASSET_LABELS.flatMap((label) => {
+      const item = optionsByLabel.get(label)
+      return item ? [item] : []
+    })
   }, [consumables, isTechnician])
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
@@ -239,7 +282,7 @@ export function EmployeeConsumableRequestPanel() {
                     </option>
                     {selectableConsumables.map((item) => (
                       <option key={item.id} value={item.item_name}>
-                        {toDisplayItemName(item.item_name)}
+                        {isTechnician ? getTechnicianAssetLabel(item) : toDisplayItemName(item.item_name)}
                       </option>
                     ))}
                   </select>
