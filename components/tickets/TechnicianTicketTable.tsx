@@ -649,55 +649,54 @@ export function TechnicianTicketTable() {
           </div>
         ) : null}
 
-        <div className="overflow-x-auto">
-          <Table>
+        <div className="hidden md:block">
+          <Table className="w-full table-fixed">
+            <colgroup>
+              <col className="w-[92px]" />
+              <col className="w-[94px]" />
+              <col />
+              <col className="w-[132px]" />
+              <col className="w-[104px]" />
+              <col className="w-[104px]" />
+            </colgroup>
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="border-y-0 bg-[#255F8F] hover:bg-[#255F8F]">
-                <TableHead className="w-[118px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Ticket ID
+                <TableHead className="px-3 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                  ID
                 </TableHead>
-                <TableHead className="w-[112px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Updated
                 </TableHead>
-                <TableHead className="min-w-[280px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Subject
                 </TableHead>
-                <TableHead className="w-[150px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Reporter
-                </TableHead>
-                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Branch
-                </TableHead>
-                <TableHead className="w-[150px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Status
                 </TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Priority
                 </TableHead>
-                <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Assigned To
-                </TableHead>
-                <TableHead className="w-[158px] py-3 pr-4 text-right text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Quick Actions
+                <TableHead className="px-2 py-3 pr-3 text-right text-[11px] font-semibold tracking-wide text-white uppercase">
+                  Actions
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-8 text-center text-sm text-slate-500">
+                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">
                     Loading assigned tickets...
                   </TableCell>
                 </TableRow>
               ) : loadError ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-8 text-center text-sm text-rose-600">
+                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-rose-600">
                     {loadError}
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-8 text-center text-sm text-slate-500">
+                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">
                     No tickets found for this filter.
                   </TableCell>
                 </TableRow>
@@ -706,7 +705,6 @@ export function TechnicianTicketTable() {
                   const expanded = expandedTicketIds.has(ticket.id)
                   const metadata = compactMetadata(ticket.raw)
                   const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
-                  const primaryLabel = primaryIsStart ? "Start Work" : ticket.nextAction.label
                   const assignee = ticket.raw.technician_name || currentUser?.name || "Assigned technician"
 
                   return (
@@ -719,7 +717,7 @@ export function TechnicianTicketTable() {
                           ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF8F8] hover:bg-[#FFF1F1]"
                         )}
                       >
-                        <TableCell className="px-4 py-3 align-middle">
+                        <TableCell className="px-3 py-3 align-middle">
                           <Link
                             href={`/technician/tickets/${ticket.id}`}
                             className="text-xs font-semibold text-[#2A5D8D] underline-offset-2 hover:underline"
@@ -727,10 +725,10 @@ export function TechnicianTicketTable() {
                             {ticket.trackingId}
                           </Link>
                         </TableCell>
-                        <TableCell className="py-3 align-middle text-xs text-[#355B7D]">
+                        <TableCell className="px-2 py-3 align-middle text-xs text-[#355B7D]">
                           {formatDateLabel(ticket.updated)}
                         </TableCell>
-                        <TableCell className="max-w-[24rem] py-3 align-middle">
+                        <TableCell className="min-w-0 px-2 py-3 align-middle whitespace-normal">
                           <div className="min-w-0 space-y-1">
                             <Link
                               href={`/technician/tickets/${ticket.id}`}
@@ -742,43 +740,41 @@ export function TechnicianTicketTable() {
                             <p className="truncate text-[11px] text-[#5D7894]" title={ticket.description}>
                               {ticket.description}
                             </p>
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1 text-[11px] font-semibold",
-                                ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]"
-                              )}
-                            >
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#5D7894]">
+                              <span className="min-w-0 max-w-[14rem] truncate" title={`${ticket.reporter} - ${ticket.branch}`}>
+                                {ticket.reporter} - {ticket.branch}
+                              </span>
+                              <span className="min-w-0 max-w-[12rem] truncate" title={`Assigned: ${assignee}`}>
+                                Assigned: {assignee}
+                              </span>
                               <span
                                 className={cn(
-                                  "h-1.5 w-1.5 rounded-full",
-                                  ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#2F7FC9]"
+                                  "inline-flex items-center gap-1 font-semibold",
+                                  ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]"
                                 )}
-                              />
-                              {ticket.sla.label}
-                            </span>
+                              >
+                                <span
+                                  className={cn(
+                                    "h-1.5 w-1.5 rounded-full",
+                                    ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#2F7FC9]"
+                                  )}
+                                />
+                                {ticket.sla.label}
+                              </span>
+                            </div>
                           </div>
                         </TableCell>
-                        <TableCell className="max-w-[150px] py-3 align-middle text-xs font-medium text-[#1F4469]">
-                          <span className="block truncate" title={ticket.reporter}>
-                            {ticket.reporter}
-                          </span>
-                        </TableCell>
-                        <TableCell className="max-w-[130px] py-3 align-middle text-xs text-[#355B7D]">
-                          <span className="block truncate" title={ticket.branch}>
-                            {ticket.branch}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-3 align-middle">
+                        <TableCell className="px-2 py-3 align-middle">
                           <Badge
                             className={cn(
-                              "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                              "max-w-full rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
                               workflowBadgeStyles[ticket.workflowState]
                             )}
                           >
                             {ticket.workflowState}
                           </Badge>
                         </TableCell>
-                        <TableCell className="py-3 align-middle">
+                        <TableCell className="px-2 py-3 align-middle">
                           <Badge
                             className={cn(
                               "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
@@ -789,32 +785,28 @@ export function TechnicianTicketTable() {
                             {ticket.priority}
                           </Badge>
                         </TableCell>
-                        <TableCell className="max-w-[160px] py-3 align-middle text-xs text-[#1F4469]">
-                          <span className="block truncate" title={assignee}>
-                            {assignee}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-2 pr-4 align-middle">
-                          <div className="flex items-center justify-end gap-2">
+                        <TableCell className="px-2 py-2 pr-3 align-middle">
+                          <div className="flex items-center justify-end gap-1">
                             {primaryIsStart ? (
                               <Button
                                 size="sm"
                                 type="button"
-                                className="h-8 min-w-[6.75rem] bg-[#0A63B8] px-3 text-xs text-white hover:bg-[#084C8C]"
+                                className="h-8 min-w-0 bg-[#0A63B8] px-2.5 text-xs text-white hover:bg-[#084C8C]"
                                 disabled={busyTicketId === ticket.id}
                                 onClick={() => void handleStartWork(ticket)}
+                                title={ticket.nextAction.label}
                               >
                                 {busyTicketId === ticket.id ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                                {primaryLabel}
+                                Start
                               </Button>
                             ) : (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 min-w-[6.75rem] border-[#93AECA] bg-white px-3 text-xs text-[#20466D] hover:bg-[#F3F8FD]"
+                                className="h-8 min-w-0 border-[#93AECA] bg-white px-2.5 text-xs text-[#20466D] hover:bg-[#F3F8FD]"
                                 asChild
                               >
-                                <Link href={`/technician/tickets/${ticket.id}`}>{primaryLabel}</Link>
+                                <Link href={`/technician/tickets/${ticket.id}`} title={ticket.nextAction.label}>View</Link>
                               </Button>
                             )}
                             <DropdownMenu>
@@ -869,7 +861,7 @@ export function TechnicianTicketTable() {
                       </TableRow>
                       {expanded ? (
                         <TableRow key={`${ticket.id}-details`} className="border-b border-[#D4E1EF] bg-[#F8FBFF]">
-                          <TableCell colSpan={9} className="px-4 py-3">
+                          <TableCell colSpan={6} className="px-4 py-3 whitespace-normal">
                             <div className="flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
                               {metadata.length > 0 ? (
                                 metadata.map((item) => (
@@ -890,6 +882,166 @@ export function TechnicianTicketTable() {
               )}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="space-y-2 p-3 md:hidden">
+          {loading ? (
+            <div className="px-4 py-6 text-center text-sm text-slate-500">Loading assigned tickets...</div>
+          ) : loadError ? (
+            <div className="px-4 py-6 text-center text-sm text-rose-600">{loadError}</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-slate-500">No tickets found for this filter.</div>
+          ) : (
+            filteredRows.map((ticket) => {
+              const expanded = expandedTicketIds.has(ticket.id)
+              const metadata = compactMetadata(ticket.raw)
+              const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
+              const assignee = ticket.raw.technician_name || currentUser?.name || "Assigned technician"
+
+              return (
+                <article
+                  key={`mobile-${ticket.id}`}
+                  className={cn(
+                    "rounded-md border border-[#D4E1EF] border-l-4 bg-white p-3 shadow-sm",
+                    workflowRowStyles[ticket.workflowState],
+                    ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF8F8]"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#5D7894]">
+                        <Link href={`/technician/tickets/${ticket.id}`} className="text-[#2A5D8D] underline-offset-2 hover:underline">
+                          {ticket.trackingId}
+                        </Link>
+                        <span>{formatDateLabel(ticket.updated)}</span>
+                      </div>
+                      <Link
+                        href={`/technician/tickets/${ticket.id}`}
+                        className="block truncate text-sm font-semibold text-[#173A5D] underline-offset-2 hover:underline"
+                        title={ticket.title}
+                      >
+                        {ticket.title}
+                      </Link>
+                      <p className="truncate text-[11px] text-[#5D7894]" title={`${ticket.reporter} - ${ticket.branch}`}>
+                        {ticket.reporter} - {ticket.branch} - Assigned: {assignee}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {primaryIsStart ? (
+                        <Button
+                          size="sm"
+                          type="button"
+                          className="h-8 bg-[#0A63B8] px-2.5 text-xs text-white hover:bg-[#084C8C]"
+                          disabled={busyTicketId === ticket.id}
+                          onClick={() => void handleStartWork(ticket)}
+                          title={ticket.nextAction.label}
+                        >
+                          {busyTicketId === ticket.id ? <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                          Start
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-[#93AECA] bg-white px-2.5 text-xs text-[#20466D] hover:bg-[#F3F8FD]"
+                          asChild
+                        >
+                          <Link href={`/technician/tickets/${ticket.id}`} title={ticket.nextAction.label}>View</Link>
+                        </Button>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
+                            aria-label={`More actions for ${ticket.trackingId}`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="z-[70] w-48 border-[#B8CDE1] bg-white">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/technician/tickets/${ticket.id}`}>View Ticket</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toggleExpandedTicket(ticket.id)}>
+                            {expanded ? "Hide Details" : "Expand Details"}
+                          </DropdownMenuItem>
+                          {ticket.raw.latest_escalation_comment ? (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setCommentPreview({
+                                  ticketId: ticket.id,
+                                  title: ticket.title,
+                                  comment: formatEscalationPreviewText(
+                                    ticket.raw.latest_escalation_comment ?? "",
+                                    ticket.raw.latest_escalation_by
+                                  ),
+                                  by: ticket.raw.latest_escalation_by,
+                                  at: ticket.raw.latest_escalation_at,
+                                })
+                              }
+                            >
+                              View Escalation
+                            </DropdownMenuItem>
+                          ) : null}
+                          {ticket.canControlWorkflow ? (
+                            <DropdownMenuItem
+                              disabled={ticket.workflowState === "Waiting for Employee" || ticket.workflowState === "Solved"}
+                              onClick={() => void openReassignDialog(ticket)}
+                            >
+                              Transfer Ticket
+                            </DropdownMenuItem>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                      className={cn(
+                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                        workflowBadgeStyles[ticket.workflowState]
+                      )}
+                    >
+                      {ticket.workflowState}
+                    </Badge>
+                    <Badge
+                      className={cn(
+                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                        priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+                      )}
+                    >
+                      {ticket.priority}
+                    </Badge>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[11px] font-semibold",
+                        ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]"
+                      )}
+                    >
+                      <span className={cn("h-1.5 w-1.5 rounded-full", ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#2F7FC9]")} />
+                      {ticket.sla.label}
+                    </span>
+                  </div>
+                  {expanded ? (
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
+                      {metadata.length > 0 ? (
+                        metadata.map((item) => (
+                          <span key={item} className="rounded border border-[#D7E4F0] bg-white px-2 py-1">
+                            {item}
+                          </span>
+                        ))
+                      ) : (
+                        <span>No additional metadata.</span>
+                      )}
+                    </div>
+                  ) : null}
+                </article>
+              )
+            })
+          )}
         </div>
       </CardContent>
 
