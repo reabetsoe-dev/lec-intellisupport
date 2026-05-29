@@ -263,13 +263,13 @@ export function EmployeeConsumableRequestPanel() {
           onClick={() => setActiveView("request")}
           className={getInterfaceTileClassName(
             activeView === "request",
-            "w-full px-5 py-3"
+            "w-full px-4 py-2.5"
           )}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "request", "text-base")}>
+          <p className={getInterfaceTileTitleClassName(activeView === "request", "text-sm")}>
             Request Consumable
           </p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "request", "mt-1 text-xs leading-5")}>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "request", "mt-0.5 text-xs leading-4")}>
             Submit a new request.
           </p>
         </button>
@@ -278,13 +278,13 @@ export function EmployeeConsumableRequestPanel() {
           onClick={() => setActiveView("history")}
           className={getInterfaceTileClassName(
             activeView === "history",
-            "w-full px-5 py-3"
+            "w-full px-4 py-2.5"
           )}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "history", "text-base")}>
+          <p className={getInterfaceTileTitleClassName(activeView === "history", "text-sm")}>
             My Consumable Requests
           </p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "history", "mt-1 text-xs leading-5")}>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "history", "mt-0.5 text-xs leading-4")}>
             Track decisions.
           </p>
         </button>
