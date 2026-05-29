@@ -29,6 +29,13 @@ const TECHNICIAN_ASSET_LABELS = ["Laptop", "Desktop", "Mouse", "Keyboard", "Gadg
 
 type TechnicianAssetLabel = (typeof TECHNICIAN_ASSET_LABELS)[number]
 
+type ConsumableSelectOption = {
+  key: string
+  label: string
+  value: string
+  disabled: boolean
+}
+
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
@@ -90,9 +97,14 @@ export function EmployeeConsumableRequestPanel() {
   const user = getStoredUserSession()
   const isTechnician = user?.role === "technician"
 
-  const selectableConsumables = useMemo(() => {
+  const itemOptions = useMemo<ConsumableSelectOption[]>(() => {
     if (!isTechnician) {
-      return consumables
+      return consumables.map((item) => ({
+        key: String(item.id),
+        label: toDisplayItemName(item.item_name),
+        value: item.item_name,
+        disabled: false,
+      }))
     }
     const optionsByLabel = new Map<TechnicianAssetLabel, Consumable>()
     for (const item of consumables) {
@@ -102,9 +114,14 @@ export function EmployeeConsumableRequestPanel() {
       }
       optionsByLabel.set(label, item)
     }
-    return TECHNICIAN_ASSET_LABELS.flatMap((label) => {
+    return TECHNICIAN_ASSET_LABELS.map((label) => {
       const item = optionsByLabel.get(label)
-      return item ? [item] : []
+      return {
+        key: item ? String(item.id) : `missing-${label}`,
+        label: item ? label : `${label} (unavailable)`,
+        value: item?.item_name ?? "",
+        disabled: !item,
+      }
     })
   }, [consumables, isTechnician])
 
@@ -244,7 +261,7 @@ export function EmployeeConsumableRequestPanel() {
         <button
           type="button"
           onClick={() => setActiveView("request")}
-          className={getInterfaceTileClassName(activeView === "request")}
+          className={getInterfaceTileClassName(activeView === "request", "min-h-[76px] min-w-[220px] px-6 py-4")}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "request")}>Request Consumable</p>
           <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>Submit a new request.</p>
@@ -252,7 +269,7 @@ export function EmployeeConsumableRequestPanel() {
         <button
           type="button"
           onClick={() => setActiveView("history")}
-          className={getInterfaceTileClassName(activeView === "history")}
+          className={getInterfaceTileClassName(activeView === "history", "min-h-[76px] min-w-[220px] px-6 py-4")}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "history")}>My Consumable Requests</p>
           <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>Track decisions.</p>
@@ -275,14 +292,14 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
                     value={itemName}
                     onChange={(event) => setItemName(event.target.value)}
-                    disabled={loadingStock || selectableConsumables.length === 0}
+                    disabled={loadingStock || itemOptions.every((option) => option.disabled)}
                   >
                     <option value="" disabled>
                       Select item
                     </option>
-                    {selectableConsumables.map((item) => (
-                      <option key={item.id} value={item.item_name}>
-                        {isTechnician ? getTechnicianAssetLabel(item) : toDisplayItemName(item.item_name)}
+                    {itemOptions.map((option) => (
+                      <option key={option.key} value={option.value} disabled={option.disabled}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
