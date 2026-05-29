@@ -80,10 +80,35 @@ const workflowBadgeStyles: Record<WorkflowState, string> = {
 }
 
 const priorityBadgeStyles: Record<string, string> = {
-  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
-  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]",
-  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]",
-  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]",
+  Low: "!border-[#9CC4EA] !bg-[#DDEEFF] !text-[#2E6092]",
+  Medium: "!border-[#F4D88D] !bg-[#FFF5D8] !text-[#9A6A00]",
+  High: "!border-[#F0B06A] !bg-[#FFF0DD] !text-[#A65300]",
+  Critical: "!border-[#F4B5B5] !bg-[#FFE5E5] !text-[#A33939]",
+  Urgent: "!border-[#E89A9A] !bg-[#FFE1E1] !text-[#9F2D2D]",
+}
+
+function normalizePriorityLabel(priority: string): string {
+  const normalized = priority.trim().toLowerCase()
+  if (normalized === "urgent") {
+    return "Urgent"
+  }
+  if (normalized === "critical") {
+    return "Critical"
+  }
+  if (normalized === "high") {
+    return "High"
+  }
+  if (normalized === "medium") {
+    return "Medium"
+  }
+  if (normalized === "low") {
+    return "Low"
+  }
+  return priority
+}
+
+function getPriorityBadgeClass(priority: string): string {
+  return priorityBadgeStyles[normalizePriorityLabel(priority)] ?? priorityBadgeStyles.Low
 }
 
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
@@ -778,8 +803,9 @@ export function TechnicianTicketTable() {
                           <Badge
                             className={cn(
                               "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                              priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
-                              ticket.priority === "Critical" && "shadow-[0_0_0_1px_rgba(163,57,57,0.12)]"
+                              getPriorityBadgeClass(ticket.priority),
+                              ["Critical", "Urgent"].includes(normalizePriorityLabel(ticket.priority)) &&
+                                "shadow-[0_0_0_1px_rgba(163,57,57,0.12)]"
                             )}
                           >
                             {ticket.priority}
@@ -1010,7 +1036,7 @@ export function TechnicianTicketTable() {
                     <Badge
                       className={cn(
                         "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                        priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+                        getPriorityBadgeClass(ticket.priority)
                       )}
                     >
                       {ticket.priority}
