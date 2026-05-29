@@ -263,7 +263,7 @@ export function EmployeeConsumableRequestPanel() {
           onClick={() => setActiveView("request")}
           className={getInterfaceTileClassName(
             activeView === "request",
-            "min-h-[72px] w-full px-5 py-3"
+            "w-full px-5 py-3"
           )}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "request", "text-base")}>
@@ -278,7 +278,7 @@ export function EmployeeConsumableRequestPanel() {
           onClick={() => setActiveView("history")}
           className={getInterfaceTileClassName(
             activeView === "history",
-            "min-h-[72px] w-full px-5 py-3"
+            "w-full px-5 py-3"
           )}
         >
           <p className={getInterfaceTileTitleClassName(activeView === "history", "text-base")}>
