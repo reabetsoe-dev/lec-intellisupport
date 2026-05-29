@@ -257,22 +257,36 @@ export function EmployeeConsumableRequestPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="mx-auto flex w-full max-w-[760px] flex-wrap justify-center gap-2">
+      <div className="mx-auto grid w-full max-w-[920px] grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => setActiveView("request")}
-          className={getInterfaceTileClassName(activeView === "request", "min-h-[76px] min-w-[220px] px-6 py-4")}
+          className={getInterfaceTileClassName(
+            activeView === "request",
+            "min-h-[108px] w-full px-6 py-5 sm:px-7 sm:py-6"
+          )}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "request")}>Request Consumable</p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>Submit a new request.</p>
+          <p className={getInterfaceTileTitleClassName(activeView === "request", "text-lg sm:text-xl")}>
+            Request Consumable
+          </p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "request", "mt-2 text-sm leading-5")}>
+            Submit a new request.
+          </p>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("history")}
-          className={getInterfaceTileClassName(activeView === "history", "min-h-[76px] min-w-[220px] px-6 py-4")}
+          className={getInterfaceTileClassName(
+            activeView === "history",
+            "min-h-[108px] w-full px-6 py-5 sm:px-7 sm:py-6"
+          )}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "history")}>My Consumable Requests</p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>Track decisions.</p>
+          <p className={getInterfaceTileTitleClassName(activeView === "history", "text-lg sm:text-xl")}>
+            My Consumable Requests
+          </p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "history", "mt-2 text-sm leading-5")}>
+            Track decisions.
+          </p>
         </button>
       </div>
 
