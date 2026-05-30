@@ -1001,9 +1001,7 @@ async function handleResponse<T>(response: Response, service: "backend" | "ai" |
       clearStoredAuthSession()
     }
 
-    const message = response.status === 401
-      ? getDefaultErrorMessage(response.status)
-      : contentType.includes("text/html")
+    const message = contentType.includes("text/html")
       ? getDefaultErrorMessage(response.status)
       : extractMessageFromPayload(payload) ?? getDefaultErrorMessage(response.status)
     throw new ApiError(message, {

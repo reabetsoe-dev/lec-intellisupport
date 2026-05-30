@@ -92,6 +92,7 @@ class Command(BaseCommand):
                     "role": payload["role"],
                     "branch": branch,
                     "password_hash": make_password(payload["password"]),
+                    "must_change_password": False,
                     "is_active": True,
                 },
             )
