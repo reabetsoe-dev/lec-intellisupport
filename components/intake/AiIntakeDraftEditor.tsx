@@ -1,12 +1,19 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { type TicketIntakeDraft, type TicketIntakeMode } from "@/lib/api"
 import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
 
 type AiIntakeDraftEditorProps = {
+  open?: boolean
   draft: TicketIntakeDraft
   confidence: number
   intakeMode: TicketIntakeMode
@@ -14,6 +21,7 @@ type AiIntakeDraftEditorProps = {
   submitting: boolean
   submitLabel: string
   onChange: (nextDraft: TicketIntakeDraft) => void
+  onOpenChange?: (open: boolean) => void
   onSubmit: () => void
 }
 
@@ -42,6 +50,7 @@ function confidenceMessage(mode: TicketIntakeMode, confidence: number): string {
 }
 
 export function AiIntakeDraftEditor({
+  open,
   draft,
   confidence,
   intakeMode,
@@ -49,14 +58,12 @@ export function AiIntakeDraftEditor({
   submitting,
   submitLabel,
   onChange,
+  onOpenChange,
   onSubmit,
 }: AiIntakeDraftEditorProps) {
-  return (
-    <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
-      <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-        <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Ticket Draft Preview</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 px-5 py-5">
+  const content = (
+    <>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
         <div className={`rounded-lg border px-4 py-3 text-sm ${confidenceBannerClass(intakeMode)}`}>
           {confidenceMessage(intakeMode, confidence)}
         </div>
@@ -199,18 +206,44 @@ export function AiIntakeDraftEditor({
             />
           </div>
         </div>
+      </div>
 
-        <div className="flex justify-center">
-          <Button
-            type="button"
-            disabled={submitting}
-            onClick={onSubmit}
-            className="h-10 w-full max-w-[280px] rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8] focus-visible:ring-2 focus-visible:ring-[#0072CE]/40 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {submitting ? "Submitting..." : submitLabel}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="flex justify-center border-t border-[#0072CE]/15 px-5 py-4">
+        <Button
+          type="button"
+          disabled={submitting}
+          onClick={onSubmit}
+          className="h-10 w-full max-w-[280px] rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8] focus-visible:ring-2 focus-visible:ring-[#0072CE]/40 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {submitting ? "Submitting..." : submitLabel}
+        </Button>
+      </div>
+    </>
+  )
+
+  if (open === undefined || !onOpenChange) {
+    return (
+      <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Ticket Draft Preview</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 p-0">{content}</CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-3xl flex-col overflow-hidden border-[#0072CE]/25 bg-white p-0 [&>button]:hidden"
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="border-b border-[#0072CE]/15 px-5 py-4">
+          <DialogTitle className="text-base font-semibold text-[#0B1F3A]">AI Ticket Draft Preview</DialogTitle>
+        </DialogHeader>
+        {content}
+      </DialogContent>
+    </Dialog>
   )
 }

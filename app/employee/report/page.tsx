@@ -47,6 +47,7 @@ export default function EmployeeReportPage() {
   const [conversation, setConversation] = useState<IntakeMessage[]>([])
   const [draftResponse, setDraftResponse] = useState<TicketIntakeDraftResponse | null>(null)
   const [draft, setDraft] = useState<TicketIntakeDraft>(emptyDraft)
+  const [draftDialogOpen, setDraftDialogOpen] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [shouldReturnAfterDialog, setShouldReturnAfterDialog] = useState(false)
@@ -113,14 +114,17 @@ export default function EmployeeReportPage() {
     })
   }
 
-  const handleAnalyze = async () => {
+  const handleCreateDraftFromText = async (
+    rawMessage: string,
+    options?: { clearEmployeeMessage?: boolean }
+  ) => {
     const user = getStoredUserSession()
     if (!user) {
       showResultDialog("error", "Session expired. Please login again.")
       return
     }
 
-    const trimmedMessage = message.trim()
+    const trimmedMessage = rawMessage.trim()
     if (!trimmedMessage) {
       showResultDialog("error", "Describe the issue before requesting an AI draft.")
       return
@@ -141,7 +145,10 @@ export default function EmployeeReportPage() {
       ])
       setDraftResponse(payload)
       setDraft(payload.draft)
-      setMessage("")
+      setDraftDialogOpen(true)
+      if (options?.clearEmployeeMessage) {
+        setMessage("")
+      }
     } catch (draftError) {
       showResultDialog(
         "error",
@@ -150,6 +157,10 @@ export default function EmployeeReportPage() {
     } finally {
       setAnalyzing(false)
     }
+  }
+
+  const handleAnalyze = async () => {
+    await handleCreateDraftFromText(message, { clearEmployeeMessage: true })
   }
 
   const handleSubmit = async () => {
@@ -196,6 +207,7 @@ export default function EmployeeReportPage() {
         ticket.routing_note ?? `Ticket #${ticket.id} created and auto-routed.`,
         true
       )
+      setDraftDialogOpen(false)
       setDraftResponse(null)
       setDraft(emptyDraft)
       setConversation([])
@@ -229,17 +241,11 @@ export default function EmployeeReportPage() {
         description="Describe the issue in natural language, let AI draft the ticket, then confirm the final version before submission."
       />
 
-      <AssetFaultQrScanner />
-
       <Card className="mx-auto w-full max-w-[900px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Conversational Intake</CardTitle>
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Conversational Intake</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
-          <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
-            Tell the system what happened, what is affected, and the business impact. The draft below will stay editable before submission.
-          </div>
-
           <div className="space-y-2">
             <label htmlFor="fault-intake-message" className="text-sm font-medium text-[#0B1F3A]">
               Describe the issue
@@ -260,7 +266,7 @@ export default function EmployeeReportPage() {
               disabled={analyzing}
               className="h-10 rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8] focus-visible:ring-2 focus-visible:ring-[#0072CE]/40 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {analyzing ? "Building Draft..." : "Create AI Draft"}
+              {analyzing ? "Building Draft..." : "send"}
             </Button>
           </div>
 
@@ -283,8 +289,11 @@ export default function EmployeeReportPage() {
         </CardContent>
       </Card>
 
+      <AssetFaultQrScanner />
+
       {draftResponse ? (
         <AiIntakeDraftEditor
+          open={draftDialogOpen}
           draft={draft}
           confidence={draftResponse.confidence}
           intakeMode={draftResponse.intake_mode}
@@ -292,6 +301,7 @@ export default function EmployeeReportPage() {
           submitting={submitting}
           submitLabel="Confirm and Submit Ticket"
           onChange={setDraft}
+          onOpenChange={setDraftDialogOpen}
           onSubmit={() => void handleSubmit()}
         />
       ) : null}
