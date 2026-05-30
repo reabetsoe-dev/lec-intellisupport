@@ -21,6 +21,7 @@ from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError
+from django.http import HttpResponse
 from django.db.models.deletion import ProtectedError
 from django.db.models import Count, Q, Sum
 from rest_framework import status
@@ -49,6 +50,7 @@ from .models import (
     TicketMaterialRequest,
     User,
     UserInvite,
+    WhatsAppInboundMessage,
 )
 from .sla_config import (
     ACCEPTANCE_SLA_MINUTES,
@@ -63,6 +65,7 @@ AI_INTAKE_CONFIDENCE_DIRECT = 0.8
 AI_INTAKE_CONFIDENCE_FOLLOW_UP = 0.5
 DEPARTMENT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Department:\s*([^\n\r]+)", re.IGNORECASE)
 BUSINESS_IMPACT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Business Impact:\s*([^\n\r]+)", re.IGNORECASE)
+EMPLOYEE_ID_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Employee ID:\s*(\d+)", re.IGNORECASE)
 CORE_AI_CATEGORIES = {
     Technician.SKILL_HARDWARE,
     Technician.SKILL_SOFTWARE,
@@ -2119,8 +2122,9 @@ def _user_to_dict(user: User) -> dict:
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "phone_number": user.phone_number,
         "branch": user.branch,
-        "department": user.department,
+        "department": _infer_user_department(user),
         "role": user.role,
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,
@@ -2163,6 +2167,31 @@ def _normalize_optional_email(value: object, *, required: bool = False, field_na
     except ValidationError as exc:
         raise ValidationError(f"{field_name} must be a valid email address.") from exc
     return normalized
+
+
+def _normalize_phone_number(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    if text.lower().startswith("whatsapp:"):
+        text = text.split(":", 1)[1]
+
+    digits = re.sub(r"\D+", "", text)
+    if digits.startswith("00"):
+        digits = digits[2:]
+    return f"+{digits}" if digits else ""
+
+
+def _phone_number_is_in_use(phone_number: str, *, exclude_user_id: int | None = None) -> bool:
+    normalized = _normalize_phone_number(phone_number)
+    if not normalized:
+        return False
+
+    queryset = User.objects.filter(phone_number=normalized)
+    if exclude_user_id is not None:
+        queryset = queryset.exclude(id=exclude_user_id)
+    return queryset.exists()
 
 
 def _resolve_technician_notification_email(technician: Technician) -> str:
@@ -2702,6 +2731,13 @@ def login_view(request):
             "id": user.id,
             "name": user.name,
             "role": user.role,
+            "phone_number": user.phone_number,
+            "branch": user.branch if user.role != User.ROLE_TECHNICIAN else TECHNICIAN_FIXED_BRANCH,
+            "department": (
+                TECHNICIAN_FIXED_DEPARTMENT
+                if user.role == User.ROLE_TECHNICIAN
+                else _infer_user_department(user)
+            ),
             "must_change_password": user.must_change_password,
             "token": issue_auth_token(user),
         },
@@ -2710,20 +2746,48 @@ def login_view(request):
 
 
 @api_view(["POST"])
+@authentication_classes([CachedBearerAuthentication])
 def technician_checkpoint_view(request):
     email = str(request.data.get("email", "")).strip()
     password = str(request.data.get("password", ""))
     action = _normalize_technician_checkpoint_action(request.data.get("action"))
 
-    if not email or not password or not action:
+    if not action:
         return Response(
-            {"message": "email, password, and a valid action are required."},
+            {"message": "A valid action is required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    user = _find_active_user_for_login(email, role=User.ROLE_TECHNICIAN)
-    if not user:
-        return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+    authenticated_user = request.user if isinstance(getattr(request, "user", None), User) else None
+    has_direct_credentials = bool(email or password)
+
+    if has_direct_credentials:
+        if not email or not password:
+            return Response(
+                {"message": "email and password are required when using technician credentials."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = _find_active_user_for_login(email, role=User.ROLE_TECHNICIAN)
+        if not user:
+            return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not check_password(password, user.password_hash):
+            return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+    else:
+        if not authenticated_user:
+            return Response(
+                {"message": "email and password are required unless you are signed in as a technician."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if authenticated_user.role != User.ROLE_TECHNICIAN:
+            return Response(
+                {"message": "Only technician accounts can check in or check out."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = authenticated_user
 
     if user.must_change_password:
         return Response(
@@ -2735,9 +2799,6 @@ def technician_checkpoint_view(request):
             },
             status=status.HTTP_403_FORBIDDEN,
         )
-
-    if not check_password(password, user.password_hash):
-        return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
     technician = Technician.objects.select_related("user").filter(user=user).first()
     if not technician:
@@ -3058,53 +3119,36 @@ def business_hours_default_view(request):
     return Response(_business_hours_to_dict(refreshed), status=status.HTTP_200_OK)
 
 
-@api_view(["GET", "POST"])
-def tickets_collection_view(request):
-    if request.method == "GET":
-        employee_id = request.query_params.get("employee_id")
-        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
-        if employee_id:
-            queryset = queryset.filter(employee_id=employee_id)
-        return Response(
-            [_ticket_to_dict(ticket, include_escalation_context=True) for ticket in queryset],
-            status=status.HTTP_200_OK,
-        )
-
-    title = str(request.data.get("title", "")).strip()
-    description = str(request.data.get("description", "")).strip()
-    category_hint = str(request.data.get("category", "")).strip()
-    priority_hint = str(request.data.get("priority", "")).strip()
-    location = str(request.data.get("location", "")).strip()
-    department = str(request.data.get("department", "")).strip()
-    asset = str(request.data.get("asset", "")).strip()
-    impact = str(request.data.get("impact", "")).strip()
-    employee_id = request.data.get("employee_id")
-    caller_name = str(request.data.get("caller_name", "")).strip()
-    logged_by_admin_id = request.data.get("logged_by_admin_id")
-    reporter_reviewed_problem = _to_optional_bool(request.data.get("reporter_reviewed_problem"))
+def _create_ticket_from_intake_data(data: dict) -> tuple[dict, int]:
+    title = str(data.get("title", "")).strip()
+    description = str(data.get("description", "")).strip()
+    category_hint = str(data.get("category", "")).strip()
+    priority_hint = str(data.get("priority", "")).strip()
+    location = str(data.get("location", "")).strip()
+    department = str(data.get("department", "")).strip()
+    asset = str(data.get("asset", "")).strip()
+    impact = str(data.get("impact", "")).strip()
+    employee_id = data.get("employee_id")
+    caller_name = str(data.get("caller_name", "")).strip()
+    logged_by_admin_id = data.get("logged_by_admin_id")
+    reporter_reviewed_problem = _to_optional_bool(data.get("reporter_reviewed_problem"))
 
     if not title or not description or not employee_id:
-        return Response(
-            {"message": "title, description, and employee_id are required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return {"message": "title, description, and employee_id are required."}, status.HTTP_400_BAD_REQUEST
     if reporter_reviewed_problem is not True:
-        return Response(
-            {"message": "Reporter must review the problem details before submitting."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return {"message": "Reporter must review the problem details before submitting."}, status.HTTP_400_BAD_REQUEST
 
     employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
     if not employee:
-        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+        return {"message": "Employee not found."}, status.HTTP_404_NOT_FOUND
 
     logged_by_admin = None
     if logged_by_admin_id not in (None, ""):
         logged_by_admin = User.objects.filter(id=logged_by_admin_id, role=User.ROLE_ADMIN_FAULT, is_active=True).first()
         if not logged_by_admin:
-            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+            return {"message": "Admin Fault user not found."}, status.HTTP_404_NOT_FOUND
         if not caller_name:
-            return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
+            return {"message": "caller_name is required when admin logs a call."}, status.HTTP_400_BAD_REQUEST
 
     provided_category = _normalize_ai_ticket_category(category_hint)
     auto_category, triage_skill_domain = _auto_ticket_category(
@@ -3247,7 +3291,428 @@ def tickets_collection_view(request):
                 f"{triage_note} No technicians are currently available. "
                 "Your report will be assigned automatically once a technician becomes available."
             )
-    return Response(payload, status=status.HTTP_201_CREATED)
+    return payload, status.HTTP_201_CREATED
+
+
+def _plain_request_payload(data) -> dict:
+    if hasattr(data, "dict"):
+        return dict(data.dict())
+    if isinstance(data, dict):
+        return dict(data)
+    return {}
+
+
+def _extract_meta_text_body(message: dict) -> str:
+    message_type = str(message.get("type", "")).strip().lower()
+    if message_type == "text" and isinstance(message.get("text"), dict):
+        return str(message["text"].get("body", "")).strip()
+    if message_type == "button" and isinstance(message.get("button"), dict):
+        return str(message["button"].get("text", "")).strip()
+    if message_type == "interactive" and isinstance(message.get("interactive"), dict):
+        interactive = message["interactive"]
+        button_reply = interactive.get("button_reply")
+        if isinstance(button_reply, dict):
+            return str(button_reply.get("title", "")).strip()
+        list_reply = interactive.get("list_reply")
+        if isinstance(list_reply, dict):
+            return str(list_reply.get("title", "")).strip()
+    return ""
+
+
+def _extract_meta_whatsapp_messages(payload: dict) -> list[dict]:
+    extracted_messages: list[dict] = []
+    entries = payload.get("entry")
+    if not isinstance(entries, list):
+        return extracted_messages
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        changes = entry.get("changes")
+        if not isinstance(changes, list):
+            continue
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+
+            contacts_by_wa_id: dict[str, str] = {}
+            contacts = value.get("contacts")
+            if isinstance(contacts, list):
+                for contact in contacts:
+                    if not isinstance(contact, dict):
+                        continue
+                    wa_id = str(contact.get("wa_id", "")).strip()
+                    profile = contact.get("profile")
+                    profile_name = str(profile.get("name", "")).strip() if isinstance(profile, dict) else ""
+                    if wa_id and profile_name:
+                        contacts_by_wa_id[wa_id] = profile_name
+
+            messages = value.get("messages")
+            if not isinstance(messages, list):
+                continue
+            for message in messages:
+                if not isinstance(message, dict):
+                    continue
+                message_text = _extract_meta_text_body(message)
+                if not message_text:
+                    continue
+                sender = str(message.get("from", "")).strip()
+                extracted_messages.append(
+                    {
+                        "provider": "meta",
+                        "provider_message_id": str(message.get("id", "")).strip(),
+                        "sender_phone": _normalize_phone_number(sender),
+                        "sender_name": contacts_by_wa_id.get(sender, ""),
+                        "message_text": message_text,
+                        "raw_payload": payload,
+                    }
+                )
+
+    return extracted_messages
+
+
+def _extract_twilio_whatsapp_message(payload: dict) -> dict | None:
+    has_twilio_shape = any(key in payload for key in ("MessageSid", "SmsMessageSid", "WaId", "Body", "From"))
+    if not has_twilio_shape:
+        return None
+
+    message_text = str(payload.get("Body", "")).strip()
+    sender_phone = _normalize_phone_number(payload.get("From", payload.get("WaId", "")))
+    if not message_text or not sender_phone:
+        return None
+
+    return {
+        "provider": "twilio",
+        "provider_message_id": str(payload.get("MessageSid") or payload.get("SmsMessageSid") or "").strip(),
+        "sender_phone": sender_phone,
+        "sender_name": str(payload.get("ProfileName", "")).strip(),
+        "message_text": message_text,
+        "raw_payload": payload,
+    }
+
+
+def _extract_generic_whatsapp_message(payload: dict) -> dict | None:
+    message_text = str(
+        payload.get("message")
+        or payload.get("text")
+        or payload.get("body")
+        or payload.get("Body")
+        or ""
+    ).strip()
+    sender_phone = _normalize_phone_number(
+        payload.get("from")
+        or payload.get("phone")
+        or payload.get("sender")
+        or payload.get("sender_phone")
+        or payload.get("From")
+        or ""
+    )
+    if not message_text or not sender_phone:
+        return None
+
+    return {
+        "provider": str(payload.get("provider", "generic")).strip().lower() or "generic",
+        "provider_message_id": str(payload.get("message_id") or payload.get("id") or "").strip(),
+        "sender_phone": sender_phone,
+        "sender_name": str(payload.get("sender_name") or payload.get("profile_name") or "").strip(),
+        "message_text": message_text,
+        "employee_id": payload.get("employee_id"),
+        "raw_payload": payload,
+    }
+
+
+def _extract_whatsapp_messages(payload: dict) -> list[dict]:
+    twilio_message = _extract_twilio_whatsapp_message(payload)
+    if twilio_message:
+        return [twilio_message]
+
+    meta_messages = _extract_meta_whatsapp_messages(payload)
+    if meta_messages:
+        return meta_messages
+
+    generic_message = _extract_generic_whatsapp_message(payload)
+    return [generic_message] if generic_message else []
+
+
+def _extract_employee_id_from_message(message: str) -> int | None:
+    match = EMPLOYEE_ID_LINE_PATTERN.search(str(message or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_whatsapp_employee(inbound_message: dict) -> User | None:
+    raw_employee_id = inbound_message.get("employee_id") or _extract_employee_id_from_message(
+        str(inbound_message.get("message_text", ""))
+    )
+    if raw_employee_id not in (None, "", "null"):
+        try:
+            employee_id = int(raw_employee_id)
+        except (TypeError, ValueError):
+            employee_id = None
+        if employee_id is not None:
+            employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE, is_active=True).first()
+            if employee:
+                return employee
+
+    sender_phone = _normalize_phone_number(inbound_message.get("sender_phone", ""))
+    if not sender_phone:
+        return None
+    return User.objects.filter(
+        phone_number=sender_phone,
+        role=User.ROLE_EMPLOYEE,
+        is_active=True,
+    ).first()
+
+
+def _fallback_whatsapp_draft(message: str, employee: User) -> dict:
+    cleaned_message = re.sub(r"\s+", " ", str(message or "")).strip()
+    first_sentence = re.split(r"(?<=[.!?])\s+", cleaned_message, maxsplit=1)[0].strip(" -")
+    title = first_sentence[:120] if first_sentence else "WhatsApp Fault Report"
+    category, _domain = _auto_ticket_category(title, cleaned_message)
+    priority = _auto_ticket_priority(title, cleaned_message)
+    return {
+        "title": title,
+        "description": cleaned_message,
+        "category": category,
+        "priority": priority,
+        "asset": "",
+        "impact": "",
+        "branch": employee.branch,
+        "department": _infer_user_department(employee),
+    }
+
+
+def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict, *, ai_confidence: float | None) -> str:
+    cleaned_description = str(description or "").strip()
+    original_message = str(inbound_message.get("message_text", "")).strip()
+    metadata_lines = [
+        "Intake Channel: WhatsApp",
+        f"WhatsApp Sender: {inbound_message.get('sender_phone', '')}",
+    ]
+    sender_name = str(inbound_message.get("sender_name", "")).strip()
+    if sender_name:
+        metadata_lines.append(f"WhatsApp Sender Name: {sender_name}")
+    if ai_confidence is not None:
+        metadata_lines.append(f"AI Intake Confidence: {round(ai_confidence * 100)}%")
+    if original_message and original_message.lower() not in cleaned_description.lower():
+        metadata_lines.extend(["Original WhatsApp Message:", original_message])
+    return f"{cleaned_description}\n\n" + "\n".join(metadata_lines)
+
+
+def _build_whatsapp_ticket_data(inbound_message: dict, employee: User) -> tuple[dict, str]:
+    message_text = str(inbound_message.get("message_text", "")).strip()
+    ai_confidence: float | None = None
+    draft_source = "ai"
+    try:
+        ai_payload = _build_ai_intake_response(
+            message_text,
+            employee,
+            extra_context={
+                "branch": employee.branch,
+                "department": _infer_user_department(employee),
+                "caller_name": employee.name,
+                "channel": "whatsapp",
+            },
+        )
+        draft = ai_payload["draft"]
+        ai_confidence = float(ai_payload.get("confidence", 0.0))
+    except (ConnectionError, RuntimeError):
+        draft = _fallback_whatsapp_draft(message_text, employee)
+        draft_source = "fallback"
+
+    description = _append_whatsapp_ticket_metadata(
+        str(draft.get("description", message_text)).strip() or message_text,
+        inbound_message,
+        ai_confidence=ai_confidence,
+    )
+    return {
+        "title": str(draft.get("title", "")).strip() or "WhatsApp Fault Report",
+        "description": description,
+        "category": str(draft.get("category", "")).strip(),
+        "priority": str(draft.get("priority", "")).strip(),
+        "location": str(draft.get("branch", "")).strip() or employee.branch,
+        "department": str(draft.get("department", "")).strip(),
+        "asset": str(draft.get("asset", "")).strip(),
+        "impact": str(draft.get("impact", "")).strip(),
+        "employee_id": employee.id,
+        "caller_name": employee.name,
+        "reporter_reviewed_problem": True,
+    }, draft_source
+
+
+def _process_whatsapp_inbound_message(inbound_message: dict) -> tuple[dict, int]:
+    provider = str(inbound_message.get("provider", "")).strip().lower()
+    provider_message_id = str(inbound_message.get("provider_message_id", "")).strip()
+    sender_phone = _normalize_phone_number(inbound_message.get("sender_phone", ""))
+    message_text = str(inbound_message.get("message_text", "")).strip()
+
+    if not sender_phone or not message_text:
+        return {"message": "WhatsApp sender phone and message text are required."}, status.HTTP_400_BAD_REQUEST
+
+    inbound_record = None
+    if provider and provider_message_id:
+        inbound_record = WhatsAppInboundMessage.objects.select_related("ticket").filter(
+            provider=provider,
+            provider_message_id=provider_message_id,
+        ).first()
+        if inbound_record and inbound_record.ticket_id:
+            payload = _ticket_to_dict(inbound_record.ticket)
+            payload["whatsapp_status"] = WhatsAppInboundMessage.STATUS_DUPLICATE
+            payload["message"] = "Duplicate WhatsApp message ignored; ticket already exists."
+            return payload, status.HTTP_200_OK
+
+    if inbound_record is None:
+        inbound_record = WhatsAppInboundMessage.objects.create(
+            provider=provider,
+            provider_message_id=provider_message_id,
+            sender_phone=sender_phone,
+            sender_name=str(inbound_message.get("sender_name", "")).strip(),
+            message_text=message_text,
+            raw_payload=inbound_message.get("raw_payload") if isinstance(inbound_message.get("raw_payload"), dict) else {},
+        )
+
+    employee = _resolve_whatsapp_employee({**inbound_message, "sender_phone": sender_phone})
+    if not employee:
+        inbound_record.status = WhatsAppInboundMessage.STATUS_NEEDS_REGISTRATION
+        inbound_record.error_message = "No active employee is registered with this WhatsApp phone number."
+        inbound_record.save(update_fields=["status", "error_message", "updated_at"])
+        return {
+            "message": "WhatsApp message received, but no active employee is registered with this phone number.",
+            "whatsapp_status": WhatsAppInboundMessage.STATUS_NEEDS_REGISTRATION,
+            "sender_phone": sender_phone,
+        }, status.HTTP_202_ACCEPTED
+
+    ticket_data, draft_source = _build_whatsapp_ticket_data({**inbound_message, "sender_phone": sender_phone}, employee)
+    ticket_payload, ticket_status = _create_ticket_from_intake_data(ticket_data)
+    if ticket_status != status.HTTP_201_CREATED:
+        inbound_record.employee = employee
+        inbound_record.status = WhatsAppInboundMessage.STATUS_FAILED
+        inbound_record.error_message = str(ticket_payload.get("message", "Failed to create ticket."))
+        inbound_record.save(update_fields=["employee", "status", "error_message", "updated_at"])
+        return {
+            "message": "WhatsApp message received, but ticket creation failed.",
+            "whatsapp_status": WhatsAppInboundMessage.STATUS_FAILED,
+            "details": ticket_payload,
+        }, status.HTTP_202_ACCEPTED
+
+    ticket = Ticket.objects.filter(id=ticket_payload.get("id")).first()
+    inbound_record.employee = employee
+    inbound_record.ticket = ticket
+    inbound_record.status = WhatsAppInboundMessage.STATUS_TICKET_CREATED
+    inbound_record.error_message = ""
+    inbound_record.save(update_fields=["employee", "ticket", "status", "error_message", "updated_at"])
+
+    ticket_payload["message"] = f"WhatsApp fault converted into Ticket #{ticket_payload.get('id')}."
+    ticket_payload["whatsapp_status"] = WhatsAppInboundMessage.STATUS_TICKET_CREATED
+    ticket_payload["whatsapp_draft_source"] = draft_source
+    return ticket_payload, status.HTTP_201_CREATED
+
+
+def _whatsapp_webhook_secret_is_valid(request) -> bool:
+    expected_secret = str(getattr(settings, "WHATSAPP_WEBHOOK_SECRET", "")).strip()
+    if not expected_secret:
+        return True
+
+    header_secret = str(request.headers.get("X-LEC-Webhook-Secret", "")).strip()
+    bearer_prefix = "Bearer "
+    auth_header = str(request.headers.get("Authorization", "")).strip()
+    bearer_secret = auth_header[len(bearer_prefix):].strip() if auth_header.startswith(bearer_prefix) else ""
+    return header_secret == expected_secret or bearer_secret == expected_secret
+
+
+@api_view(["GET"])
+def whatsapp_status_view(request):
+    verify_token = str(getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")).strip()
+    webhook_secret = str(getattr(settings, "WHATSAPP_WEBHOOK_SECRET", "")).strip()
+    latest_inbound = WhatsAppInboundMessage.objects.order_by("-created_at").first()
+    latest_payload = None
+    if latest_inbound:
+        latest_payload = {
+            "status": latest_inbound.status,
+            "sender_phone": latest_inbound.sender_phone,
+            "ticket_id": latest_inbound.ticket_id,
+            "error_message": latest_inbound.error_message,
+            "created_at": latest_inbound.created_at.isoformat(),
+        }
+
+    return Response(
+        {
+            "verify_token_configured": bool(verify_token),
+            "verify_token": verify_token if settings.DEBUG else "",
+            "webhook_secret_required": bool(webhook_secret),
+            "registered_employee_sender_count": User.objects.filter(
+                role=User.ROLE_EMPLOYEE,
+                is_active=True,
+            )
+            .exclude(phone_number="")
+            .count(),
+            "latest_inbound": latest_payload,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "POST"])
+def whatsapp_incoming_view(request):
+    if request.method == "GET":
+        verify_token = str(getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")).strip()
+        mode = str(request.query_params.get("hub.mode", "")).strip()
+        token = str(request.query_params.get("hub.verify_token", "")).strip()
+        challenge = str(request.query_params.get("hub.challenge", "")).strip()
+        if not verify_token:
+            return Response({"message": "WHATSAPP_WEBHOOK_VERIFY_TOKEN is not configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if mode == "subscribe" and token == verify_token and challenge:
+            return HttpResponse(challenge, content_type="text/plain", status=status.HTTP_200_OK)
+        return Response({"message": "WhatsApp webhook verification failed."}, status=status.HTTP_403_FORBIDDEN)
+
+    if not _whatsapp_webhook_secret_is_valid(request):
+        return Response({"message": "Invalid WhatsApp webhook secret."}, status=status.HTTP_403_FORBIDDEN)
+
+    payload = _plain_request_payload(request.data)
+    inbound_messages = _extract_whatsapp_messages(payload)
+    if not inbound_messages:
+        return Response({"message": "No supported WhatsApp text message found."}, status=status.HTTP_200_OK)
+
+    results = []
+    for inbound_message in inbound_messages:
+        result, result_status = _process_whatsapp_inbound_message(inbound_message)
+        results.append({"status": result_status, "result": result})
+
+    first_provider = str(inbound_messages[0].get("provider", "")).lower()
+    accepts_json = "application/json" in str(request.headers.get("Accept", "")).lower()
+    if first_provider == "twilio" and not accepts_json:
+        return HttpResponse("<Response></Response>", content_type="application/xml", status=status.HTTP_200_OK)
+
+    return Response(
+        {
+            "message": "WhatsApp intake processed.",
+            "results": results,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "POST"])
+def tickets_collection_view(request):
+    if request.method == "GET":
+        employee_id = request.query_params.get("employee_id")
+        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        return Response(
+            [_ticket_to_dict(ticket, include_escalation_context=True) for ticket in queryset],
+            status=status.HTTP_200_OK,
+        )
+
+    payload, response_status = _create_ticket_from_intake_data(request.data)
+    return Response(payload, status=response_status)
 
 
 @api_view(["GET"])
@@ -3737,6 +4202,7 @@ def employees_collection_view(request):
 
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
+    phone_number = _normalize_phone_number(request.data.get("phone_number", ""))
     branch = str(request.data.get("branch", "")).strip()
     department = str(request.data.get("department", "")).strip()
     raw_is_active = request.data.get("is_active", True)
@@ -3753,12 +4219,18 @@ def employees_collection_view(request):
 
     if User.objects.filter(email=email).exists():
         return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+    if _phone_number_is_in_use(phone_number):
+        return Response(
+            {"message": "A user with this WhatsApp phone number already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     try:
         with transaction.atomic():
             user = User.objects.create(
                 name=name,
                 email=email,
+                phone_number=phone_number,
                 branch=branch,
                 department=department,
                 password_hash=make_password(secrets.token_urlsafe(24)),
@@ -3804,6 +4276,16 @@ def employee_detail_view(request, employee_id: int):
                 return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
             employee.email = email
             updated_fields.append("email")
+
+        if "phone_number" in request.data:
+            phone_number = _normalize_phone_number(request.data.get("phone_number", ""))
+            if _phone_number_is_in_use(phone_number, exclude_user_id=employee.id):
+                return Response(
+                    {"message": "A user with this WhatsApp phone number already exists."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            employee.phone_number = phone_number
+            updated_fields.append("phone_number")
 
         if "branch" in request.data:
             employee.branch = str(request.data.get("branch", "")).strip()

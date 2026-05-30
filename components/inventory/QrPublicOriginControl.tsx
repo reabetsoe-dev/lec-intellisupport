@@ -29,8 +29,8 @@ export function QrPublicOriginControl({ origin, onOriginChange }: QrPublicOrigin
 
   const applyDraftOrigin = () => {
     const normalizedOrigin = normalizeQrOrigin(draftOrigin)
-    if (!normalizedOrigin || !normalizedOrigin.startsWith("https://") || isLocalQrOrigin(normalizedOrigin)) {
-      setError("Enter a valid Cloudflare HTTPS URL.")
+    if (!normalizedOrigin || isLocalQrOrigin(normalizedOrigin)) {
+      setError("Enter a reachable phone URL, for example http://192.168.x.x:3000.")
       return
     }
 
@@ -70,7 +70,7 @@ export function QrPublicOriginControl({ origin, onOriginChange }: QrPublicOrigin
               }
             }}
             className="h-10 border-[#76AEE3] bg-white text-[#0B1F3A]"
-            placeholder="https://your-tunnel.trycloudflare.com"
+            placeholder="http://192.168.x.x:3000 or https://your-tunnel.trycloudflare.com"
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -87,7 +87,7 @@ export function QrPublicOriginControl({ origin, onOriginChange }: QrPublicOrigin
       {error ? <p className="mt-2 text-sm text-[#A83A3A]">{error}</p> : null}
       <p className={originIsLocal ? "mt-2 text-sm font-medium text-[#A83A3A]" : "mt-2 text-sm text-[#25537F]"}>
         {originIsLocal
-          ? "Current QR labels are still local. Paste the Cloudflare tunnel URL before printing."
+          ? "Current QR labels are still local. Use Auto or enter a phone-reachable URL before printing."
           : `Current QR labels use: ${origin}`}
       </p>
     </div>

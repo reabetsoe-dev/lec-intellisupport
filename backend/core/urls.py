@@ -7,7 +7,6 @@ from .communication_views import (
     ticket_messages_view,
     ticket_participants_view,
 )
-from .health import health_view
 from .views import (
     ai_intake_draft_view,
     ai_service_chat_proxy_view,
@@ -42,10 +41,11 @@ from .views import (
     technician_checkpoint_view,
     tickets_collection_view,
     voice_to_ticket_view,
+    whatsapp_incoming_view,
+    whatsapp_status_view,
 )
 
 urlpatterns = [
-    path("health", health_view),
     path("auth/login", login_view),
     path("auth/technician-checkpoint", technician_checkpoint_view),
     path("auth/forgot-password", forgot_password_view),
@@ -55,6 +55,8 @@ urlpatterns = [
     path("ai-intake/draft", ai_intake_draft_view),
     path("ai-service/chat", ai_service_chat_proxy_view),
     path("voice-to-ticket", voice_to_ticket_view),
+    path("whatsapp/incoming", whatsapp_incoming_view),
+    path("whatsapp/status", whatsapp_status_view),
     path("business-hours/default", business_hours_default_view),
     path("tickets", tickets_collection_view),
     path("tickets/assigned/<int:technician_id>", assigned_tickets_view),

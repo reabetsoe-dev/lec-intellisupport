@@ -136,20 +136,6 @@ export default function AdminFaultTechnicianAccessPage() {
     }
   }, [])
 
-  const phoneUrlHost = (() => {
-    if (!phoneUrl.trim()) {
-      return ""
-    }
-
-    try {
-      return new URL(phoneUrl).hostname.trim().toLowerCase()
-    } catch {
-      return ""
-    }
-  })()
-
-  const isPhoneReachableQr = phoneUrlHost !== "" && phoneUrlHost !== "localhost" && phoneUrlHost !== "127.0.0.1"
-
   const handleDownloadQr = () => {
     const imageElement = qrContainerRef.current?.querySelector("img")
     if (imageElement?.src) {
@@ -233,45 +219,19 @@ export default function AdminFaultTechnicianAccessPage() {
             </div>
           </CardHeader>
           <CardContent className="px-6 pb-6">
-            <div className="rounded-3xl border border-[#D1E3F7] bg-[linear-gradient(180deg,#FDFEFF_0%,#F1F8FF_100%)] p-6 text-center">
+            <div className="flex justify-center rounded-3xl border border-[#D1E3F7] bg-[linear-gradient(180deg,#FDFEFF_0%,#F1F8FF_100%)] p-6 text-center">
               <div
                 ref={qrContainerRef}
-                className="mx-auto w-full max-w-[20rem] rounded-3xl border border-[#D8E6F5] bg-white p-4 shadow-[0_10px_24px_rgba(8,43,76,0.08)]"
+                aria-label={phoneUrl ? `Technician access QR for ${phoneUrl}` : "Technician access QR"}
+                className="w-full max-w-[24rem] rounded-2xl border border-[#D8E6F5] bg-white p-5 shadow-[0_10px_24px_rgba(8,43,76,0.08)]"
               >
                 {phoneUrl.trim() ? (
-                  <QrCodeSvg value={phoneUrl.trim()} size={320} className="mx-auto w-full max-w-[320px]" />
+                  <QrCodeSvg value={phoneUrl.trim()} size={384} className="mx-auto w-full max-w-[384px]" />
                 ) : (
-                  <div className="flex min-h-[20rem] items-center justify-center rounded-2xl border border-dashed border-[#C9DDF1] bg-[#F7FBFF] px-6 text-sm text-[#4F6F95]">
+                  <div className="flex min-h-[24rem] items-center justify-center rounded-2xl border border-dashed border-[#C9DDF1] bg-[#F7FBFF] px-6 text-sm text-[#4F6F95]">
                     Preparing phone QR...
                   </div>
                 )}
-              </div>
-
-              <div className="mx-auto mt-5 max-w-2xl space-y-3 text-left">
-                <div className="rounded-2xl border border-[#D8E6F5] bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#4F6F95]">
-                    Technician Phone Link
-                  </p>
-                  <a
-                    href={phoneUrl || "#"}
-                    className="mt-2 block break-all text-sm font-medium text-[#0A63B8] underline decoration-[#9BC4EA] underline-offset-4"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {phoneUrl || "Detecting phone-friendly link..."}
-                  </a>
-                  <p className="mt-2 text-xs text-[#4F6F95]">
-                    Technicians can scan this QR from a phone on the same network and sign in with technician credentials
-                    to check in or check out.
-                  </p>
-                </div>
-
-                {!isPhoneReachableQr ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    A phone-friendly network address was not detected yet. Start the frontend on the local network and
-                    reopen this page so the QR points to a reachable phone URL.
-                  </div>
-                ) : null}
               </div>
             </div>
           </CardContent>

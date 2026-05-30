@@ -51,6 +51,7 @@ export default function AdminFaultLogCallPage() {
   const [callNotes, setCallNotes] = useState("")
   const [draftResponse, setDraftResponse] = useState<TicketIntakeDraftResponse | null>(null)
   const [draft, setDraft] = useState<TicketIntakeDraft>(emptyDraft)
+  const [draftDialogOpen, setDraftDialogOpen] = useState(false)
   const [loadingEmployees, setLoadingEmployees] = useState(true)
   const [analyzingNotes, setAnalyzingNotes] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -113,6 +114,7 @@ export default function AdminFaultLogCallPage() {
   const applyDraftPayload = (payload: TicketIntakeDraftResponse) => {
     setDraftResponse(payload)
     setDraft(payload.draft)
+    setDraftDialogOpen(true)
   }
 
   const handleGenerateFromNotes = async () => {
@@ -197,6 +199,7 @@ export default function AdminFaultLogCallPage() {
         logged_by_admin_id: user.id,
       })
       showResultDialog("success", ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`, true)
+      setDraftDialogOpen(false)
       setCallNotes("")
       setDraftResponse(null)
       setDraft(emptyDraft)
@@ -306,6 +309,7 @@ export default function AdminFaultLogCallPage() {
 
       {draftResponse ? (
         <AiIntakeDraftEditor
+          open={draftDialogOpen}
           draft={draft}
           confidence={draftResponse.confidence}
           intakeMode={draftResponse.intake_mode}
@@ -313,6 +317,7 @@ export default function AdminFaultLogCallPage() {
           submitting={submitting}
           submitLabel="Confirm and Log Call"
           onChange={setDraft}
+          onOpenChange={setDraftDialogOpen}
           onSubmit={() => void handleSubmit()}
         />
       ) : null}

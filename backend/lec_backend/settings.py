@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
-from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,58 +53,20 @@ def _load_dotenv_file(path: Path) -> None:
 _load_dotenv_file(BASE_DIR / ".env")
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw_value = os.getenv(name)
-    if raw_value is None:
-        return default
-    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _csv_values(value: str) -> list[str]:
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def _database_from_url(database_url: str) -> dict:
-    try:
-        import dj_database_url
-    except ImportError as exc:
-        raise RuntimeError(
-            "DATABASE_URL is set, but dj-database-url is not installed. "
-            "Install backend/requirements.txt before starting the Django service."
-        ) from exc
-
-    return dj_database_url.config(default=database_url, conn_max_age=600)
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: don't run with debug turned on in production.
-DEBUG = _env_bool("DJANGO_DEBUG", default=not _env_bool("RENDER", default=False))
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = 'django-insecure-9u6g4zrav%ccvp(nhtkomi2t=j-+!r+c8)9hu96#x&u19i@1^a'
 
-# SECURITY WARNING: keep the secret key used in production secret.
-SECRET_KEY = (
-    os.getenv("SECRET_KEY")
-    or os.getenv("DJANGO_SECRET_KEY")
-    or "django-insecure-9u6g4zrav%ccvp(nhtkomi2t=j-+!r+c8)9hu96#x&u19i@1^a"
-)
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
 
-ALLOWED_HOSTS = _csv_values(os.getenv("DJANGO_ALLOWED_HOSTS", ""))
-if DEBUG:
-    ALLOWED_HOSTS.extend(["127.0.0.1", "localhost", "10.11.14.156"])
-render_external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
-if render_external_hostname:
-    ALLOWED_HOSTS.append(render_external_hostname)
-if not ALLOWED_HOSTS:
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
-ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
-
-CSRF_TRUSTED_ORIGINS = _csv_values(os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", ""))
-for origin in _csv_values(os.getenv("FRONTEND_BASE_URL", "") + "," + os.getenv("FRONTEND_APP_URL", "")):
-    parsed_origin = urlparse(origin if "://" in origin else f"https://{origin}")
-    if parsed_origin.scheme and parsed_origin.netloc:
-        CSRF_TRUSTED_ORIGINS.append(f"{parsed_origin.scheme}://{parsed_origin.netloc}")
-CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,10.11.14.156").split(",")
+    if host.strip()
+]
 
 
 # Application definition
@@ -132,9 +93,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-if not DEBUG:
-    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
-
 ROOT_URLCONF = 'lec_backend.urls'
 
 TEMPLATES = [
@@ -158,12 +116,9 @@ WSGI_APPLICATION = 'lec_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 #
-database_url = os.getenv("DATABASE_URL", "").strip()
-if database_url:
-    DATABASES = {
-        "default": _database_from_url(database_url),
-    }
-elif os.getenv("USE_POSTGRES", "0") == "1":
+# Default to local SQLite for development, and allow opting into Postgres
+# by setting USE_POSTGRES=1 and the DB_* environment variables.
+if os.getenv("USE_POSTGRES", "0") == "1":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -217,24 +172,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
-if not DEBUG:
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-
-if _env_bool("RENDER", default=False):
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+STATIC_URL = 'static/'
 
 # Email configuration (supports Gmail SMTP with app password)
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -249,9 +187,11 @@ DEFAULT_FROM_EMAIL = os.getenv(
     EMAIL_HOST_USER or "no-reply@lec-intellisupport.local",
 )
 
+WHATSAPP_WEBHOOK_VERIFY_TOKEN = os.getenv(
+    "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    "lec-whatsapp-verify-token" if DEBUG else "",
+).strip()
 WHATSAPP_WEBHOOK_SECRET = os.getenv("WHATSAPP_WEBHOOK_SECRET", "").strip()
-WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", WHATSAPP_WEBHOOK_SECRET).strip()
-WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "").strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

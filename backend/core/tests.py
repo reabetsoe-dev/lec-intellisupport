@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.hashers import make_password
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -5,7 +7,18 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .authentication import issue_auth_token
-from .models import BusinessHours, Notification, Technician, Ticket, User
+from .asset_return_reminders import send_due_asset_return_reminders
+from .models import (
+    BusinessHours,
+    Consumable,
+    ConsumableRequest,
+    Notification,
+    Technician,
+    Ticket,
+    TicketAssignmentHistory,
+    User,
+    WhatsAppInboundMessage,
+)
 
 
 DAY_KEYS = [
@@ -265,6 +278,36 @@ class TicketAutoAssignmentTests(TestCase):
         self.assertIn("Router down", mail.outbox[0].body)
         self.assertIn("/login", mail.outbox[0].body)
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        EMAIL_HOST_USER="noreply@example.com",
+        EMAIL_HOST_PASSWORD="app-password",
+        DEFAULT_FROM_EMAIL="noreply@example.com",
+    )
+    def test_due_asset_return_reminder_sends_for_approved_loan(self):
+        requester = self._create_user(
+            name="Loan User",
+            email="loan-user@example.com",
+            role=User.ROLE_EMPLOYEE,
+        )
+        request_item = ConsumableRequest.objects.create(
+            consumable=Consumable.objects.create(item_name="laptops", quantity=1),
+            employee=requester,
+            quantity=1,
+            assignment_type=ConsumableRequest.ASSIGNMENT_TYPE_LOAN,
+            status=ConsumableRequest.STATUS_APPROVED,
+            expected_return_date=timezone.localdate(),
+        )
+
+        result = send_due_asset_return_reminders(run_date=timezone.localdate())
+
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["loan-user@example.com"])
+        self.assertIn(f"CR-{request_item.id}", mail.outbox[0].body)
+        request_item.refresh_from_db()
+        self.assertIsNotNone(request_item.return_reminder_due_sent_at)
+
     def test_check_out_returns_confirmation_feedback(self):
         technician = self._create_technician(
             name="Checked Out Technician",
@@ -291,6 +334,31 @@ class TicketAutoAssignmentTests(TestCase):
         technician.refresh_from_db()
         self.assertFalse(technician.is_available)
         self.assertIsNotNone(technician.last_check_out_at)
+
+    def test_signed_in_technician_can_check_in_without_resubmitting_password(self):
+        technician = self._create_technician(
+            name="Dashboard Technician",
+            email="dashboard-tech@example.com",
+            is_available=False,
+            password="SafePassword123!",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_auth_token(technician.user)}")
+
+        checkpoint_response = self.client.post(
+            "/api/auth/technician-checkpoint",
+            {
+                "action": "check_in",
+            },
+            format="json",
+        )
+
+        self.assertEqual(checkpoint_response.status_code, 200)
+        self.assertEqual(checkpoint_response.data["action"], "check_in")
+        self.assertIn("checked in successfully", checkpoint_response.data["message"].lower())
+
+        technician.refresh_from_db()
+        self.assertTrue(technician.is_available)
+        self.assertIsNotNone(technician.last_check_in_at)
 
     def test_technician_solved_status_auto_assigns_next_waiting_ticket(self):
         technician = self._create_technician(
@@ -348,6 +416,208 @@ class TicketAutoAssignmentTests(TestCase):
         self.assertEqual(active_ticket.status, Ticket.STATUS_PENDING_REVIEW)
         self.assertEqual(queued_ticket.technician_id, technician.id)
         self.assertEqual(queued_ticket.status, Ticket.STATUS_PENDING)
+
+
+class WhatsAppIntakeTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.employee = User.objects.create(
+            name="WhatsApp Employee",
+            email="whatsapp.employee@example.com",
+            phone_number="+26662220000",
+            branch="Maseru HQ",
+            role=User.ROLE_EMPLOYEE,
+            password_hash=make_password("Password123!"),
+            is_active=True,
+        )
+        self.technician_user = User.objects.create(
+            name="Network Technician",
+            email="network.tech@example.com",
+            role=User.ROLE_TECHNICIAN,
+            password_hash=make_password("Password123!"),
+            is_active=True,
+        )
+        self.technician = Technician.objects.create(
+            user=self.technician_user,
+            skillset=Technician.SKILL_NETWORK,
+            is_available=True,
+        )
+        BusinessHours.objects.create(
+            name="Default Business Hours",
+            description="Test schedule",
+            timezone_name="Africa/Maseru",
+            groups=[BusinessHours.GROUP_ALL],
+            weekly_schedule=open_all_day_schedule(),
+            is_default=True,
+        )
+
+    def test_whatsapp_webhook_verification_uses_development_default_token(self):
+        response = self.client.get(
+            "/api/whatsapp/incoming",
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "lec-whatsapp-verify-token",
+                "hub.challenge": "meta-challenge-ok",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode(), "meta-challenge-ok")
+
+    def _ai_draft(self, message: str, context: dict | None = None) -> dict:
+        return {
+            "title": "Internet outage in finance",
+            "description": message,
+            "category": "Network",
+            "priority": "High",
+            "asset": "Wi-Fi",
+            "impact": "Finance team is blocked.",
+            "confidence": 0.91,
+        }
+
+    @patch("core.views._call_ai_service_json")
+    def test_twilio_whatsapp_message_creates_ticket_for_registered_employee(self, mock_ai):
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+266 6222 0000",
+                "Body": "Internet is down in finance and payroll cannot work.",
+                "MessageSid": "SM-WA-001",
+                "ProfileName": "WhatsApp Employee",
+            },
+            format="multipart",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ticket = Ticket.objects.get(employee=self.employee)
+        self.assertEqual(ticket.title, "Internet outage in finance")
+        self.assertEqual(ticket.category, "Network")
+        self.assertIn("Intake Channel: WhatsApp", ticket.description)
+        self.assertIn("WhatsApp Sender: +26662220000", ticket.description)
+        inbound = WhatsAppInboundMessage.objects.get(provider_message_id="SM-WA-001")
+        self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
+        self.assertEqual(inbound.ticket_id, ticket.id)
+
+    @patch("core.views._call_ai_service_json")
+    def test_twilio_whatsapp_message_without_json_accept_returns_twiml_ack(self, mock_ai):
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+26662220000",
+                "Body": "Internet is down in finance.",
+                "MessageSid": "SM-WA-TWIML",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/xml")
+        self.assertEqual(response.content.decode(), "<Response></Response>")
+        self.assertTrue(
+            WhatsAppInboundMessage.objects.filter(
+                provider_message_id="SM-WA-TWIML",
+                status=WhatsAppInboundMessage.STATUS_TICKET_CREATED,
+            ).exists()
+        )
+
+    @patch("core.views._call_ai_service_json")
+    def test_whatsapp_ticket_uses_manual_ticket_routing_and_notifications(self, mock_ai):
+        message = "Internet is down in finance and payroll cannot work."
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+
+        manual_response = self.client.post(
+            "/api/tickets",
+            {
+                "title": "Internet outage in finance",
+                "description": message,
+                "category": "Network",
+                "priority": "High",
+                "location": self.employee.branch,
+                "department": "",
+                "asset": "Wi-Fi",
+                "impact": "Finance team is blocked.",
+                "employee_id": self.employee.id,
+                "reporter_reviewed_problem": True,
+            },
+            format="json",
+        )
+        whatsapp_response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+26662220000",
+                "Body": message,
+                "MessageSid": "SM-WA-PARITY",
+            },
+            format="multipart",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(manual_response.status_code, 201)
+        self.assertEqual(whatsapp_response.status_code, 200)
+
+        manual_ticket = Ticket.objects.get(id=manual_response.data["id"])
+        whatsapp_ticket = WhatsAppInboundMessage.objects.select_related("ticket").get(
+            provider_message_id="SM-WA-PARITY"
+        ).ticket
+        self.assertIsNotNone(whatsapp_ticket)
+
+        for ticket in (manual_ticket, whatsapp_ticket):
+            self.assertEqual(ticket.employee_id, self.employee.id)
+            self.assertEqual(ticket.caller_name, self.employee.name)
+            self.assertEqual(ticket.category, "Network")
+            self.assertEqual(ticket.priority, "High")
+            self.assertEqual(ticket.location, self.employee.branch)
+            self.assertEqual(ticket.status, Ticket.STATUS_PENDING)
+            self.assertEqual(ticket.technician_id, self.technician.id)
+            self.assertTrue(ticket.reporter_reviewed_problem)
+            self.assertTrue(
+                TicketAssignmentHistory.objects.filter(
+                    ticket=ticket,
+                    technician=self.technician,
+                    reason=TicketAssignmentHistory.REASON_AUTO_ASSIGN,
+                ).exists()
+            )
+            self.assertTrue(Notification.objects.filter(user=self.employee, ticket=ticket).exists())
+            self.assertTrue(Notification.objects.filter(user=self.technician_user, ticket=ticket).exists())
+
+    @patch("core.views._call_ai_service_json")
+    def test_duplicate_whatsapp_provider_message_does_not_create_second_ticket(self, mock_ai):
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+        payload = {
+            "From": "whatsapp:+26662220000",
+            "Body": "Internet is down in finance.",
+            "MessageSid": "SM-WA-DUPLICATE",
+        }
+
+        first_response = self.client.post("/api/whatsapp/incoming", payload, format="multipart", HTTP_ACCEPT="application/json")
+        second_response = self.client.post("/api/whatsapp/incoming", payload, format="multipart", HTTP_ACCEPT="application/json")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(Ticket.objects.filter(employee=self.employee).count(), 1)
+
+    def test_unregistered_whatsapp_sender_is_captured_without_ticket(self):
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+26669990000",
+                "Body": "Printer is offline.",
+                "MessageSid": "SM-WA-UNKNOWN",
+            },
+            format="multipart",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Ticket.objects.count(), 0)
+        inbound = WhatsAppInboundMessage.objects.get(provider_message_id="SM-WA-UNKNOWN")
+        self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_NEEDS_REGISTRATION)
+        self.assertEqual(inbound.sender_phone, "+26669990000")
 
 
 class NotificationListTests(TestCase):

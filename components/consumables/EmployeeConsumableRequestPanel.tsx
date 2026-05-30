@@ -7,10 +7,12 @@ import {
   createConsumableRequest as createConsumableRequestApi,
   getConsumableRequests as getConsumableRequestsApi,
   getConsumables,
+  getEmployees,
+  getTechnicians,
   type Consumable,
   type ConsumableRequest,
 } from "@/lib/api"
-import { getStoredUserSession } from "@/lib/auth"
+import { getStoredUserSession, persistUserSession } from "@/lib/auth"
 import {
   getInterfaceTileClassName,
   getInterfaceTileDescriptionClassName,
@@ -25,16 +27,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const REFRESH_INTERVAL_MS = 15_000
 const DEFAULT_REQUEST_QUANTITY = 1
-const TECHNICIAN_ASSET_LABELS = ["Laptop", "Desktop", "Mouse", "Keyboard", "Gadget"] as const
-
-type TechnicianAssetLabel = (typeof TECHNICIAN_ASSET_LABELS)[number]
-
-type ConsumableSelectOption = {
-  key: string
-  label: string
-  value: string
-  disabled: boolean
-}
 
 function toDisplayItemName(value: string): string {
   return value
@@ -43,42 +35,32 @@ function toDisplayItemName(value: string): string {
     .join(" ")
 }
 
-function getTechnicianAssetLabel(item: Consumable): TechnicianAssetLabel | null {
-  const searchable = [
-    item.item_name,
-    item.category,
-    item.subcategory,
-    item.device_type,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
+function buildOptionsWithCurrentValue(options: readonly string[], currentValue: string): string[] {
+  const trimmedValue = currentValue.trim()
+  if (!trimmedValue || options.includes(trimmedValue)) {
+    return [...options]
+  }
+  return [trimmedValue, ...options]
+}
 
-  if (searchable.includes("laptop")) {
-    return "Laptop"
-  }
-  if (searchable.includes("desktop")) {
-    return "Desktop"
-  }
-  if (searchable.includes("mouse")) {
-    return "Mouse"
-  }
-  if (searchable.includes("keyboard")) {
-    return "Keyboard"
-  }
-  if (searchable.includes("gadget")) {
-    return "Gadget"
-  }
-  return null
+function getLatestRequestDepartment(requests: ConsumableRequest[]): string {
+  return [...requests]
+    .filter((request) => request.department.trim())
+    .sort((left, right) => {
+      const leftTime = new Date(left.requestedAt).getTime()
+      const rightTime = new Date(right.requestedAt).getTime()
+      return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime)
+    })[0]?.department.trim() ?? ""
 }
 
 export function EmployeeConsumableRequestPanel() {
-  const [activeView, setActiveView] = useState<"request" | "history">("request")
+  const user = getStoredUserSession()
+  const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
   const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
   const [expectedReturnDate, setExpectedReturnDate] = useState("")
-  const [branch, setBranch] = useState("")
-  const [department, setDepartment] = useState("")
+  const [branch, setBranch] = useState(() => user?.branch?.trim() ?? "")
+  const [department, setDepartment] = useState(() => user?.department?.trim() ?? "")
   const [notes, setNotes] = useState("")
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
@@ -94,36 +76,20 @@ export function EmployeeConsumableRequestPanel() {
   const [requests, setRequests] = useState<ConsumableRequest[]>([])
   const router = useRouter()
 
-  const user = getStoredUserSession()
   const isTechnician = user?.role === "technician"
 
-  const itemOptions = useMemo<ConsumableSelectOption[]>(() => {
+  const selectableConsumables = useMemo(() => {
     if (!isTechnician) {
-      return consumables.map((item) => ({
-        key: String(item.id),
-        label: toDisplayItemName(item.item_name),
-        value: item.item_name,
-        disabled: false,
-      }))
+      return consumables
     }
-    const optionsByLabel = new Map<TechnicianAssetLabel, Consumable>()
-    for (const item of consumables) {
-      const label = getTechnicianAssetLabel(item)
-      if (!label || optionsByLabel.has(label)) {
-        continue
-      }
-      optionsByLabel.set(label, item)
-    }
-    return TECHNICIAN_ASSET_LABELS.map((label) => {
-      const item = optionsByLabel.get(label)
-      return {
-        key: item ? String(item.id) : `missing-${label}`,
-        label: item ? label : `${label} (unavailable)`,
-        value: item?.item_name ?? "",
-        disabled: !item,
-      }
-    })
+    return consumables.filter((item) => !item.item_name.toLowerCase().includes("paper"))
   }, [consumables, isTechnician])
+
+  const branchOptions = useMemo(() => buildOptionsWithCurrentValue(BRANCH_OPTIONS, branch), [branch])
+  const departmentOptions = useMemo(
+    () => buildOptionsWithCurrentValue(DEPARTMENT_OPTIONS, department),
+    [department]
+  )
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
     setResultDialog({
@@ -156,6 +122,43 @@ export function EmployeeConsumableRequestPanel() {
             .sort((a, b) => a.item_name.localeCompare(b.item_name))
         )
         setRequests(requestData)
+
+        let nextBranch = user?.branch?.trim() ?? ""
+        let nextDepartment = user?.department?.trim() ?? ""
+
+        try {
+          if (user?.role === "employee" && user.id && (!nextBranch || !nextDepartment)) {
+            const employees = await getEmployees()
+            const currentEmployee = employees.find((employee) => employee.id === user.id)
+            nextBranch = nextBranch || currentEmployee?.branch?.trim() || ""
+            nextDepartment = nextDepartment || currentEmployee?.department?.trim() || ""
+          }
+
+          if (user?.role === "technician" && user.id && (!nextBranch || !nextDepartment)) {
+            const technicians = await getTechnicians()
+            const currentTechnician = technicians.find((technician) => technician.user_id === user.id)
+            nextBranch = nextBranch || currentTechnician?.branch?.trim() || ""
+            nextDepartment = nextDepartment || currentTechnician?.department?.trim() || ""
+          }
+        } catch {
+          // Keep the request form usable even if profile context cannot be refreshed.
+        }
+
+        nextDepartment = nextDepartment || getLatestRequestDepartment(requestData)
+
+        if (nextBranch) {
+          setBranch((current) => current.trim() || nextBranch)
+        }
+        if (nextDepartment) {
+          setDepartment((current) => current.trim() || nextDepartment)
+        }
+        if (user && (nextBranch || nextDepartment)) {
+          persistUserSession({
+            ...user,
+            branch: nextBranch || user.branch,
+            department: nextDepartment || user.department,
+          })
+        }
       } catch (loadError) {
         if (!silent) {
           showResultDialog("error", loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
@@ -179,7 +182,7 @@ export function EmployeeConsumableRequestPanel() {
       window.clearInterval(intervalId)
       window.removeEventListener("focus", onFocus)
     }
-  }, [user?.id])
+  }, [user?.branch, user?.department, user?.id, user?.role])
 
   const myRequests = requests
 
@@ -242,8 +245,6 @@ export function EmployeeConsumableRequestPanel() {
       setItemName("")
       setAssignmentType("")
       setExpectedReturnDate("")
-      setBranch("")
-      setDepartment("")
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
@@ -257,75 +258,87 @@ export function EmployeeConsumableRequestPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="mx-auto grid w-full max-w-[920px] grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-[860px] grid-cols-1 gap-3 md:grid-cols-2">
         <button
           type="button"
           onClick={() => setActiveView("request")}
-          className={getInterfaceTileClassName(
-            activeView === "request",
-            "w-full px-4 py-2.5"
-          )}
+          className={getInterfaceTileClassName(activeView === "request")}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "request", "text-sm")}>
-            Request Consumable
-          </p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "request", "mt-0.5 text-xs leading-4")}>
-            Submit a new request.
+          <p className={getInterfaceTileTitleClassName(activeView === "request")}>Request Consumable</p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>
+            Open the request form to submit a new consumable request.
           </p>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("history")}
-          className={getInterfaceTileClassName(
-            activeView === "history",
-            "w-full px-4 py-2.5"
-          )}
+          className={getInterfaceTileClassName(activeView === "history")}
         >
-          <p className={getInterfaceTileTitleClassName(activeView === "history", "text-sm")}>
-            My Consumable Requests
-          </p>
-          <p className={getInterfaceTileDescriptionClassName(activeView === "history", "mt-0.5 text-xs leading-4")}>
-            Track decisions.
+          <p className={getInterfaceTileTitleClassName(activeView === "history")}>My Consumable Requests</p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>
+            View all your submitted requests and approval decisions.
           </p>
         </button>
       </div>
 
       {activeView === "request" ? (
-        <Card className="mx-auto w-full max-w-[760px] rounded-lg border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="border-b border-slate-200 px-4 py-3">
-            <CardTitle className="text-lg font-semibold text-slate-900">Request Consumable</CardTitle>
+        <Card className="mx-auto w-full max-w-[760px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+          <CardHeader className="border-b border-[#0072CE]/15 px-4 py-2.5">
+            <CardTitle className="text-sm font-semibold text-[#0B1F3A]">Request Consumable</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 py-4">
-            <form className="mx-auto w-full max-w-[560px] space-y-4" onSubmit={handleSubmit} autoComplete="off">
-                <div className="space-y-1.5">
-                  <label htmlFor="item-name" className="text-sm font-semibold text-slate-900">
-                    Item
+          <CardContent className="px-4 py-2.5">
+            <form className="mx-auto w-full max-w-[650px] space-y-2" onSubmit={handleSubmit} autoComplete="off">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label htmlFor="department" className="text-xs font-semibold text-[#0B1F3A]">
+                    Department
                   </label>
                   <select
-                    id="item-name"
-                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
-                    value={itemName}
-                    onChange={(event) => setItemName(event.target.value)}
-                    disabled={loadingStock || itemOptions.every((option) => option.disabled)}
+                    id="department"
+                    value={department}
+                    onChange={(event) => setDepartment(event.target.value)}
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
-                    <option value="" disabled>
-                      Select item
-                    </option>
-                    {itemOptions.map((option) => (
-                      <option key={option.key} value={option.value} disabled={option.disabled}>
-                        {option.label}
+                    <option value="">Select department</option>
+                    {departmentOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="assignment-type" className="text-sm font-semibold text-slate-900">
+                <div className="space-y-1">
+                  <label htmlFor="item-name" className="text-xs font-semibold text-[#0B1F3A]">
+                    Item
+                  </label>
+                  <select
+                    id="item-name"
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                    value={itemName}
+                    onChange={(event) => setItemName(event.target.value)}
+                    disabled={loadingStock || selectableConsumables.length === 0}
+                  >
+                    <option value="" disabled>
+                      Select item
+                    </option>
+                    {selectableConsumables.map((item) => (
+                      <option key={item.id} value={item.item_name}>
+                        {toDisplayItemName(item.item_name)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label htmlFor="assignment-type" className="text-xs font-semibold text-[#0B1F3A]">
                     Assignment Type
                   </label>
                   <select
                     id="assignment-type"
-                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     value={assignmentType}
                     onChange={(event) => {
                       const nextType = event.target.value as "" | "new" | "loan" | "exchange"
@@ -344,80 +357,58 @@ export function EmployeeConsumableRequestPanel() {
                   </select>
                 </div>
 
-              {assignmentType ? (
-                <>
-                  {assignmentType === "loan" ? (
-                    <div className="space-y-1.5">
-                      <label htmlFor="expected-return-date" className="text-sm font-semibold text-slate-900">
-                        Expected Return Date
-                      </label>
-                      <input
-                        id="expected-return-date"
-                        type="date"
-                        value={expectedReturnDate}
-                        min={new Date().toISOString().slice(0, 10)}
-                        onChange={(event) => setExpectedReturnDate(event.target.value)}
-                        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
-                      />
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="department" className="text-sm font-semibold text-slate-900">
-                      Department
+                {assignmentType === "loan" ? (
+                  <div className="space-y-1">
+                    <label htmlFor="expected-return-date" className="text-xs font-semibold text-[#0B1F3A]">
+                      Expected Return Date
                     </label>
-                    <select
-                      id="department"
-                      value={department}
-                      onChange={(event) => setDepartment(event.target.value)}
-                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
-                    >
-                      <option value="">Select department</option>
-                      {DEPARTMENT_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="branch" className="text-sm font-semibold text-slate-900">
-                      Branch
-                    </label>
-                    <select
-                      id="branch"
-                      value={branch}
-                      onChange={(event) => setBranch(event.target.value)}
-                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
-                    >
-                      <option value="">Select branch</option>
-                      {BRANCH_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="notes" className="text-sm font-semibold text-slate-900">
-                      Reason
-                    </label>
-                    <textarea
-                      id="notes"
-                      className="min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                      value={notes}
-                      onChange={(event) => setNotes(event.target.value)}
-                      placeholder="Why do you need this consumable?"
+                    <input
+                      id="expected-return-date"
+                      type="date"
+                      value={expectedReturnDate}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={(event) => setExpectedReturnDate(event.target.value)}
+                      className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     />
                   </div>
-                </>
-              ) : null}
+                ) : null}
 
-              <div className="flex justify-end">
+                <div className="space-y-1">
+                  <label htmlFor="branch" className="text-xs font-semibold text-[#0B1F3A]">
+                    Branch
+                  </label>
+                  <select
+                    id="branch"
+                    value={branch}
+                    onChange={(event) => setBranch(event.target.value)}
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                  >
+                    <option value="">Select branch</option>
+                    {branchOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="notes" className="text-xs font-semibold text-[#0B1F3A]">
+                  Reason
+                </label>
+                <textarea
+                  id="notes"
+                  className="min-h-14 w-full rounded-lg border border-[#0072CE]/30 px-2.5 py-1.5 text-sm text-[#0B1F3A]"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Why do you need this consumable?"
+                />
+              </div>
+
+              <div className="flex justify-center">
                 <Button
-                  className="h-10 w-full rounded-md bg-[#0072CE] text-sm font-semibold text-white hover:bg-[#005DA8] sm:w-44"
+                  className="h-9 w-44 rounded-lg bg-[#0072CE] text-sm font-semibold text-white hover:bg-[#005DA8]"
                   type="submit"
                 >
                   Submit Request
@@ -429,7 +420,7 @@ export function EmployeeConsumableRequestPanel() {
       ) : null}
 
       {activeView === "history" ? (
-        <Card className="mx-auto w-full max-w-[1200px] rounded-lg border-slate-200 bg-white py-0 shadow-sm">
+        <Card className="mx-auto w-full max-w-[1200px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
           <CardHeader className="border-b border-[#0072CE]/15 px-4 py-2.5">
             <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumable Requests</CardTitle>
           </CardHeader>
@@ -448,7 +439,7 @@ export function EmployeeConsumableRequestPanel() {
               <TableBody>
                 {myRequests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
+                    <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-[#1E3A6D]">
                       No requests submitted yet.
                     </TableCell>
                   </TableRow>

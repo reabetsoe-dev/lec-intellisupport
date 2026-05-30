@@ -4,6 +4,9 @@ export type LoginResponse = {
   id: number
   name: string
   role: UserRole
+  phone_number?: string
+  branch?: string
+  department?: string
   must_change_password?: boolean
   token: string
 }
@@ -168,6 +171,7 @@ export type Employee = {
   id: number
   name: string
   email: string
+  phone_number: string
   branch: string
   department: string
   role: UserRole
@@ -1001,7 +1005,9 @@ async function handleResponse<T>(response: Response, service: "backend" | "ai" |
       clearStoredAuthSession()
     }
 
-    const message = contentType.includes("text/html")
+    const message = response.status === 401
+      ? getDefaultErrorMessage(response.status)
+      : contentType.includes("text/html")
       ? getDefaultErrorMessage(response.status)
       : extractMessageFromPayload(payload) ?? getDefaultErrorMessage(response.status)
     throw new ApiError(message, {
@@ -1345,6 +1351,7 @@ export async function getEmployees(): Promise<Employee[]> {
 export async function createEmployee(payload: {
   name: string
   email: string
+  phone_number?: string
   branch?: string
   department?: string
   is_active?: boolean
@@ -1373,6 +1380,7 @@ export async function updateEmployeeDetails(
   payload: {
     name: string
     email: string
+    phone_number?: string
     branch?: string
     department?: string
   }

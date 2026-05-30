@@ -111,9 +111,9 @@ export function Sidebar({ user }: SidebarProps) {
 
   return (
     <>
-      <aside className="hidden h-dvh w-20 shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-[#0B1F3A] text-white md:flex md:w-72">
-        <div className="border-b border-slate-800 px-4 py-4 md:px-5">
-          <div className="mb-2 flex justify-center md:justify-start">
+      <aside className="hidden h-screen w-20 shrink-0 flex-col border-r border-[#0072CE]/35 bg-[#0B1F3A] text-white md:flex md:w-72">
+        <div className="border-b border-[#0072CE]/35 px-4 py-5 md:px-6">
+          <div className="mb-3 flex justify-center md:justify-start">
             <Image
               src="/lec-logo.png"
               alt="LEC logo"
@@ -123,14 +123,14 @@ export function Sidebar({ user }: SidebarProps) {
               priority
             />
           </div>
-          <p className="text-center text-xs font-semibold uppercase text-[#B5D7FF] md:text-left">
+          <p className="text-center text-sm font-semibold tracking-[0.12em] text-[#B5D7FF] uppercase md:text-left">
             LEC Intelli-Support
           </p>
         </div>
 
-        <nav className="scrollbar-none flex-1 space-y-5 overflow-y-auto px-3 py-4 md:px-4">
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 [-ms-overflow-style:none] [scrollbar-width:none] md:px-4 [&::-webkit-scrollbar]:hidden">
           <div>
-            <p className="hidden px-3 text-xs font-semibold uppercase text-[#7FB3E8] md:block">
+            <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-[#7FB3E8] uppercase md:block">
               {section.label}
             </p>
             <div className="mt-2 space-y-1">
@@ -143,13 +143,13 @@ export function Sidebar({ user }: SidebarProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex min-h-10 items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:justify-start",
+                      "flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:justify-start",
                       isActive
-                        ? "bg-[#0072CE] text-white shadow-[inset_3px_0_0_#FFFFFF]"
+                        ? "bg-[#0072CE] text-white"
                         : "text-[#D5E8FF] hover:bg-[#15406E] hover:text-white"
                     )}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <Icon className="h-4 w-4" />
                     <span className="hidden md:inline">{item.label}</span>
                   </Link>
                 )
@@ -158,9 +158,9 @@ export function Sidebar({ user }: SidebarProps) {
           </div>
         </nav>
 
-        <div className="border-t border-slate-800 px-3 py-3 md:px-4">
-          <div className="mb-3 hidden rounded-md border border-[#0072CE]/30 bg-[#0F2E57] px-3 py-2 md:block">
-            <p className="text-[11px] uppercase text-[#A8CCF5]">Signed In</p>
+        <div className="border-t border-[#0072CE]/35 px-3 py-4 md:px-4">
+          <div className="mb-3 hidden rounded-lg border border-[#0072CE]/35 bg-[#0F2E57] px-3 py-2 md:block">
+            <p className="text-[11px] tracking-[0.08em] text-[#A8CCF5] uppercase">Signed In</p>
             <p className="mt-0.5 text-sm font-semibold text-white">{displayUserName}</p>
             <p className="text-xs text-[#A8CCF5]">{getRoleLabel(user.role)}</p>
           </div>
@@ -198,7 +198,7 @@ export function Sidebar({ user }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="scrollbar-none flex gap-2 overflow-x-auto px-1 pb-1">
+        <nav className="flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {section.items.map((item) => {
             const isActive = isMenuItemActive(pathname, section, item)
             const Icon = item.icon

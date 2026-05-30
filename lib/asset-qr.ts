@@ -8,6 +8,10 @@ export const QR_PUBLIC_ORIGIN_STORAGE_KEY = "lec_asset_qr_public_origin"
 const QR_PUBLIC_ORIGIN_QUERY_PARAMS = ["qrOrigin", "cloudflareUrl", "publicUrl"]
 const LOCAL_QR_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"])
 
+type NetworkInfoResponse = {
+  primaryAddress?: unknown
+}
+
 function toBase64Url(value: string): string {
   if (typeof window === "undefined") {
     return Buffer.from(value, "utf-8")
@@ -111,7 +115,7 @@ function normalizeOrigin(value: string): string {
   return normalizeQrOrigin(value) ?? value.trim().replace(/\/+$/g, "")
 }
 
-function getBrowserQrOriginOverride(): string | null {
+function getBrowserQrQueryOriginOverride(): string | null {
   if (typeof window === "undefined") {
     return null
   }
@@ -125,12 +129,28 @@ function getBrowserQrOriginOverride(): string | null {
         return normalized
       }
     }
+  } catch {
+    return null
+  }
 
+  return null
+}
+
+function getStoredQrOriginOverride(): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  try {
     const storedOrigin = normalizeQrOrigin(window.localStorage.getItem(QR_PUBLIC_ORIGIN_STORAGE_KEY) ?? "")
     return storedOrigin && !isLocalQrOrigin(storedOrigin) ? storedOrigin : null
   } catch {
     return null
   }
+}
+
+function getBrowserQrOriginOverride(): string | null {
+  return getBrowserQrQueryOriginOverride() ?? getStoredQrOriginOverride()
 }
 
 export function getQrBaseOrigin(): string {
@@ -158,30 +178,56 @@ export async function resolveQrBaseOrigin(): Promise<string> {
     return getQrBaseOrigin()
   }
 
-  const browserOverride = getBrowserQrOriginOverride()
-  if (browserOverride) {
-    return browserOverride
+  const queryOverride = getBrowserQrQueryOriginOverride()
+  if (queryOverride) {
+    return queryOverride
   }
 
   try {
     const response = await fetch("/api/public-app-url", { cache: "no-store" })
-    if (!response.ok) {
-      return getQrBaseOrigin()
-    }
+    if (response.ok) {
+      const payload = (await response.json()) as { publicUrl?: unknown; fallbackOrigin?: unknown }
+      if (typeof payload.publicUrl === "string" && payload.publicUrl.trim()) {
+        const publicOrigin = normalizeOrigin(payload.publicUrl)
+        window.localStorage.setItem(QR_PUBLIC_ORIGIN_STORAGE_KEY, publicOrigin)
+        return publicOrigin
+      }
 
-    const payload = (await response.json()) as { publicUrl?: unknown; fallbackOrigin?: unknown }
-    if (typeof payload.publicUrl === "string" && payload.publicUrl.trim()) {
-      return normalizeOrigin(payload.publicUrl)
-    }
-    if (
-      typeof payload.fallbackOrigin === "string" &&
-      payload.fallbackOrigin.trim() &&
-      !isLocalQrOrigin(payload.fallbackOrigin)
-    ) {
-      return normalizeOrigin(payload.fallbackOrigin)
+      const storedOrigin = getStoredQrOriginOverride()
+      if (storedOrigin) {
+        return storedOrigin
+      }
+
+      if (
+        typeof payload.fallbackOrigin === "string" &&
+        payload.fallbackOrigin.trim() &&
+        !isLocalQrOrigin(payload.fallbackOrigin)
+      ) {
+        return normalizeOrigin(payload.fallbackOrigin)
+      }
     }
   } catch {
     // Fall back to the browser origin when the helper route is unavailable.
+  }
+
+  const storedOrigin = getStoredQrOriginOverride()
+  if (storedOrigin) {
+    return storedOrigin
+  }
+
+  try {
+    const response = await fetch("/api/network-info", { cache: "no-store" })
+    if (response.ok) {
+      const payload = (await response.json()) as NetworkInfoResponse
+      const primaryAddress = typeof payload.primaryAddress === "string" ? payload.primaryAddress.trim() : ""
+      if (primaryAddress && !isLocalQrOrigin(`http://${primaryAddress}`)) {
+        const browserUrl = new URL(window.location.href)
+        browserUrl.hostname = primaryAddress
+        return normalizeOrigin(browserUrl.origin)
+      }
+    }
+  } catch {
+    // Keep the existing browser fallback if local network detection is unavailable.
   }
 
   return getQrBaseOrigin()

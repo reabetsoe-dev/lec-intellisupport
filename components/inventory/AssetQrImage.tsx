@@ -26,9 +26,9 @@ export function AssetQrImage({ value, size = 176, className, imageClassName }: A
         setDataUrl("")
         const nextDataUrl = await QRCode.toDataURL(value, {
           width: size,
-          margin: 1,
+          margin: 3,
           color: {
-            dark: "#0B1F3A",
+            dark: "#000000",
             light: "#FFFFFF",
           },
           errorCorrectionLevel: "M",

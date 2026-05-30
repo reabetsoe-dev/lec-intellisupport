@@ -36,6 +36,7 @@ class User(models.Model):
 
     name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
+    phone_number = models.CharField(max_length=32, blank=True, default="", db_index=True)
     branch = models.CharField(max_length=120, blank=True, default="")
     department = models.CharField(max_length=120, blank=True, default="")
     password_hash = models.CharField(max_length=255)
@@ -491,6 +492,58 @@ class Notification(models.Model):
 
     def __str__(self) -> str:
         return f"Notification #{self.pk} for User #{self.user_id}"
+
+
+class WhatsAppInboundMessage(models.Model):
+    STATUS_RECEIVED = "received"
+    STATUS_TICKET_CREATED = "ticket_created"
+    STATUS_NEEDS_REGISTRATION = "needs_registration"
+    STATUS_DUPLICATE = "duplicate"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_RECEIVED, "Received"),
+        (STATUS_TICKET_CREATED, "Ticket Created"),
+        (STATUS_NEEDS_REGISTRATION, "Needs Registration"),
+        (STATUS_DUPLICATE, "Duplicate"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    provider = models.CharField(max_length=40, blank=True, default="")
+    provider_message_id = models.CharField(max_length=160, blank=True, default="", db_index=True)
+    sender_phone = models.CharField(max_length=32, db_index=True)
+    sender_name = models.CharField(max_length=150, blank=True, default="")
+    message_text = models.TextField()
+    employee = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_inbound_messages",
+    )
+    ticket = models.ForeignKey(
+        Ticket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_inbound_messages",
+    )
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_RECEIVED)
+    error_message = models.TextField(blank=True, default="")
+    raw_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "whatsapp_inbound_messages"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["provider", "provider_message_id"], name="wa_inbound_provider_msg_idx"),
+            models.Index(fields=["sender_phone", "created_at"], name="wa_inbound_sender_at_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"WhatsAppInboundMessage #{self.pk} from {self.sender_phone}"
 
 
 class TicketMaterialRequest(models.Model):

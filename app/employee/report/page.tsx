@@ -140,7 +140,11 @@ export default function EmployeeReportPage() {
 
       setConversation((current) => [
         ...current,
-        { id: current.length + 1, role: "employee", content: trimmedMessage },
+        {
+          id: current.length + 1,
+          role: "employee",
+          content: trimmedMessage,
+        },
         { id: current.length + 2, role: "assistant", content: buildAssistantSummary(payload) },
       ])
       setDraftResponse(payload)
@@ -243,7 +247,7 @@ export default function EmployeeReportPage() {
 
       <Card className="mx-auto w-full max-w-[900px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Conversational Intake</CardTitle>
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Issue Intake</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
           <div className="space-y-2">
