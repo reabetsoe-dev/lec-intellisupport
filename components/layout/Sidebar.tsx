@@ -128,7 +128,7 @@ export function Sidebar({ user }: SidebarProps) {
           </p>
         </div>
 
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 [-ms-overflow-style:none] [scrollbar-width:none] md:px-4 [&::-webkit-scrollbar]:hidden">
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 md:px-4">
           <div>
             <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-[#7FB3E8] uppercase md:block">
               {section.label}
@@ -198,7 +198,7 @@ export function Sidebar({ user }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="flex gap-2 overflow-x-auto px-1 pb-1">
           {section.items.map((item) => {
             const isActive = isMenuItemActive(pathname, section, item)
             const Icon = item.icon

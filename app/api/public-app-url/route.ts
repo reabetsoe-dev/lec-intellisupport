@@ -27,14 +27,6 @@ const CLOUDFLARE_LOG_FILES = [
 ]
 
 const CLOUDFLARE_QUICK_TUNNEL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/gi
-const CLOUDFLARE_INACTIVE_MARKERS = [
-  "initiating graceful shutdown",
-  "connection terminated",
-  "no more connections active",
-  "register tunnel error",
-  "tunnel server stopped",
-  "unauthorized: tunnel not found",
-]
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"])
 
 type PublicAppUrlResponse = {
@@ -95,17 +87,10 @@ async function findCloudflaredLogOrigin(): Promise<string | null> {
   for (const logFile of CLOUDFLARE_LOG_FILES) {
     try {
       const contents = await readFile(path.join(process.cwd(), logFile), "utf8")
-      const matches = [...contents.matchAll(CLOUDFLARE_QUICK_TUNNEL_PATTERN)]
-      const latestMatch = matches.at(-1)
-      const latestTunnelUrl = latestMatch?.[0]
-      if (latestTunnelUrl) {
-        const logAfterTunnelUrl = contents
-          .slice((latestMatch.index ?? 0) + latestTunnelUrl.length)
-          .toLowerCase()
-        const tunnelStopped = CLOUDFLARE_INACTIVE_MARKERS.some((marker) => logAfterTunnelUrl.includes(marker))
-        if (!tunnelStopped) {
-          return normalizeOrigin(latestTunnelUrl)
-        }
+      const matches = contents.match(CLOUDFLARE_QUICK_TUNNEL_PATTERN)
+      const latestMatch = matches?.at(-1)
+      if (latestMatch) {
+        return normalizeOrigin(latestMatch)
       }
     } catch {
       // The tunnel log is optional.

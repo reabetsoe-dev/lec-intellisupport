@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
+import { BRANCH_OPTIONS } from "@/lib/organization-options"
 import {
   getInterfaceActionCardClassName,
   getInterfaceCardDescriptionClassName,
@@ -59,9 +59,7 @@ type EditableEmployee = {
   id: number
   name: string
   email: string
-  phone_number: string
   branch: string
-  department: string
 }
 type EditableTechnician = {
   id: number
@@ -80,9 +78,7 @@ export function TechnicianManagementPanel() {
   const [skillset, setSkillset] = useState("")
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
-  const [employeePhoneNumber, setEmployeePhoneNumber] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
-  const [employeeDepartment, setEmployeeDepartment] = useState("")
   const [saving, setSaving] = useState(false)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
@@ -169,9 +165,7 @@ export function TechnicianManagementPanel() {
       id: employee.id,
       name: employee.name,
       email: employee.email,
-      phone_number: employee.phone_number ?? "",
       branch: employee.branch ?? "",
-      department: employee.department ?? "",
     })
   }
 
@@ -191,9 +185,7 @@ export function TechnicianManagementPanel() {
 
     const trimmedName = editingEmployee.name.trim()
     const trimmedEmail = editingEmployee.email.trim()
-    const trimmedPhoneNumber = editingEmployee.phone_number.trim()
     const trimmedBranch = editingEmployee.branch.trim()
-    const trimmedDepartment = editingEmployee.department.trim()
 
     if (!trimmedName) {
       showResultDialog("error", "Employee name is required.")
@@ -210,9 +202,7 @@ export function TechnicianManagementPanel() {
       await updateEmployeeDetails(editingEmployee.id, {
         name: trimmedName,
         email: trimmedEmail,
-        phone_number: trimmedPhoneNumber,
         branch: trimmedBranch,
-        department: trimmedDepartment,
       })
       await loadEmployees()
       setEditingEmployee(null)
@@ -361,16 +351,12 @@ export function TechnicianManagementPanel() {
       await createEmployee({
         name: employeeName.trim(),
         email: employeeEmail.trim(),
-        phone_number: employeePhoneNumber.trim(),
         branch: employeeBranch,
-        department: employeeDepartment,
         is_active: true,
       })
       setEmployeeName("")
       setEmployeeEmail("")
-      setEmployeePhoneNumber("")
       setEmployeeBranch("")
-      setEmployeeDepartment("")
       await loadEmployees()
       showResultDialog("success", "Employee created. Setup link sent to their email.")
     } catch (submitError) {
@@ -476,18 +462,6 @@ export function TechnicianManagementPanel() {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="employee-whatsapp-phone" className="text-sm font-medium text-[#1E3A6D]">
-              WhatsApp Phone
-            </label>
-            <Input
-              id="employee-whatsapp-phone"
-              type="tel"
-              value={employeePhoneNumber}
-              onChange={(event) => setEmployeePhoneNumber(event.target.value)}
-              placeholder="+266 6222 0000"
-            />
-          </div>
-          <div className="space-y-2">
             <label htmlFor="employee-branch" className="text-sm font-medium text-[#1E3A6D]">
               Employee Branch
             </label>
@@ -500,25 +474,6 @@ export function TechnicianManagementPanel() {
             >
               <option value="">Select branch</option>
               {BRANCH_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="employee-department" className="text-sm font-medium text-[#1E3A6D]">
-              Employee Department
-            </label>
-            <select
-              id="employee-department"
-              className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-              value={employeeDepartment}
-              onChange={(event) => setEmployeeDepartment(event.target.value)}
-              required
-            >
-              <option value="">Select department</option>
-              {DEPARTMENT_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -648,12 +603,7 @@ export function TechnicianManagementPanel() {
                       <div className="flex-1">
                         <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
                         <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
-                        <p className="text-xs text-[#4A6A96]">
-                          WhatsApp: {employee.phone_number || "Not registered"}
-                        </p>
-                        <p className="text-xs text-[#4A6A96]">
-                          Branch: {employee.branch || "Not set"} | Department: {employee.department || "Not set"}
-                        </p>
+                        <p className="text-xs text-[#4A6A96]">Branch: {employee.branch || "Not set"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge
@@ -890,22 +840,6 @@ export function TechnicianManagementPanel() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="edit-employee-whatsapp-phone" className="text-sm font-medium text-[#1E3A6D]">
-                  WhatsApp Phone
-                </label>
-                <Input
-                  id="edit-employee-whatsapp-phone"
-                  type="tel"
-                  value={editingEmployee.phone_number}
-                  onChange={(event) =>
-                    setEditingEmployee((current) =>
-                      current ? { ...current, phone_number: event.target.value } : current
-                    )
-                  }
-                  placeholder="+266 6222 0000"
-                />
-              </div>
-              <div className="space-y-2">
                 <label htmlFor="edit-employee-branch" className="text-sm font-medium text-[#1E3A6D]">
                   Employee Branch
                 </label>
@@ -921,28 +855,6 @@ export function TechnicianManagementPanel() {
                 >
                   <option value="">Not set</option>
                   {BRANCH_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="edit-employee-department" className="text-sm font-medium text-[#1E3A6D]">
-                  Employee Department
-                </label>
-                <select
-                  id="edit-employee-department"
-                  className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-                  value={editingEmployee.department}
-                  onChange={(event) =>
-                    setEditingEmployee((current) =>
-                      current ? { ...current, department: event.target.value } : current
-                    )
-                  }
-                >
-                  <option value="">Not set</option>
-                  {DEPARTMENT_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>

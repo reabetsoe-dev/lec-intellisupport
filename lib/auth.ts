@@ -5,9 +5,6 @@ export type AuthUser = {
   id: number
   name: string
   login_identifier?: string
-  phone_number?: string
-  branch?: string
-  department?: string
   role: UserRole
   must_change_password: boolean
   token: string
@@ -163,9 +160,6 @@ export function parseStoredUserSession(raw: string | null): AuthUser | null {
         id: parsed.id,
         name: parsed.name,
         login_identifier: typeof parsed.login_identifier === "string" ? parsed.login_identifier : undefined,
-        phone_number: typeof parsed.phone_number === "string" ? parsed.phone_number : undefined,
-        branch: typeof parsed.branch === "string" ? parsed.branch : undefined,
-        department: typeof parsed.department === "string" ? parsed.department : undefined,
         role: parsed.role as UserRole,
         must_change_password: parsed.must_change_password,
         token: parsed.token,
@@ -207,9 +201,6 @@ export async function simulateLogin(email: string, password: string): Promise<Au
     id: user.id,
     name: user.name,
     login_identifier: loginIdentifier,
-    phone_number: user.phone_number,
-    branch: user.branch,
-    department: user.department,
     role: user.role,
     must_change_password: Boolean(user.must_change_password),
     token: user.token,

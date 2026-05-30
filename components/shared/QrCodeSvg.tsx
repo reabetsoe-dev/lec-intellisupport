@@ -23,10 +23,10 @@ export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { //
 
     void QRCode.toDataURL(value, {
       width: size,
-      margin: 4,
-      errorCorrectionLevel: "M",
+      margin: 2,
+      errorCorrectionLevel: "H",
       color: {
-        dark: "#000000",
+        dark: "#0B1F3A",
         light: "#FFFFFF",
       },
     })

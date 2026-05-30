@@ -188,7 +188,7 @@ function InventoryLabelPrintContent() {
           <p className="rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">No assets available for label printing.</p>
         ) : qrOriginIsLocal ? (
           <p className="print:hidden rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">
-            Use Auto or enter a phone-reachable URL before printing. Localhost QR labels are disabled.
+            Paste and apply the Cloudflare HTTPS URL before printing. Localhost QR labels are disabled.
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3 print:gap-2">

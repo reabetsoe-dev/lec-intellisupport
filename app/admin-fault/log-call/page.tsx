@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { AiIntakeDraftEditor } from "@/components/intake/AiIntakeDraftEditor"
@@ -13,12 +13,47 @@ import { Input } from "@/components/ui/input"
 import {
   createAiIntakeDraft,
   createTicket,
+  createVoiceTicketDraft,
   getEmployees,
   type Employee,
   type TicketIntakeDraft,
   type TicketIntakeDraftResponse,
+  type VoiceTicketDraftResponse,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+
+type BrowserSpeechRecognitionResultItem = {
+  transcript: string
+}
+
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean
+  0: BrowserSpeechRecognitionResultItem
+}
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number
+  results: BrowserSpeechRecognitionResult[]
+}
+
+type BrowserSpeechRecognitionInstance = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognitionInstance
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor
+  }
+}
 
 const emptyDraft: TicketIntakeDraft = {
   title: "",
@@ -44,16 +79,21 @@ function buildAssistantSummary(payload: TicketIntakeDraftResponse): string {
 
 export default function AdminFaultLogCallPage() {
   const router = useRouter()
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordedChunksRef = useRef<Blob[]>([])
+  const recognitionRef = useRef<BrowserSpeechRecognitionInstance | null>(null)
 
   const [callerName, setCallerName] = useState("")
   const [employeeId, setEmployeeId] = useState("")
   const [employees, setEmployees] = useState<Employee[]>([])
   const [callNotes, setCallNotes] = useState("")
+  const [transcript, setTranscript] = useState("")
   const [draftResponse, setDraftResponse] = useState<TicketIntakeDraftResponse | null>(null)
   const [draft, setDraft] = useState<TicketIntakeDraft>(emptyDraft)
-  const [draftDialogOpen, setDraftDialogOpen] = useState(false)
   const [loadingEmployees, setLoadingEmployees] = useState(true)
   const [analyzingNotes, setAnalyzingNotes] = useState(false)
+  const [uploadingVoice, setUploadingVoice] = useState(false)
+  const [recording, setRecording] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [draftStatusMessage, setDraftStatusMessage] = useState("")
   const [shouldReturnAfterDialog, setShouldReturnAfterDialog] = useState(false)
@@ -92,6 +132,12 @@ export default function AdminFaultLogCallPage() {
       }
     })()
 
+    return () => {
+      recognitionRef.current?.stop()
+      if (mediaRecorderRef.current?.state !== "inactive") {
+        mediaRecorderRef.current?.stop()
+      }
+    }
   }, [])
 
   const requireCallContext = (): boolean => {
@@ -111,10 +157,9 @@ export default function AdminFaultLogCallPage() {
     return true
   }
 
-  const applyDraftPayload = (payload: TicketIntakeDraftResponse) => {
+  const applyDraftPayload = (payload: TicketIntakeDraftResponse | VoiceTicketDraftResponse) => {
     setDraftResponse(payload)
     setDraft(payload.draft)
-    setDraftDialogOpen(true)
   }
 
   const handleGenerateFromNotes = async () => {
@@ -147,6 +192,105 @@ export default function AdminFaultLogCallPage() {
     } finally {
       setAnalyzingNotes(false)
     }
+  }
+
+  const stopSpeechRecognition = () => {
+    recognitionRef.current?.stop()
+    recognitionRef.current = null
+  }
+
+  const startSpeechRecognition = () => {
+    const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!Recognition) {
+      return
+    }
+
+    const recognition = new Recognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+    recognition.onresult = (event) => {
+      let nextTranscript = ""
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        nextTranscript += event.results[index][0].transcript
+      }
+      setTranscript(nextTranscript.trim())
+    }
+    recognition.onerror = () => {
+      stopSpeechRecognition()
+    }
+    recognition.start()
+    recognitionRef.current = recognition
+  }
+
+  const uploadRecordedAudio = async (audioBlob: Blob) => {
+    try {
+      setUploadingVoice(true)
+      setDraftStatusMessage("")
+      const payload = await createVoiceTicketDraft({
+        audio: audioBlob,
+        employee_id: Number(employeeId),
+        caller_name: callerName.trim(),
+        transcript_hint: transcript.trim(),
+      })
+      applyDraftPayload(payload)
+      setTranscript(payload.transcript)
+      setDraftStatusMessage(buildAssistantSummary(payload))
+    } catch (voiceError) {
+      showResultDialog(
+        "error",
+        voiceError instanceof Error ? voiceError.message : "Failed to convert call audio into a ticket draft."
+      )
+    } finally {
+      setUploadingVoice(false)
+    }
+  }
+
+  const handleStartRecording = async () => {
+    if (!requireCallContext()) {
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordedChunksRef.current = []
+      setTranscript("")
+
+      const recorder = new MediaRecorder(stream)
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data)
+        }
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop())
+        const audioBlob = new Blob(recordedChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        })
+        recordedChunksRef.current = []
+        mediaRecorderRef.current = null
+        void uploadRecordedAudio(audioBlob)
+      }
+
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setRecording(true)
+      startSpeechRecognition()
+    } catch (recordError) {
+      showResultDialog(
+        "error",
+        recordError instanceof Error ? recordError.message : "Unable to start audio recording."
+      )
+    }
+  }
+
+  const handleStopRecording = () => {
+    stopSpeechRecognition()
+    if (!mediaRecorderRef.current) {
+      return
+    }
+    setRecording(false)
+    mediaRecorderRef.current.stop()
   }
 
   const handleSubmit = async () => {
@@ -199,8 +343,8 @@ export default function AdminFaultLogCallPage() {
         logged_by_admin_id: user.id,
       })
       showResultDialog("success", ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`, true)
-      setDraftDialogOpen(false)
       setCallNotes("")
+      setTranscript("")
       setDraftResponse(null)
       setDraft(emptyDraft)
       setDraftStatusMessage("")
@@ -228,12 +372,12 @@ export default function AdminFaultLogCallPage() {
 
       <EmployeePageHero
         title="Log Employee Call"
-        description="Capture typed call notes, then let AI generate a structured draft before the ticket is created."
+        description="Capture typed call notes or record the call, then let AI generate a structured draft before the ticket is created."
       />
 
       <Card className="mx-auto w-full max-w-[950px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Call Notes to Ticket Intake</CardTitle>
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Voice to Ticket Intake</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
           <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
@@ -272,7 +416,7 @@ export default function AdminFaultLogCallPage() {
           </div>
 
           <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
-            Use typed notes for quick intake. AI will turn the caller&apos;s report into a structured ticket draft for review.
+            Use typed notes for quick intake or record the call for a voice-driven draft. Voice transcription uses a browser transcript when available and falls back safely when it is not.
           </div>
 
           <div className="space-y-2">
@@ -292,16 +436,54 @@ export default function AdminFaultLogCallPage() {
             <Button
               type="button"
               onClick={() => void handleGenerateFromNotes()}
-              disabled={analyzingNotes}
+              disabled={analyzingNotes || recording || uploadingVoice}
               className="h-10 rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8] focus-visible:ring-2 focus-visible:ring-[#0072CE]/40 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {analyzingNotes ? "Drafting from Notes..." : "Create Draft from Notes"}
             </Button>
+
+            {!recording ? (
+              <Button
+                type="button"
+                onClick={() => void handleStartRecording()}
+                disabled={uploadingVoice || analyzingNotes}
+                className="h-10 rounded-lg border border-[#8A1C1C] bg-[#B71C1C] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#931515] focus-visible:ring-2 focus-visible:ring-[#B71C1C]/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                Start Call Recording
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleStopRecording}
+                className="h-10 rounded-lg border border-[#8A1C1C] bg-[#D32F2F] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#B71C1C] focus-visible:ring-2 focus-visible:ring-[#D32F2F]/40"
+              >
+                Stop Recording and Draft
+              </Button>
+            )}
           </div>
+
+          {recording ? (
+            <div className="rounded-lg border border-[#EDB0B0] bg-[#FFEAEA] px-4 py-3 text-sm text-[#8A2D2D]">
+              Recording in progress. Stop the recording when the caller has finished speaking.
+            </div>
+          ) : null}
+
+          {uploadingVoice ? (
+            <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
+              Uploading the recording and generating an AI draft...
+            </div>
+          ) : null}
 
           {draftStatusMessage ? (
             <div className="rounded-lg border border-[#9CD8C2] bg-[#EAF8F0] px-4 py-3 text-sm text-[#176B4A]">
               {draftStatusMessage}
+            </div>
+          ) : null}
+
+          {transcript ? (
+            <div className="rounded-lg border border-[#DCE8F5] bg-[#FAFCFF] px-4 py-3">
+              <p className="text-sm font-semibold text-[#0B1F3A]">Latest Transcript</p>
+              <p className="mt-2 text-sm text-[#1F4E7A]">{transcript}</p>
             </div>
           ) : null}
         </CardContent>
@@ -309,7 +491,6 @@ export default function AdminFaultLogCallPage() {
 
       {draftResponse ? (
         <AiIntakeDraftEditor
-          open={draftDialogOpen}
           draft={draft}
           confidence={draftResponse.confidence}
           intakeMode={draftResponse.intake_mode}
@@ -317,7 +498,6 @@ export default function AdminFaultLogCallPage() {
           submitting={submitting}
           submitLabel="Confirm and Log Call"
           onChange={setDraft}
-          onOpenChange={setDraftDialogOpen}
           onSubmit={() => void handleSubmit()}
         />
       ) : null}

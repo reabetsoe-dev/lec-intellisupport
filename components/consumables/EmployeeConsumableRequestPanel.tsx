@@ -7,12 +7,10 @@ import {
   createConsumableRequest as createConsumableRequestApi,
   getConsumableRequests as getConsumableRequestsApi,
   getConsumables,
-  getEmployees,
-  getTechnicians,
   type Consumable,
   type ConsumableRequest,
 } from "@/lib/api"
-import { getStoredUserSession, persistUserSession } from "@/lib/auth"
+import { getStoredUserSession } from "@/lib/auth"
 import {
   getInterfaceTileClassName,
   getInterfaceTileDescriptionClassName,
@@ -35,32 +33,12 @@ function toDisplayItemName(value: string): string {
     .join(" ")
 }
 
-function buildOptionsWithCurrentValue(options: readonly string[], currentValue: string): string[] {
-  const trimmedValue = currentValue.trim()
-  if (!trimmedValue || options.includes(trimmedValue)) {
-    return [...options]
-  }
-  return [trimmedValue, ...options]
-}
-
-function getLatestRequestDepartment(requests: ConsumableRequest[]): string {
-  return [...requests]
-    .filter((request) => request.department.trim())
-    .sort((left, right) => {
-      const leftTime = new Date(left.requestedAt).getTime()
-      const rightTime = new Date(right.requestedAt).getTime()
-      return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime)
-    })[0]?.department.trim() ?? ""
-}
-
 export function EmployeeConsumableRequestPanel() {
-  const user = getStoredUserSession()
   const [activeView, setActiveView] = useState<"request" | "history" | null>(null)
   const [itemName, setItemName] = useState("")
   const [assignmentType, setAssignmentType] = useState<"" | "new" | "loan" | "exchange">("")
-  const [expectedReturnDate, setExpectedReturnDate] = useState("")
-  const [branch, setBranch] = useState(() => user?.branch?.trim() ?? "")
-  const [department, setDepartment] = useState(() => user?.department?.trim() ?? "")
+  const [branch, setBranch] = useState("")
+  const [department, setDepartment] = useState("")
   const [notes, setNotes] = useState("")
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
@@ -76,6 +54,7 @@ export function EmployeeConsumableRequestPanel() {
   const [requests, setRequests] = useState<ConsumableRequest[]>([])
   const router = useRouter()
 
+  const user = getStoredUserSession()
   const isTechnician = user?.role === "technician"
 
   const selectableConsumables = useMemo(() => {
@@ -84,12 +63,6 @@ export function EmployeeConsumableRequestPanel() {
     }
     return consumables.filter((item) => !item.item_name.toLowerCase().includes("paper"))
   }, [consumables, isTechnician])
-
-  const branchOptions = useMemo(() => buildOptionsWithCurrentValue(BRANCH_OPTIONS, branch), [branch])
-  const departmentOptions = useMemo(
-    () => buildOptionsWithCurrentValue(DEPARTMENT_OPTIONS, department),
-    [department]
-  )
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
     setResultDialog({
@@ -122,43 +95,6 @@ export function EmployeeConsumableRequestPanel() {
             .sort((a, b) => a.item_name.localeCompare(b.item_name))
         )
         setRequests(requestData)
-
-        let nextBranch = user?.branch?.trim() ?? ""
-        let nextDepartment = user?.department?.trim() ?? ""
-
-        try {
-          if (user?.role === "employee" && user.id && (!nextBranch || !nextDepartment)) {
-            const employees = await getEmployees()
-            const currentEmployee = employees.find((employee) => employee.id === user.id)
-            nextBranch = nextBranch || currentEmployee?.branch?.trim() || ""
-            nextDepartment = nextDepartment || currentEmployee?.department?.trim() || ""
-          }
-
-          if (user?.role === "technician" && user.id && (!nextBranch || !nextDepartment)) {
-            const technicians = await getTechnicians()
-            const currentTechnician = technicians.find((technician) => technician.user_id === user.id)
-            nextBranch = nextBranch || currentTechnician?.branch?.trim() || ""
-            nextDepartment = nextDepartment || currentTechnician?.department?.trim() || ""
-          }
-        } catch {
-          // Keep the request form usable even if profile context cannot be refreshed.
-        }
-
-        nextDepartment = nextDepartment || getLatestRequestDepartment(requestData)
-
-        if (nextBranch) {
-          setBranch((current) => current.trim() || nextBranch)
-        }
-        if (nextDepartment) {
-          setDepartment((current) => current.trim() || nextDepartment)
-        }
-        if (user && (nextBranch || nextDepartment)) {
-          persistUserSession({
-            ...user,
-            branch: nextBranch || user.branch,
-            department: nextDepartment || user.department,
-          })
-        }
       } catch (loadError) {
         if (!silent) {
           showResultDialog("error", loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
@@ -182,7 +118,7 @@ export function EmployeeConsumableRequestPanel() {
       window.clearInterval(intervalId)
       window.removeEventListener("focus", onFocus)
     }
-  }, [user?.branch, user?.department, user?.id, user?.role])
+  }, [user?.id])
 
   const myRequests = requests
 
@@ -218,12 +154,6 @@ export function EmployeeConsumableRequestPanel() {
       return
     }
 
-    if (assignmentType === "loan" && !expectedReturnDate) {
-      const nextMessage = "Expected return date is required for loan requests."
-      showResultDialog("error", nextMessage)
-      return
-    }
-
     if (!user?.id) {
       const nextMessage = "Session expired. Please login again."
       showResultDialog("error", nextMessage)
@@ -240,11 +170,11 @@ export function EmployeeConsumableRequestPanel() {
         department,
         notes: composedNotes,
         employee_id: user.id,
-        expected_return_date: assignmentType === "loan" ? expectedReturnDate : null,
       })
       setItemName("")
       setAssignmentType("")
-      setExpectedReturnDate("")
+      setBranch("")
+      setDepartment("")
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
@@ -300,7 +230,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select department</option>
-                    {departmentOptions.map((option) => (
+                    {DEPARTMENT_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -340,13 +270,7 @@ export function EmployeeConsumableRequestPanel() {
                     id="assignment-type"
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     value={assignmentType}
-                    onChange={(event) => {
-                      const nextType = event.target.value as "" | "new" | "loan" | "exchange"
-                      setAssignmentType(nextType)
-                      if (nextType !== "loan") {
-                        setExpectedReturnDate("")
-                      }
-                    }}
+                    onChange={(event) => setAssignmentType(event.target.value as "" | "new" | "loan" | "exchange")}
                   >
                     <option value="" disabled>
                       Select type
@@ -356,22 +280,6 @@ export function EmployeeConsumableRequestPanel() {
                     <option value="exchange">Exchange</option>
                   </select>
                 </div>
-
-                {assignmentType === "loan" ? (
-                  <div className="space-y-1">
-                    <label htmlFor="expected-return-date" className="text-xs font-semibold text-[#0B1F3A]">
-                      Expected Return Date
-                    </label>
-                    <input
-                      id="expected-return-date"
-                      type="date"
-                      value={expectedReturnDate}
-                      min={new Date().toISOString().slice(0, 10)}
-                      onChange={(event) => setExpectedReturnDate(event.target.value)}
-                      className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
-                    />
-                  </div>
-                ) : null}
 
                 <div className="space-y-1">
                   <label htmlFor="branch" className="text-xs font-semibold text-[#0B1F3A]">
@@ -384,7 +292,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select branch</option>
-                    {branchOptions.map((option) => (
+                    {BRANCH_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -431,8 +339,7 @@ export function EmployeeConsumableRequestPanel() {
                   <TableHead className="w-[30%] px-6 text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Item</TableHead>
                   <TableHead className="w-[8%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Qty</TableHead>
                   <TableHead className="w-[14%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Type</TableHead>
-                  <TableHead className="w-[18%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Return Date</TableHead>
-                  <TableHead className="w-[15%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
+                  <TableHead className="w-[33%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Status</TableHead>
                   <TableHead className="w-[15%] text-xs font-semibold tracking-wide text-[#1E3A6D] uppercase">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -464,9 +371,6 @@ export function EmployeeConsumableRequestPanel() {
                           <Badge variant="outline" className="border-slate-300 bg-slate-50 text-[#0B1F3A] whitespace-nowrap">
                             {request.assignmentType}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-[#0B1F3A]">
-                          {request.expectedReturnDate ? new Date(request.expectedReturnDate).toLocaleDateString() : "N/A"}
                         </TableCell>
                         <TableCell className="text-xs text-[#0B1F3A]">
                           <Badge

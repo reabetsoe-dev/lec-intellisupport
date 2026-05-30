@@ -109,19 +109,6 @@ export function AssetFaultQrScanner() {
   const [scanError, setScanError] = useState("")
   const [manualAssetCode, setManualAssetCode] = useState("")
 
-  const getCameraUnavailableMessage = useCallback(() => {
-    if (typeof window === "undefined") {
-      return "Live camera scanning is not ready yet. Try again after the page finishes loading."
-    }
-
-    const isSecurePage = window.isSecureContext || window.location.hostname === "localhost"
-    if (!isSecurePage) {
-      return `Live camera scanning needs HTTPS. This page is currently ${window.location.origin}. Open the Cloudflare HTTPS link in Chrome or Safari.`
-    }
-
-    return "Live camera scanning is not available in this browser view. Open this page in the full Chrome or Safari app, not inside a QR preview, WhatsApp, Facebook, or another in-app browser. You can still use Scan from photo."
-  }, [])
-
   const stopCamera = useCallback(() => {
     if (animationFrameRef.current !== null) {
       window.cancelAnimationFrame(animationFrameRef.current)
@@ -192,7 +179,7 @@ export function AssetFaultQrScanner() {
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setScanError(getCameraUnavailableMessage())
+      setScanError("Live camera scanning is blocked in this browser. Open the Cloudflare HTTPS link in Chrome/Safari, or use Scan from photo.")
       return
     }
 
@@ -232,7 +219,7 @@ export function AssetFaultQrScanner() {
     } finally {
       setCameraStarting(false)
     }
-  }, [getCameraUnavailableMessage, scanFrame, stopCamera])
+  }, [scanFrame, stopCamera])
 
   useEffect(() => {
     if (!scannerOpen) {

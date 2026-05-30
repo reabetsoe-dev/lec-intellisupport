@@ -1,16 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Filter, LoaderCircle, MoreHorizontal } from "lucide-react"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { escalateTicket, getAssignedTickets, getTechnicians, type Technician, type Ticket, updateTicketStatus } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { useAutoRefresh } from "@/lib/use-auto-refresh"
@@ -63,52 +61,20 @@ type TicketRow = {
   canControlWorkflow: boolean
 }
 
+const workflowTextStyles: Record<WorkflowState, string> = {
+  "Awaiting Start": "text-[#9A5B00]",
+  "In Progress": "text-[#1F5E92]",
+  "Waiting for Employee": "text-[#9A5B00]",
+  Solved: "text-[#1E7A45]",
+  Other: "text-[#475569]",
+}
+
 const workflowRowStyles: Record<WorkflowState, string> = {
   "Awaiting Start": "border-l-[#D0891B]",
   "In Progress": "border-l-[#2F7FC9]",
   "Waiting for Employee": "border-l-[#E39A3A]",
   Solved: "border-l-[#3EA56D]",
   Other: "border-l-[#CBD5E1]",
-}
-
-const workflowBadgeStyles: Record<WorkflowState, string> = {
-  "Awaiting Start": "border-[#E6C589] bg-[#FFF6E5] text-[#8A5A0D]",
-  "In Progress": "border-[#9CC4EA] bg-[#EAF4FF] text-[#1F4E7A]",
-  "Waiting for Employee": "border-[#F2C27F] bg-[#FFF4E6] text-[#8A4B08]",
-  Solved: "border-[#98D4B7] bg-[#EAF9F0] text-[#1E7A45]",
-  Other: "border-[#CBD5E1] bg-[#F8FAFC] text-[#475569]",
-}
-
-const priorityBadgeStyles: Record<string, string> = {
-  Low: "!border-[#9CC4EA] !bg-[#DDEEFF] !text-[#2E6092]",
-  Medium: "!border-[#F4D88D] !bg-[#FFF5D8] !text-[#9A6A00]",
-  High: "!border-[#F0B06A] !bg-[#FFF0DD] !text-[#A65300]",
-  Critical: "!border-[#F4B5B5] !bg-[#FFE5E5] !text-[#A33939]",
-  Urgent: "!border-[#E89A9A] !bg-[#FFE1E1] !text-[#9F2D2D]",
-}
-
-function normalizePriorityLabel(priority: string): string {
-  const normalized = priority.trim().toLowerCase()
-  if (normalized === "urgent") {
-    return "Urgent"
-  }
-  if (normalized === "critical") {
-    return "Critical"
-  }
-  if (normalized === "high") {
-    return "High"
-  }
-  if (normalized === "medium") {
-    return "Medium"
-  }
-  if (normalized === "low") {
-    return "Low"
-  }
-  return priority
-}
-
-function getPriorityBadgeClass(priority: string): string {
-  return priorityBadgeStyles[normalizePriorityLabel(priority)] ?? priorityBadgeStyles.Low
 }
 
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
@@ -674,305 +640,94 @@ export function TechnicianTicketTable() {
           </div>
         ) : null}
 
-        <div className="hidden md:block">
-          <Table className="w-full table-fixed">
-            <colgroup>
-              <col className="w-[92px]" />
-              <col className="w-[94px]" />
-              <col />
-              <col className="w-[132px]" />
-              <col className="w-[104px]" />
-              <col className="w-[104px]" />
-            </colgroup>
-            <TableHeader className="sticky top-0 z-10">
-              <TableRow className="border-y-0 bg-[#255F8F] hover:bg-[#255F8F]">
-                <TableHead className="px-3 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  ID
-                </TableHead>
-                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Updated
-                </TableHead>
-                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Subject
-                </TableHead>
-                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Status
-                </TableHead>
-                <TableHead className="px-2 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Priority
-                </TableHead>
-                <TableHead className="px-2 py-3 pr-3 text-right text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">
-                    Loading assigned tickets...
-                  </TableCell>
-                </TableRow>
-              ) : loadError ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-rose-600">
-                    {loadError}
-                  </TableCell>
-                </TableRow>
-              ) : filteredRows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">
-                    No tickets found for this filter.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredRows.map((ticket, index) => {
-                  const expanded = expandedTicketIds.has(ticket.id)
-                  const metadata = compactMetadata(ticket.raw)
-                  const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
-                  const assignee = ticket.raw.technician_name || currentUser?.name || "Assigned technician"
-
-                  return (
-                    <Fragment key={ticket.id}>
-                      <TableRow
-                        className={cn(
-                          "border-b border-[#D4E1EF] border-l-4 transition-colors hover:bg-[#EAF3FC]",
-                          index % 2 === 0 ? "bg-white" : "bg-[#F7FAFD]",
-                          workflowRowStyles[ticket.workflowState],
-                          ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF8F8] hover:bg-[#FFF1F1]"
-                        )}
-                      >
-                        <TableCell className="px-3 py-3 align-middle">
-                          <Link
-                            href={`/technician/tickets/${ticket.id}`}
-                            className="text-xs font-semibold text-[#2A5D8D] underline-offset-2 hover:underline"
-                          >
-                            {ticket.trackingId}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="px-2 py-3 align-middle text-xs text-[#355B7D]">
-                          {formatDateLabel(ticket.updated)}
-                        </TableCell>
-                        <TableCell className="min-w-0 px-2 py-3 align-middle whitespace-normal">
-                          <div className="min-w-0 space-y-1">
-                            <Link
-                              href={`/technician/tickets/${ticket.id}`}
-                              className="block truncate text-sm font-semibold text-[#173A5D] underline-offset-2 hover:underline"
-                              title={ticket.title}
-                            >
-                              {ticket.title}
-                            </Link>
-                            <p className="truncate text-[11px] text-[#5D7894]" title={ticket.description}>
-                              {ticket.description}
-                            </p>
-                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#5D7894]">
-                              <span className="min-w-0 max-w-[14rem] truncate" title={`${ticket.reporter} - ${ticket.branch}`}>
-                                {ticket.reporter} - {ticket.branch}
-                              </span>
-                              <span className="min-w-0 max-w-[12rem] truncate" title={`Assigned: ${assignee}`}>
-                                Assigned: {assignee}
-                              </span>
-                              <span
-                                className={cn(
-                                  "inline-flex items-center gap-1 font-semibold",
-                                  ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]"
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    "h-1.5 w-1.5 rounded-full",
-                                    ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#2F7FC9]"
-                                  )}
-                                />
-                                {ticket.sla.label}
-                              </span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-2 py-3 align-middle">
-                          <Badge
-                            className={cn(
-                              "max-w-full rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                              workflowBadgeStyles[ticket.workflowState]
-                            )}
-                          >
-                            {ticket.workflowState}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="px-2 py-3 align-middle">
-                          <Badge
-                            className={cn(
-                              "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                              getPriorityBadgeClass(ticket.priority),
-                              ["Critical", "Urgent"].includes(normalizePriorityLabel(ticket.priority)) &&
-                                "shadow-[0_0_0_1px_rgba(163,57,57,0.12)]"
-                            )}
-                          >
-                            {ticket.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="px-2 py-2 pr-3 align-middle">
-                          <div className="flex items-center justify-end gap-1">
-                            {primaryIsStart ? (
-                              <Button
-                                size="sm"
-                                type="button"
-                                className="h-8 min-w-0 bg-[#0A63B8] px-2.5 text-xs text-white hover:bg-[#084C8C]"
-                                disabled={busyTicketId === ticket.id}
-                                onClick={() => void handleStartWork(ticket)}
-                                title={ticket.nextAction.label}
-                              >
-                                {busyTicketId === ticket.id ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                                Start
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 min-w-0 border-[#93AECA] bg-white px-2.5 text-xs text-[#20466D] hover:bg-[#F3F8FD]"
-                                asChild
-                              >
-                                <Link href={`/technician/tickets/${ticket.id}`} title={ticket.nextAction.label}>View</Link>
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
-                                  aria-label={`More actions for ${ticket.trackingId}`}
-                                >
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[70] w-48 border-[#B8CDE1] bg-white">
-                                <DropdownMenuItem asChild>
-                                  <Link href={`/technician/tickets/${ticket.id}`}>View Ticket</Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toggleExpandedTicket(ticket.id)}>
-                                  {expanded ? "Hide Details" : "Expand Details"}
-                                </DropdownMenuItem>
-                                {ticket.raw.latest_escalation_comment ? (
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      setCommentPreview({
-                                        ticketId: ticket.id,
-                                        title: ticket.title,
-                                        comment: formatEscalationPreviewText(
-                                          ticket.raw.latest_escalation_comment ?? "",
-                                          ticket.raw.latest_escalation_by
-                                        ),
-                                        by: ticket.raw.latest_escalation_by,
-                                        at: ticket.raw.latest_escalation_at,
-                                      })
-                                    }
-                                  >
-                                    View Escalation
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {ticket.canControlWorkflow ? (
-                                  <DropdownMenuItem
-                                    disabled={ticket.workflowState === "Waiting for Employee" || ticket.workflowState === "Solved"}
-                                    onClick={() => void openReassignDialog(ticket)}
-                                  >
-                                    Transfer Ticket
-                                  </DropdownMenuItem>
-                                ) : null}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      {expanded ? (
-                        <TableRow key={`${ticket.id}-details`} className="border-b border-[#D4E1EF] bg-[#F8FBFF]">
-                          <TableCell colSpan={6} className="px-4 py-3 whitespace-normal">
-                            <div className="flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
-                              {metadata.length > 0 ? (
-                                metadata.map((item) => (
-                                  <span key={item} className="rounded border border-[#D7E4F0] bg-white px-2 py-1">
-                                    {item}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>No additional metadata.</span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : null}
-                    </Fragment>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div className="space-y-2 p-3 md:hidden">
+        <div className="space-y-3 p-3">
           {loading ? (
-            <div className="px-4 py-6 text-center text-sm text-slate-500">Loading assigned tickets...</div>
+            <div className="px-6 py-8 text-center text-sm text-slate-500">Loading assigned tickets...</div>
           ) : loadError ? (
-            <div className="px-4 py-6 text-center text-sm text-rose-600">{loadError}</div>
+            <div className="px-6 py-8 text-center text-sm text-rose-600">{loadError}</div>
           ) : filteredRows.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-slate-500">No tickets found for this filter.</div>
+            <div className="px-6 py-8 text-center text-sm text-slate-500">No tickets found for this filter.</div>
           ) : (
             filteredRows.map((ticket) => {
               const expanded = expandedTicketIds.has(ticket.id)
               const metadata = compactMetadata(ticket.raw)
               const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
-              const assignee = ticket.raw.technician_name || currentUser?.name || "Assigned technician"
+              const primaryLabel = primaryIsStart ? "Start Work" : ticket.nextAction.label
 
               return (
                 <article
-                  key={`mobile-${ticket.id}`}
+                  key={ticket.id}
                   className={cn(
-                    "rounded-md border border-[#D4E1EF] border-l-4 bg-white p-3 shadow-sm",
+                    "rounded-lg border border-[#DDE8F3] border-l-4 bg-white px-4 py-4 shadow-sm transition-colors hover:border-[#BBD0E5] hover:bg-[#FBFDFF]",
                     workflowRowStyles[ticket.workflowState],
-                    ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF8F8]"
+                    ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "ring-1 ring-inset ring-[#F2C6C6]"
                   )}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#5D7894]">
-                        <Link href={`/technician/tickets/${ticket.id}`} className="text-[#2A5D8D] underline-offset-2 hover:underline">
-                          {ticket.trackingId}
+                  <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="min-w-0 space-y-2.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#607C98]">
+                        <span className="font-semibold text-[#2A5D8D]">{ticket.trackingId}</span>
+                        <Link
+                          href={`/technician/tickets/${ticket.id}`}
+                          className="min-w-0 truncate text-base font-semibold text-[#173A5D] underline-offset-2 hover:underline"
+                          title={ticket.title}
+                        >
+                          {ticket.title}
                         </Link>
-                        <span>{formatDateLabel(ticket.updated)}</span>
+                        <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#9AAFC4]" />
+                        <span className="min-w-0 truncate" title={ticket.branch}>{ticket.branch}</span>
+                        <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#9AAFC4]" />
+                        <span>Updated {formatDateLabel(ticket.updated)}</span>
                       </div>
-                      <Link
-                        href={`/technician/tickets/${ticket.id}`}
-                        className="block truncate text-sm font-semibold text-[#173A5D] underline-offset-2 hover:underline"
-                        title={ticket.title}
-                      >
-                        {ticket.title}
-                      </Link>
-                      <p className="truncate text-[11px] text-[#5D7894]" title={`${ticket.reporter} - ${ticket.branch}`}>
-                        {ticket.reporter} - {ticket.branch} - Assigned: {assignee}
+
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[#4A6887]">
+                        <span className="min-w-0 max-w-[14rem] truncate" title={ticket.reporter}>
+                          Reporter: <span className="font-medium text-[#1F4469]">{ticket.reporter}</span>
+                        </span>
+                        <span className={cn("inline-flex items-center gap-1 font-semibold", ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]")}>
+                          <span className={cn("h-2 w-2 rounded-full", ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#E2A22A]")} />
+                          {ticket.sla.label}
+                        </span>
+                        <span className={cn("font-semibold", workflowTextStyles[ticket.workflowState])}>{ticket.workflowState}</span>
+                        <span className={cn("text-[11px] font-semibold", ticket.priority === "Critical" ? "text-[#A33939]" : ticket.priority === "High" ? "text-[#9A6A00]" : "text-[#2E6092]")}>
+                          {ticket.priority}
+                        </span>
+                      </div>
+
+                      <p className="line-clamp-2 max-w-5xl text-sm leading-5 text-[#4A6887]" title={ticket.description}>
+                        {ticket.description}
                       </p>
+                      {expanded ? (
+                        <div className="flex flex-wrap gap-2 pt-1 text-xs text-[#4F6E8D]">
+                          {metadata.length > 0 ? metadata.map((item) => (
+                            <span key={item} className="rounded border border-[#D7E4F0] bg-[#F8FBFF] px-2 py-1">
+                              {item}
+                            </span>
+                          )) : <span>No additional metadata.</span>}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
+
+                    <div className="flex shrink-0 items-start gap-2 lg:justify-end">
                       {primaryIsStart ? (
                         <Button
                           size="sm"
                           type="button"
-                          className="h-8 bg-[#0A63B8] px-2.5 text-xs text-white hover:bg-[#084C8C]"
+                          className="h-9 min-w-[7.5rem] bg-[#0A63B8] px-3 text-white hover:bg-[#084C8C]"
                           disabled={busyTicketId === ticket.id}
                           onClick={() => void handleStartWork(ticket)}
-                          title={ticket.nextAction.label}
                         >
-                          {busyTicketId === ticket.id ? <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                          Start
+                          {busyTicketId === ticket.id ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          {primaryLabel}
                         </Button>
                       ) : (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 border-[#93AECA] bg-white px-2.5 text-xs text-[#20466D] hover:bg-[#F3F8FD]"
+                          className="h-9 min-w-[7.5rem] border-[#93AECA] bg-white px-3 text-[#20466D] hover:bg-[#F3F8FD]"
                           asChild
                         >
-                          <Link href={`/technician/tickets/${ticket.id}`} title={ticket.nextAction.label}>View</Link>
+                          <Link href={`/technician/tickets/${ticket.id}`}>{primaryLabel}</Link>
                         </Button>
                       )}
                       <DropdownMenu>
@@ -981,7 +736,7 @@ export function TechnicianTicketTable() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="h-8 w-8 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
+                            className="h-9 w-9 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
                             aria-label={`More actions for ${ticket.trackingId}`}
                           >
                             <MoreHorizontal className="h-4 w-4" />
@@ -1024,46 +779,7 @@ export function TechnicianTicketTable() {
                       </DropdownMenu>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge
-                      className={cn(
-                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                        workflowBadgeStyles[ticket.workflowState]
-                      )}
-                    >
-                      {ticket.workflowState}
-                    </Badge>
-                    <Badge
-                      className={cn(
-                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                        getPriorityBadgeClass(ticket.priority)
-                      )}
-                    >
-                      {ticket.priority}
-                    </Badge>
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 text-[11px] font-semibold",
-                        ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]"
-                      )}
-                    >
-                      <span className={cn("h-1.5 w-1.5 rounded-full", ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#2F7FC9]")} />
-                      {ticket.sla.label}
-                    </span>
-                  </div>
-                  {expanded ? (
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
-                      {metadata.length > 0 ? (
-                        metadata.map((item) => (
-                          <span key={item} className="rounded border border-[#D7E4F0] bg-white px-2 py-1">
-                            {item}
-                          </span>
-                        ))
-                      ) : (
-                        <span>No additional metadata.</span>
-                      )}
-                    </div>
-                  ) : null}
+
                 </article>
               )
             })
