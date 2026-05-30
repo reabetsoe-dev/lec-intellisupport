@@ -1,0 +1,75 @@
+databases:
+  - name: lec-intellisupport-db
+    plan: free
+    databaseName: lec_intellisupport
+    user: lec_intellisupport
+
+services:
+  - type: web
+    name: lec-intellisupport-ai
+    runtime: python
+    plan: free
+    rootDir: ai_services
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn ai_service:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+
+  - type: web
+    name: lec-intellisupport-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: bash build.sh
+    startCommand: python -m gunicorn lec_backend.wsgi:application --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: .onrender.com,localhost,127.0.0.1
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lec-intellisupport-db
+          property: connectionString
+      - key: AI_SERVICE_URL
+        value: https://lec-intellisupport-ai.onrender.com
+      - key: FRONTEND_BASE_URL
+        value: https://lec-intellisupport-frontend.onrender.com
+      - key: SEED_DEMO_DATA
+        value: "1"
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: INITIAL_ADMIN_NAME
+        sync: false
+      - key: INITIAL_ADMIN_ROLE
+        value: admin_fault
+
+  - type: web
+    name: lec-intellisupport-frontend
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: FRONTEND_BASE_URL
+        value: https://lec-intellisupport-frontend.onrender.com
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://lec-intellisupport-frontend.onrender.com
+      - key: BACKEND_URL
+        value: https://lec-intellisupport-backend.onrender.com
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://lec-intellisupport-backend.onrender.com
