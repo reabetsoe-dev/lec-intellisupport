@@ -111,7 +111,7 @@ export function Sidebar({ user }: SidebarProps) {
 
   return (
     <>
-      <aside className="hidden h-screen w-20 shrink-0 flex-col border-r border-slate-800 bg-[#0B1F3A] text-white md:flex md:w-72">
+      <aside className="hidden h-dvh w-20 shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-[#0B1F3A] text-white md:flex md:w-72">
         <div className="border-b border-slate-800 px-4 py-4 md:px-5">
           <div className="mb-2 flex justify-center md:justify-start">
             <Image
@@ -128,7 +128,7 @@ export function Sidebar({ user }: SidebarProps) {
           </p>
         </div>
 
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4 md:px-4">
+        <nav className="scrollbar-none flex-1 space-y-5 overflow-y-auto px-3 py-4 md:px-4">
           <div>
             <p className="hidden px-3 text-xs font-semibold uppercase text-[#7FB3E8] md:block">
               {section.label}
@@ -198,7 +198,7 @@ export function Sidebar({ user }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex gap-2 overflow-x-auto px-1 pb-1">
+        <nav className="scrollbar-none flex gap-2 overflow-x-auto px-1 pb-1">
           {section.items.map((item) => {
             const isActive = isMenuItemActive(pathname, section, item)
             const Icon = item.icon

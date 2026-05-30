@@ -99,11 +99,11 @@ function AppShellContent({ children }: AppShellProps) {
   const displayUserName = getDisplayUserName(user)
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden md:h-screen md:flex-row md:overflow-hidden">
+    <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
       <Sidebar user={user} />
       <div className="lec-shell-bg flex min-h-0 min-w-0 flex-1 flex-col">
         <Topbar user={user} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-24 sm:px-4 md:p-6 md:pb-6">
+        <main className="scrollbar-none min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-24 sm:px-4 md:p-6 md:pb-6">
           <div className="mx-auto min-w-0 w-full max-w-[1400px]">
             {children}
           </div>

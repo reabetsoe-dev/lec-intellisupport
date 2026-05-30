@@ -128,6 +128,15 @@
 }
 
 @layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .lec-shell-bg {
     background:
       radial-gradient(circle at 15% 10%, rgba(0, 114, 206, 0.12), transparent 40%),
