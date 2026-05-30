@@ -2,7 +2,9 @@ from datetime import date
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 
 from core.models import Consumable, Technician, User
 
@@ -10,7 +12,52 @@ from core.models import Consumable, Technician, User
 class Command(BaseCommand):
     help = "Seed demo users and consumables for LEC-Intelli-Support."
 
+    def _user_table_columns(self) -> set[str]:
+        with connection.cursor() as cursor:
+            return {column.name for column in connection.introspection.get_table_description(cursor, User._meta.db_table)}
+
+    def _create_user_for_current_schema(self, payload: dict, defaults: dict, user_columns: set[str]) -> tuple[User, bool]:
+        create_values = {
+            "email": payload["email"],
+            **defaults,
+        }
+        if "phone_number" in user_columns and "phone_number" not in create_values:
+            create_values["phone_number"] = payload.get("phone_number", "")
+        if "created_at" in user_columns and "created_at" not in create_values:
+            create_values["created_at"] = timezone.now()
+        if "updated_at" in user_columns and "updated_at" not in create_values:
+            create_values["updated_at"] = timezone.now()
+
+        columns = [column for column in create_values if column in user_columns]
+        placeholders = ", ".join(["%s"] * len(columns))
+        column_sql = ", ".join(connection.ops.quote_name(column) for column in columns)
+        values = [create_values[column] for column in columns]
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {connection.ops.quote_name(User._meta.db_table)} ({column_sql}) VALUES ({placeholders})",
+                values,
+            )
+
+        return User.objects.get(email=payload["email"]), True
+
+    def _upsert_user(self, payload: dict, defaults: dict, user_columns: set[str]) -> tuple[User, bool]:
+        user = User.objects.filter(email=payload["email"]).first()
+        if user:
+            update_fields = []
+            for field, value in defaults.items():
+                if hasattr(user, field) and getattr(user, field) != value:
+                    setattr(user, field, value)
+                    update_fields.append(field)
+            if update_fields:
+                update_fields.append("updated_at")
+                user.save(update_fields=sorted(set(update_fields)))
+            return user, False
+
+        return self._create_user_for_current_schema(payload, defaults, user_columns)
+
     def handle(self, *args, **options):
+        user_columns = self._user_table_columns()
         technician_users = [
             {
                 "name": "Technician",
@@ -85,17 +132,16 @@ class Command(BaseCommand):
 
         for payload in demo_users:
             branch = "Maseru HQ" if payload["role"] == User.ROLE_TECHNICIAN else ""
-            user, created = User.objects.update_or_create(
-                email=payload["email"],
-                defaults={
-                    "name": payload["name"],
-                    "role": payload["role"],
-                    "branch": branch,
-                    "password_hash": make_password(payload["password"]),
-                    "must_change_password": False,
-                    "is_active": True,
-                },
-            )
+            defaults = {
+                "name": payload["name"],
+                "role": payload["role"],
+                "branch": branch,
+                "department": payload.get("department", ""),
+                "password_hash": make_password(payload["password"]),
+                "must_change_password": False,
+                "is_active": True,
+            }
+            user, created = self._upsert_user(payload, defaults, user_columns)
             status_label = "Created" if created else "Updated"
             self.stdout.write(f"{status_label} user: {user.email} ({user.role})")
 
