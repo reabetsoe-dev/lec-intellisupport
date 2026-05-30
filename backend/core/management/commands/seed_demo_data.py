@@ -13,6 +13,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         technician_users = [
             {
+                "name": "Technician",
+                "email": "technician@lec.com",
+                "password": "Technician@123",
+                "role": User.ROLE_TECHNICIAN,
+                "skillset": Technician.SKILL_HARDWARE,
+            },
+            {
                 "name": "Palesa Mokopotsa",
                 "email": "palesa.mokopotsa@lec.com",
                 "password": "Technician@123",
