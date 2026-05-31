@@ -10,7 +10,7 @@ import { QrPublicOriginControl } from "@/components/inventory/QrPublicOriginCont
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
 import { buildAssetFaultReportPath, buildAssetFaultReportUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
-import { normalizeAssetCode } from "@/lib/assetQrAssets"
+import { isFaultReportableConsumable, normalizeAssetCode } from "@/lib/assetQrAssets"
 
 function getAssetType(asset: Consumable): string {
   return asset.subcategory || asset.device_type || asset.printer_type || asset.item_name || "N/A"
@@ -81,10 +81,11 @@ function FaultQrLabelsContent() {
 
   const labelAssets = useMemo(() => {
     const parsedAssetId = assetIdParam ? Number.parseInt(assetIdParam, 10) : null
+    const reportableAssets = assets.filter(isFaultReportableConsumable)
     if (parsedAssetId && Number.isInteger(parsedAssetId)) {
-      return assets.filter((item) => item.id === parsedAssetId)
+      return reportableAssets.filter((item) => item.id === parsedAssetId)
     }
-    return assets
+    return reportableAssets
   }, [assetIdParam, assets])
 
   useEffect(() => {

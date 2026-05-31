@@ -89,15 +89,22 @@ function looksLikeServer(value: string): boolean {
   return value.toLowerCase().includes("server")
 }
 
-function looksLikePaper(value: string): boolean {
+export function looksLikePaperAsset(value: string): boolean {
   const normalized = value.toLowerCase()
-  return ["paper", "a4", "ream", "stationery", "typek", "bond"].some((token) => normalized.includes(token))
+  if (["paper", "ream", "stationery", "typek", "bond"].some((token) => normalized.includes(token))) {
+    return true
+  }
+  return (
+    /\ba4\b/.test(normalized) &&
+    !looksLikePrinter(value) &&
+    !looksLikeComputer(value) &&
+    !looksLikeNetwork(value) &&
+    !looksLikeUps(value) &&
+    !looksLikeServer(value)
+  )
 }
 
 export function inferTroubleshootingDomain(assetType: string): AssetTroubleshootingDomain {
-  if (looksLikePaper(assetType)) {
-    return "paper"
-  }
   if (looksLikePrinter(assetType)) {
     return "printer"
   }
@@ -117,6 +124,26 @@ export function inferTroubleshootingDomain(assetType: string): AssetTroubleshoot
     return "network"
   }
   return "general"
+}
+
+export function isFaultReportableConsumable(item: Consumable): boolean {
+  const searchableText = [
+    item.item_name,
+    item.category,
+    item.subcategory,
+    item.device_type,
+    item.printer_type,
+    item.brand,
+    item.model_number,
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  return !looksLikePaperAsset(searchableText)
+}
+
+export function isFaultReportableAsset(asset: Pick<AssetQrReportAsset, "assetName" | "assetType">): boolean {
+  return !looksLikePaperAsset(`${asset.assetName} ${asset.assetType}`)
 }
 
 export function buildAssetNameFromConsumable(item: Consumable): string {

@@ -2,7 +2,6 @@ export type AssetTroubleshootingDomain =
   | "printer"
   | "computer"
   | "network"
-  | "paper"
   | "ups"
   | "switch"
   | "server"
@@ -26,7 +25,6 @@ const CATEGORY_OPTIONS_BY_DOMAIN: Record<AssetTroubleshootingDomain, string[]> =
   printer: ["Paper Jam", "Toner", "Connectivity", "Print Quality", "Hardware Failure"],
   computer: ["Hardware", "Software", "Performance", "Power", "Connectivity"],
   network: ["Connectivity", "Wi-Fi", "LAN", "Power", "Configuration"],
-  paper: ["Paper Out", "Stock Recording", "Damaged Stock", "Wrong Stock"],
   ups: ["Power", "Battery", "Overload", "Hardware Failure"],
   switch: ["Connectivity", "LAN", "Power", "Configuration"],
   server: ["Infrastructure", "Storage", "Network", "Power", "Service Outage"],
@@ -42,57 +40,6 @@ function steps(problemId: string, items: string[]): TroubleshootingStep[] {
 }
 
 const COMMON_PROBLEMS_BY_DOMAIN: Record<AssetTroubleshootingDomain, AssetCommonProblem[]> = {
-  paper: [
-    {
-      id: "paper-stock-finished",
-      title: "Paper stock finished",
-      description: "Paper cannot be used because the expected stock is empty or unavailable.",
-      category: "Paper Out",
-      steps: steps("paper-stock-finished", [
-        "Check the physical paper tray or storage area.",
-        "Confirm whether sealed paper packages are available.",
-        "Confirm the asset code matches the scanned paper stock.",
-        "Check if another department recently collected the paper.",
-        "If paper is available, update the issue as resolved.",
-      ]),
-    },
-    {
-      id: "paper-wrong-loaded",
-      title: "Wrong paper loaded",
-      description: "The wrong paper size, type, or department stock appears to be loaded.",
-      category: "Wrong Stock",
-      steps: steps("paper-wrong-loaded", [
-        "Check the paper size and label on the package.",
-        "Compare it with the required paper type for the device or department.",
-        "Remove incorrect paper from the tray or storage area.",
-        "Load the correct paper and keep the packaging label visible.",
-      ]),
-    },
-    {
-      id: "paper-not-recorded",
-      title: "Paper not recorded in stock",
-      description: "Paper exists physically but does not appear correctly in stock records.",
-      category: "Stock Recording",
-      steps: steps("paper-not-recorded", [
-        "Count the available sealed and opened paper packages.",
-        "Confirm the scanned asset code matches the physical stock label.",
-        "Check whether stock was recently moved between departments.",
-        "Record the corrected quantity if you have stock update access.",
-      ]),
-    },
-    {
-      id: "paper-damaged-package",
-      title: "Damaged paper package",
-      description: "Paper packaging or sheets are damaged and may not be usable.",
-      category: "Damaged Stock",
-      steps: steps("paper-damaged-package", [
-        "Inspect the package for water, dust, tears, or bending.",
-        "Separate damaged sheets from usable paper.",
-        "Check whether another sealed package is available.",
-        "Keep the damaged package aside for consumables review.",
-      ]),
-    },
-  ],
   printer: [
     {
       id: "printer-paper-jam",

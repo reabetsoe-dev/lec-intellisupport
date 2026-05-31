@@ -97,6 +97,16 @@ function toPriority(value: string): "Low" | "Medium" | "High" | "Critical" {
   return "Medium"
 }
 
+function resolveCategory(input: ParsedAssetFaultReportInput): string {
+  if (input.category.trim()) {
+    return input.category.trim()
+  }
+  if (input.troubleshootingProblem.trim()) {
+    return "Guided Troubleshooting"
+  }
+  return "Hardware"
+}
+
 function buildComposedDescription(input: ParsedAssetFaultReportInput): string {
   const lines = [
     input.description,
@@ -201,10 +211,8 @@ function validateInput(input: ParsedAssetFaultReportInput): string | null {
     ["assetType", input.assetType],
     ["location", input.location],
     ["department", input.department],
-    ["category", input.category],
     ["title", input.title],
     ["description", input.description],
-    ["urgency", input.urgency],
   ]
 
   for (const [field, value] of requiredFields) {
@@ -240,7 +248,7 @@ export async function POST(request: NextRequest) {
   const backendPayload = {
     title: parsedInput.title,
     description: buildComposedDescription(parsedInput),
-    category: parsedInput.category,
+    category: resolveCategory(parsedInput),
     priority: toPriority(parsedInput.urgency),
     location: parsedInput.location,
     department: parsedInput.department,

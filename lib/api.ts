@@ -518,10 +518,10 @@ export type AssetQrFaultReportPayload = {
   assetType: string
   location: string
   department: string
-  category: string
+  category?: string
   title: string
   description: string
-  urgency: "Low" | "Medium" | "High" | "Critical"
+  urgency?: "Low" | "Medium" | "High" | "Critical"
   employeeId?: number
   employeeName?: string
   employeeEmail?: string
@@ -530,7 +530,6 @@ export type AssetQrFaultReportPayload = {
   troubleshootingStepsCompleted?: unknown[]
   troubleshootingResult?: "failed" | "skipped" | "not_attempted"
   source?: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
-  attachment?: File | null
 }
 
 export type AssetQrFaultReportResponse = {
@@ -1762,10 +1761,14 @@ export async function submitAssetQrFaultReport(
   formData.append("assetType", payload.assetType)
   formData.append("location", payload.location)
   formData.append("department", payload.department)
-  formData.append("category", payload.category)
+  if (payload.category) {
+    formData.append("category", payload.category)
+  }
   formData.append("title", payload.title)
   formData.append("description", payload.description)
-  formData.append("urgency", payload.urgency)
+  if (payload.urgency) {
+    formData.append("urgency", payload.urgency)
+  }
   if (typeof payload.employeeId === "number") {
     formData.append("employeeId", String(payload.employeeId))
   }
