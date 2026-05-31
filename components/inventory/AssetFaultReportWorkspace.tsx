@@ -18,7 +18,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getConsumables, submitAssetQrFaultReport } from "@/lib/api"
+import {
+  createTroubleshootingResolution,
+  getAssetQrFlow,
+  getConsumables,
+  submitAssetQrFaultReport,
+  type AssetQrCommonProblem,
+  type AssetQrFlowAsset,
+  type AssetQrTroubleshootingStep,
+} from "@/lib/api"
 import {
   enrichAssetWithMockMetadata,
   findMockAssetByCode,
@@ -27,7 +35,7 @@ import {
   toAssetQrReportAsset,
   type AssetQrReportAsset,
 } from "@/lib/assetQrAssets"
-import { getFaultCategoryOptions, getTroubleshootingSteps } from "@/lib/assetQrKnowledgeBase"
+import { getCommonProblems, getFaultCategoryOptions } from "@/lib/assetQrKnowledgeBase"
 import { getStoredUserSession, type AuthUser } from "@/lib/auth"
 
 type AssetFaultReportWorkspaceProps = {
@@ -35,8 +43,30 @@ type AssetFaultReportWorkspaceProps = {
 }
 
 type ReportUrgency = "Low" | "Medium" | "High" | "Critical"
-
+type FlowStep = "select_problem" | "troubleshoot" | "report"
+type ReportMode = "failed" | "skipped"
 type StepState = "todo" | "active" | "done"
+
+type UiStep = {
+  id: string
+  step_number: number
+  instruction: string
+}
+
+type UiProblem = {
+  id: string
+  backendId?: number
+  title: string
+  description: string
+  category: string
+  steps: UiStep[]
+}
+
+type CompletedTroubleshootingStep = {
+  step_id: string
+  step_number: number
+  instruction: string
+}
 
 type ReportFormState = {
   category: string
@@ -83,16 +113,73 @@ function locationFromAsset(asset: AssetQrReportAsset): string {
   return asset.location || `${asset.branch} - ${asset.department}`
 }
 
+function fromBackendAsset(asset: AssetQrFlowAsset): AssetQrReportAsset {
+  return {
+    id: asset.id,
+    assetCode: normalizeAssetCode(asset.asset_code),
+    assetName: asset.asset_name,
+    assetType: asset.asset_type,
+    location: asset.location,
+    branch: asset.branch,
+    department: asset.department,
+    status: asset.status,
+    lastMaintenanceDate: asset.last_maintenance_date,
+    responsibleTechnician: asset.responsible_technician,
+    source: "backend",
+  }
+}
+
+function normalizeStep(step: AssetQrTroubleshootingStep): UiStep {
+  return {
+    id: String(step.id),
+    step_number: step.step_number,
+    instruction: step.instruction,
+  }
+}
+
+function fromBackendProblem(problem: AssetQrCommonProblem, fallbackCategory: string): UiProblem {
+  const backendId = typeof problem.id === "number" ? problem.id : undefined
+  return {
+    id: String(problem.id),
+    backendId,
+    title: problem.title,
+    description: problem.description,
+    category: problem.category || problem.asset_category || problem.asset_type || fallbackCategory,
+    steps: problem.steps.map(normalizeStep),
+  }
+}
+
+function buildCompletedSteps(problem: UiProblem | null, checkedSteps: Record<string, boolean>): CompletedTroubleshootingStep[] {
+  if (!problem) {
+    return []
+  }
+  return problem.steps
+    .filter((step) => checkedSteps[step.id])
+    .map((step) => ({
+      step_id: step.id,
+      step_number: step.step_number,
+      instruction: step.instruction,
+    }))
+}
+
 export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspaceProps) {
   const [session, setSession] = useState<AuthUser | null>(null)
   const [loadingAsset, setLoadingAsset] = useState(true)
   const [assetError, setAssetError] = useState("")
   const [asset, setAsset] = useState<AssetQrReportAsset | null>(null)
+  const [commonProblems, setCommonProblems] = useState<UiProblem[]>([])
+  const [selectedProblem, setSelectedProblem] = useState<UiProblem | null>(null)
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({})
-  const [showReportForm, setShowReportForm] = useState(false)
+  const [flowStep, setFlowStep] = useState<FlowStep>("select_problem")
+  const [reportMode, setReportMode] = useState<ReportMode>("skipped")
   const [form, setForm] = useState<ReportFormState>(initialFormState)
+  const [actionError, setActionError] = useState("")
   const [submitError, setSubmitError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [recordingResolution, setRecordingResolution] = useState(false)
+  const [failedResolutionRecorded, setFailedResolutionRecorded] = useState(false)
+  const [skippedResolutionRecorded, setSkippedResolutionRecorded] = useState(false)
+  const [solvedResult, setSolvedResult] = useState<{ message: string } | null>(null)
   const [submissionResult, setSubmissionResult] = useState<{
     ticketId: number
     referenceNumber: string
@@ -103,10 +190,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
   const normalizedAssetCode = useMemo(() => normalizeAssetCode(assetCode), [assetCode])
   const scannedAssetId = useMemo(() => {
     const matched = /^AST-(\d+)$/.exec(normalizedAssetCode)
-    if (!matched) {
-      return null
-    }
-    return Number.parseInt(matched[1], 10)
+    return matched ? Number.parseInt(matched[1], 10) : null
   }, [normalizedAssetCode])
 
   useEffect(() => {
@@ -120,37 +204,60 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       try {
         setLoadingAsset(true)
         setAssetError("")
+        setCommonProblems([])
 
-        const consumables = await getConsumables()
+        const backendFlow = await getAssetQrFlow(normalizedAssetCode)
         if (!active) {
           return
         }
 
-        const matchedConsumable = consumables.find((item) => {
-          const currentCode = normalizeAssetCode(item.asset_tag || `AST-${item.id}`)
-          return currentCode === normalizedAssetCode || (scannedAssetId !== null && item.id === scannedAssetId)
-        })
+        const resolvedAsset = fromBackendAsset(backendFlow.asset)
+        const domain = inferTroubleshootingDomain(resolvedAsset.assetType)
+        const fallbackCategory = getFaultCategoryOptions(domain)[0] || "Other"
+        const backendProblems = backendFlow.common_problems.map((problem) =>
+          fromBackendProblem(problem, fallbackCategory)
+        )
+        const fallbackProblems = getCommonProblems(domain)
 
-        if (matchedConsumable) {
-          const resolvedAsset = enrichAssetWithMockMetadata(toAssetQrReportAsset(matchedConsumable))
+        setAsset(resolvedAsset)
+        setCommonProblems(backendProblems.length > 0 ? backendProblems : fallbackProblems)
+        setForm((current) => ({ ...current, category: fallbackCategory }))
+      } catch (backendError) {
+        try {
+          const consumables = await getConsumables()
+          if (!active) {
+            return
+          }
+
+          const matchedConsumable = consumables.find((item) => {
+            const currentCode = normalizeAssetCode(item.asset_tag || `AST-${item.id}`)
+            return currentCode === normalizedAssetCode || (scannedAssetId !== null && item.id === scannedAssetId)
+          })
+
+          const resolvedAsset = matchedConsumable
+            ? enrichAssetWithMockMetadata(toAssetQrReportAsset(matchedConsumable))
+            : findMockAssetByCode(normalizedAssetCode)
+
+          if (!resolvedAsset) {
+            setAssetError("Asset not found for this QR code.")
+            return
+          }
+
+          const domain = inferTroubleshootingDomain(resolvedAsset.assetType)
           setAsset(resolvedAsset)
-          return
+          setCommonProblems(getCommonProblems(domain))
+          setForm((current) => ({ ...current, category: getFaultCategoryOptions(domain)[0] || "Other" }))
+        } catch {
+          const mockAsset = findMockAssetByCode(normalizedAssetCode)
+          if (mockAsset) {
+            const domain = inferTroubleshootingDomain(mockAsset.assetType)
+            setAsset(mockAsset)
+            setCommonProblems(getCommonProblems(domain))
+            setForm((current) => ({ ...current, category: getFaultCategoryOptions(domain)[0] || "Other" }))
+            return
+          }
+          setAssetError(backendError instanceof Error ? backendError.message : "Failed to load asset details.")
         }
-
-        const mockAsset = findMockAssetByCode(normalizedAssetCode)
-        if (mockAsset) {
-          setAsset(mockAsset)
-          return
-        }
-
-        setAssetError("Asset not found for this QR code.")
-      } catch (error) {
-        const mockAsset = findMockAssetByCode(normalizedAssetCode)
-        if (mockAsset) {
-          setAsset(mockAsset)
-          return
-        }
-        setAssetError(error instanceof Error ? error.message : "Failed to load asset details.")
       } finally {
         if (active) {
           setLoadingAsset(false)
@@ -168,34 +275,23 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     () => inferTroubleshootingDomain(asset?.assetType || ""),
     [asset?.assetType]
   )
-  const troubleshootingSteps = useMemo(
-    () => getTroubleshootingSteps(troubleshootingDomain),
-    [troubleshootingDomain]
-  )
   const categoryOptions = useMemo(
     () => getFaultCategoryOptions(troubleshootingDomain),
     [troubleshootingDomain]
   )
+  const completedSteps = useMemo(
+    () => buildCompletedSteps(selectedProblem, checkedSteps),
+    [checkedSteps, selectedProblem]
+  )
 
-  useEffect(() => {
-    if (!categoryOptions.length) {
-      return
-    }
-    setForm((current) => {
-      if (current.category) {
-        return current
-      }
-      return { ...current, category: categoryOptions[0] || "Other" }
-    })
-  }, [categoryOptions])
+  const totalSteps = selectedProblem?.steps.length ?? 0
+  const completedStepCount = completedSteps.length
+  const allTroubleshootingStepsChecked = totalSteps > 0 && completedStepCount === totalSteps
 
-  const totalSteps = troubleshootingSteps.length
-  const completedSteps = troubleshootingSteps.filter((step) => checkedSteps[step.id]).length
-  const allTroubleshootingStepsChecked = totalSteps > 0 && completedSteps === totalSteps
-
-  const step1State: StepState = "done"
-  const step2State: StepState = showReportForm ? "done" : "active"
-  const step3State: StepState = submissionResult ? "done" : showReportForm ? "active" : "todo"
+  const step1State: StepState = selectedProblem || flowStep !== "select_problem" ? "done" : "active"
+  const step2State: StepState =
+    flowStep === "troubleshoot" ? "active" : flowStep === "report" || solvedResult ? "done" : "todo"
+  const step3State: StepState = solvedResult || submissionResult ? "done" : flowStep === "report" ? "active" : "todo"
 
   const canSubmit = Boolean(
     asset &&
@@ -207,8 +303,136 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       form.description.trim()
   )
 
+  const resetReportState = () => {
+    setSubmissionResult(null)
+    setSubmitError("")
+    setSkippedResolutionRecorded(false)
+    setFailedResolutionRecorded(false)
+  }
+
+  const selectProblem = (problem: UiProblem) => {
+    setSelectedProblem(problem)
+    setCheckedSteps({})
+    setSolvedResult(null)
+    setActionError("")
+    resetReportState()
+    setFlowStep("troubleshoot")
+    setReportMode("failed")
+    setForm({
+      ...initialFormState,
+      category: problem.category || categoryOptions[0] || "Other",
+      title: problem.title,
+      description: `${problem.description}\n\nThe guided troubleshooting steps will be attempted before reporting if needed.`,
+    })
+  }
+
   const toggleTroubleshootingStep = (stepId: string) => {
     setCheckedSteps((current) => ({ ...current, [stepId]: !current[stepId] }))
+    setActionError("")
+  }
+
+  const ensureEmployeeSession = (): boolean => {
+    if (!session || session.role !== "employee") {
+      setActionError("Please sign in as an employee before recording troubleshooting or submitting a fault report.")
+      return false
+    }
+    return true
+  }
+
+  const recordResolution = async (status: "solved" | "failed" | "skipped") => {
+    if (!asset) {
+      throw new Error("Asset details are missing.")
+    }
+    if (!ensureEmployeeSession()) {
+      throw new Error("Employee login is required.")
+    }
+
+    const problemTitle =
+      status === "skipped"
+        ? "Manual report without troubleshooting"
+        : selectedProblem?.title || "Asset troubleshooting"
+
+    return createTroubleshootingResolution({
+      asset_id: asset.id,
+      asset_code: asset.assetCode,
+      problem_id: selectedProblem?.backendId,
+      problem_title: problemTitle,
+      completed_steps: completedSteps,
+      resolution_status: status,
+      solved_by: "system_guided_troubleshooting",
+      solved_by_display: "LEC IntelliSupport Guided Troubleshooting",
+      source: status === "skipped" ? "qr_asset_manual_report" : "qr_asset_troubleshooting",
+      branch: locationFromAsset(asset),
+      department: asset.department,
+    })
+  }
+
+  const markSolved = async () => {
+    setActionError("")
+    if (!allTroubleshootingStepsChecked) {
+      setActionError("Complete all troubleshooting steps before marking this problem as solved.")
+      return
+    }
+    try {
+      setRecordingResolution(true)
+      const response = await recordResolution("solved")
+      setSolvedResult({ message: response.message })
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to record the solved troubleshooting result.")
+    } finally {
+      setRecordingResolution(false)
+    }
+  }
+
+  const openFailedReport = async () => {
+    setActionError("")
+    setSubmitError("")
+    setReportMode("failed")
+    setFlowStep("report")
+    if (selectedProblem) {
+      setForm((current) => ({
+        ...current,
+        category: selectedProblem.category || current.category || categoryOptions[0] || "Other",
+        title: selectedProblem.title,
+        description: `${selectedProblem.description}\n\nTroubleshooting result: failed.\nCompleted steps: ${
+          completedSteps.length > 0
+            ? completedSteps.map((step) => `${step.step_number}. ${step.instruction}`).join(" ")
+            : "No steps completed yet."
+        }`,
+      }))
+    }
+
+    if (session?.role === "employee" && !failedResolutionRecorded) {
+      try {
+        setRecordingResolution(true)
+        await recordResolution("failed")
+        setFailedResolutionRecorded(true)
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : "Troubleshooting attempt could not be recorded.")
+      } finally {
+        setRecordingResolution(false)
+      }
+    }
+  }
+
+  const openManualReport = () => {
+    if (!asset) {
+      return
+    }
+    setActionError("")
+    setSubmitError("")
+    setSelectedProblem(null)
+    setCheckedSteps({})
+    setSolvedResult(null)
+    resetReportState()
+    setReportMode("skipped")
+    setFlowStep("report")
+    setForm({
+      ...initialFormState,
+      category: categoryOptions[0] || "Other",
+      title: `Fault with ${asset.assetName}`,
+      description: "Troubleshooting was skipped. Please describe the issue affecting this asset.",
+    })
   }
 
   const submitFaultReport = async () => {
@@ -236,7 +460,17 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       setSubmitting(true)
       setSubmitError("")
 
+      if (reportMode === "skipped" && !skippedResolutionRecorded) {
+        await recordResolution("skipped")
+        setSkippedResolutionRecorded(true)
+      }
+      if (reportMode === "failed" && session.role === "employee" && !failedResolutionRecorded) {
+        await recordResolution("failed")
+        setFailedResolutionRecorded(true)
+      }
+
       const response = await submitAssetQrFaultReport({
+        assetId: asset.id,
         assetCode: asset.assetCode,
         assetName: asset.assetName,
         assetType: asset.assetType,
@@ -249,6 +483,11 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
         employeeId: session.id,
         employeeName: session.name,
         employeeEmail: session.login_identifier || "",
+        troubleshootingAttempted: reportMode === "failed",
+        troubleshootingProblem: selectedProblem?.title || "",
+        troubleshootingStepsCompleted: completedSteps,
+        troubleshootingResult: reportMode,
+        source: reportMode === "failed" ? "qr_asset_troubleshooting" : "qr_asset_manual_report",
         attachment: form.attachment,
       })
 
@@ -277,22 +516,22 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               </div>
               <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#D9EEFF]">
                 <QrCode className="h-3.5 w-3.5" />
-                QR Flow 2
+                QR Flow
               </span>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
               <article className={`rounded-xl border px-3 py-3 ${stepStyles(step1State)}`}>
                 <p className="text-xs font-semibold tracking-[0.12em] uppercase">Step 1</p>
-                <p className="mt-1 text-sm font-semibold">Scan Asset</p>
+                <p className="mt-1 text-sm font-semibold">Select Problem</p>
               </article>
               <article className={`rounded-xl border px-3 py-3 ${stepStyles(step2State)}`}>
                 <p className="text-xs font-semibold tracking-[0.12em] uppercase">Step 2</p>
-                <p className="mt-1 text-sm font-semibold">Try Troubleshooting</p>
+                <p className="mt-1 text-sm font-semibold">Troubleshoot</p>
               </article>
               <article className={`rounded-xl border px-3 py-3 ${stepStyles(step3State)}`}>
                 <p className="text-xs font-semibold tracking-[0.12em] uppercase">Step 3</p>
-                <p className="mt-1 text-sm font-semibold">Report Fault</p>
+                <p className="mt-1 text-sm font-semibold">Solved or Report Fault</p>
               </article>
             </div>
           </CardHeader>
@@ -339,11 +578,11 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 </article>
                 <article className="rounded-xl border border-[#C8DCF0] bg-[#F9FCFF] px-4 py-3">
                   <p className="text-xs font-semibold tracking-[0.12em] text-[#5C7FA2] uppercase">Department</p>
-                  <p className="mt-1 text-sm font-semibold text-[#163D63]">{asset.department}</p>
+                  <p className="mt-1 text-sm font-semibold text-[#163D63]">{asset.department || "N/A"}</p>
                 </article>
                 <article className="rounded-xl border border-[#C8DCF0] bg-[#F9FCFF] px-4 py-3">
                   <p className="text-xs font-semibold tracking-[0.12em] text-[#5C7FA2] uppercase">Current Status</p>
-                  <p className="mt-1 text-sm font-semibold text-[#163D63]">{asset.status}</p>
+                  <p className="mt-1 text-sm font-semibold text-[#163D63]">{asset.status || "N/A"}</p>
                 </article>
                 <article className="rounded-xl border border-[#C8DCF0] bg-[#F9FCFF] px-4 py-3">
                   <p className="text-xs font-semibold tracking-[0.12em] text-[#5C7FA2] uppercase">Last Maintenance Date</p>
@@ -363,61 +602,136 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
             <CardHeader className="px-5 py-4 md:px-6">
               <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
                 <Wrench className="h-5 w-5 text-[#0E5EA2]" />
-                Troubleshooting Checklist
+                Common problems for this asset
               </CardTitle>
-              <p className="text-sm text-[#56789B]">
-                Complete these checks first. If the issue still persists, submit a fault report below.
-              </p>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
-              <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#264E74]">
-                Completed {completedSteps} of {totalSteps} checks.
-              </div>
+              {commonProblems.length === 0 ? (
+                <div className="rounded-xl border border-[#F0C28B] bg-[#FFF9F0] px-4 py-3 text-sm text-[#8B5A19]">
+                  No common problems are configured for this asset yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {commonProblems.map((problem) => (
+                    <article
+                      key={problem.id}
+                      className={`rounded-xl border px-4 py-4 transition ${
+                        selectedProblem?.id === problem.id
+                          ? "border-[#0E5EA2] bg-[#F1F8FF]"
+                          : "border-[#C8DCF0] bg-white"
+                      }`}
+                    >
+                      <h2 className="text-base font-semibold text-[#0A2E54]">{problem.title}</h2>
+                      <p className="mt-1 text-sm text-[#55789D]">{problem.description}</p>
+                      <Button
+                        type="button"
+                        className="mt-4 h-10 w-full bg-[#0E5EA2] text-white hover:bg-[#0A4E87]"
+                        onClick={() => selectProblem(problem)}
+                      >
+                        Troubleshoot this problem
+                      </Button>
+                    </article>
+                  ))}
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5] md:w-auto"
+                onClick={openManualReport}
+              >
+                Report manually without troubleshooting
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
 
+        {asset && selectedProblem && flowStep === "troubleshoot" ? (
+          <Card className="rounded-2xl border-[#B4D2EC] bg-white/90 py-0 shadow-sm">
+            <CardHeader className="px-5 py-4 md:px-6">
+              <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
+                <ClipboardList className="h-5 w-5 text-[#0E5EA2]" />
+                Troubleshooting: {selectedProblem.title}
+              </CardTitle>
+              <p className="text-sm text-[#56789B]">Completed {completedStepCount} of {totalSteps} steps.</p>
+            </CardHeader>
+            <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
               <div className="space-y-2">
-                {troubleshootingSteps.map((step) => {
+                {selectedProblem.steps.map((step) => {
                   const checked = Boolean(checkedSteps[step.id])
                   return (
-                    <button
+                    <label
                       key={step.id}
-                      type="button"
-                      onClick={() => toggleTroubleshootingStep(step.id)}
                       className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-all ${
                         checked
                           ? "border-emerald-300 bg-emerald-50 text-emerald-800"
                           : "border-[#C8DCF0] bg-white text-[#22496F] hover:bg-[#F7FBFF]"
                       }`}
                     >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleTroubleshootingStep(step.id)}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span className="flex-1 text-sm font-medium">
+                        <span className="font-semibold">Step {step.step_number}.</span> {step.instruction}
+                      </span>
                       <span className="mt-[2px]">
                         {checked ? <CircleCheckBig className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
                       </span>
-                      <span className="text-sm font-medium">{step.text}</span>
-                    </button>
+                    </label>
                   )
                 })}
               </div>
 
-              {!showReportForm ? (
-                <div className="space-y-3">
-                  <Button
-                    type="button"
-                    onClick={() => setShowReportForm(true)}
-                    className="h-11 w-full bg-[#C21E2D] text-white shadow-[0_16px_32px_-22px_rgba(194,30,45,0.85)] hover:bg-[#A81927] md:w-auto"
-                  >
-                    Still not solved? Report this fault
-                  </Button>
-                  {allTroubleshootingStepsChecked ? (
-                    <p className="text-xs text-[#55789D]">
-                      You completed all checklist items. You can still report if the issue remains unresolved.
-                    </p>
-                  ) : null}
+              {actionError ? (
+                <div className="flex items-start gap-2 rounded-xl border border-[#EDB7B7] bg-[#FFF5F5] px-4 py-3 text-sm text-[#A83A3A]">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{actionError}</span>
                 </div>
               ) : null}
+
+              {solvedResult ? (
+                <div className="flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{solvedResult.message}</span>
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
+                {allTroubleshootingStepsChecked ? (
+                  <Button
+                    type="button"
+                    disabled={recordingResolution}
+                    onClick={() => void markSolved()}
+                    className="h-11 bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    {recordingResolution ? "Recording..." : "Mark problem as solved"}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  disabled={recordingResolution}
+                  onClick={() => void openFailedReport()}
+                  className="h-11 bg-[#C21E2D] text-white hover:bg-[#A81927]"
+                >
+                  Still not solved? Report this fault
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5]"
+                  onClick={openManualReport}
+                >
+                  Report manually without troubleshooting
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : null}
 
-        {asset && showReportForm ? (
+        {asset && flowStep === "report" ? (
           <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm transition-all duration-300">
             <CardHeader className="px-5 py-4 md:px-6">
               <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
@@ -425,7 +739,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 Asset Fault Report Form
               </CardTitle>
               <p className="text-sm text-[#56789B]">
-                Provide fault details and submit. Ticket will be linked to this asset automatically.
+                Ticket source: {reportMode === "failed" ? "QR troubleshooting failed" : "Manual QR report"}.
               </p>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
@@ -435,11 +749,16 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 </div>
               ) : null}
 
+              {reportMode === "failed" && selectedProblem ? (
+                <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#264E74]">
+                  <p className="font-semibold">Selected problem: {selectedProblem.title}</p>
+                  <p className="mt-1">Completed {completedStepCount} of {totalSteps} troubleshooting steps.</p>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="fault-category" className="text-[#10385E]">
-                    Problem category
-                  </Label>
+                  <Label htmlFor="fault-category" className="text-[#10385E]">Problem category</Label>
                   <select
                     id="fault-category"
                     value={form.category}
@@ -447,17 +766,13 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                     className="h-10 w-full rounded-md border border-[#9FC3E7] bg-white px-3 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                   >
                     {categoryOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
+                      <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="fault-urgency" className="text-[#10385E]">
-                    Urgency level
-                  </Label>
+                  <Label htmlFor="fault-urgency" className="text-[#10385E]">Urgency level</Label>
                   <select
                     id="fault-urgency"
                     value={form.urgency}
@@ -467,18 +782,14 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                     className="h-10 w-full rounded-md border border-[#9FC3E7] bg-white px-3 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                   >
                     {URGENCY_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
+                      <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fault-title" className="text-[#10385E]">
-                  Problem title
-                </Label>
+                <Label htmlFor="fault-title" className="text-[#10385E]">Problem title</Label>
                 <Input
                   id="fault-title"
                   value={form.title}
@@ -489,22 +800,18 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fault-description" className="text-[#10385E]">
-                  Description
-                </Label>
+                <Label htmlFor="fault-description" className="text-[#10385E]">Description</Label>
                 <textarea
                   id="fault-description"
                   value={form.description}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                   placeholder="Describe what happens, error messages, and what has already been tried."
-                  className="min-h-28 w-full rounded-md border border-[#9FC3E7] bg-white px-3 py-2 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
+                  className="min-h-32 w-full rounded-md border border-[#9FC3E7] bg-white px-3 py-2 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fault-attachment" className="text-[#10385E]">
-                  Optional image/file upload
-                </Label>
+                <Label htmlFor="fault-attachment" className="text-[#10385E]">Optional image/file upload</Label>
                 <Input
                   id="fault-attachment"
                   type="file"
@@ -516,9 +823,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                   }
                   className="border-[#9FC3E7]"
                 />
-                {form.attachment ? (
-                  <p className="text-xs text-[#54779A]">Selected file: {form.attachment.name}</p>
-                ) : null}
+                {form.attachment ? <p className="text-xs text-[#54779A]">Selected file: {form.attachment.name}</p> : null}
               </div>
 
               <label className="flex items-start gap-3 rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-3 py-3">
@@ -549,29 +854,37 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                       <p className="mt-1 text-sm">Ticket Reference: {submissionResult.referenceNumber}</p>
                     </div>
                   </div>
-                  {submissionResult.routingNote ? (
-                    <p className="text-xs text-emerald-800/90">{submissionResult.routingNote}</p>
-                  ) : null}
+                  {submissionResult.routingNote ? <p className="text-xs text-emerald-800/90">{submissionResult.routingNote}</p> : null}
                   <Button asChild className="h-10 bg-[#0E5EA2] text-white hover:bg-[#0A4E87]">
                     <Link href="/employee/tickets">View My Tickets</Link>
                   </Button>
                 </div>
               ) : (
-                <Button
-                  type="button"
-                  disabled={!canSubmit || submitting}
-                  onClick={() => void submitFaultReport()}
-                  className="h-11 bg-[#0E5EA2] text-white shadow-[0_16px_30px_-20px_rgba(14,94,162,0.9)] hover:bg-[#0A4E87]"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    "Submit Asset Fault Report"
-                  )}
-                </Button>
+                <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
+                  <Button
+                    type="button"
+                    disabled={!canSubmit || submitting}
+                    onClick={() => void submitFaultReport()}
+                    className="h-11 bg-[#0E5EA2] text-white shadow-[0_16px_30px_-20px_rgba(14,94,162,0.9)] hover:bg-[#0A4E87]"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      "Submit Asset Fault Report"
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5]"
+                    onClick={openManualReport}
+                  >
+                    Report manually without troubleshooting
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

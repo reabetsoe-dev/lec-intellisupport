@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 type ParsedAssetFaultReportInput = {
+  assetId: number | null
   assetCode: string
   assetName: string
   assetType: string
@@ -13,6 +14,11 @@ type ParsedAssetFaultReportInput = {
   employeeId: number | null
   employeeName: string
   employeeEmail: string
+  troubleshootingAttempted: boolean
+  troubleshootingProblem: string
+  troubleshootingStepsCompleted: unknown[]
+  troubleshootingResult: "failed" | "skipped" | "not_attempted"
+  source: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
 }
 
 function resolveBackendBaseUrl(): string {
@@ -36,6 +42,45 @@ function toEmployeeId(value: FormDataEntryValue | unknown): number | null {
     return null
   }
   return parsed
+}
+
+function toOptionalNumber(value: FormDataEntryValue | unknown): number | null {
+  const parsed = Number.parseInt(toTrimmedString(value), 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function toBoolean(value: FormDataEntryValue | unknown): boolean {
+  const normalized = toTrimmedString(value).toLowerCase()
+  return ["1", "true", "yes", "y"].includes(normalized)
+}
+
+function toCompletedSteps(value: FormDataEntryValue | unknown): unknown[] {
+  const raw = toTrimmedString(value)
+  if (!raw) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function toTroubleshootingResult(value: FormDataEntryValue | unknown): "failed" | "skipped" | "not_attempted" {
+  const normalized = toTrimmedString(value).toLowerCase()
+  if (normalized === "failed" || normalized === "skipped") {
+    return normalized
+  }
+  return "not_attempted"
+}
+
+function toSource(value: FormDataEntryValue | unknown): "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual" {
+  const normalized = toTrimmedString(value)
+  if (normalized === "qr_asset_troubleshooting" || normalized === "qr_asset_manual_report") {
+    return normalized
+  }
+  return "manual"
 }
 
 function toPriority(value: string): "Low" | "Medium" | "High" | "Critical" {
@@ -62,7 +107,25 @@ function buildComposedDescription(input: ParsedAssetFaultReportInput): string {
     `Asset Type: ${input.assetType}`,
     `Location: ${input.location}`,
     `Department: ${input.department}`,
+    `Source: ${input.source}`,
+    `Troubleshooting Attempted: ${input.troubleshootingAttempted ? "Yes" : "No"}`,
+    `Troubleshooting Result: ${input.troubleshootingResult}`,
   ]
+
+  if (input.troubleshootingProblem) {
+    lines.push(`Selected Problem: ${input.troubleshootingProblem}`)
+  }
+  if (input.troubleshootingStepsCompleted.length > 0) {
+    lines.push("Completed Troubleshooting Steps:")
+    for (const step of input.troubleshootingStepsCompleted) {
+      if (step && typeof step === "object" && "instruction" in step) {
+        const record = step as { step_number?: unknown; instruction?: unknown }
+        lines.push(`${record.step_number ?? "-"}: ${String(record.instruction ?? "")}`)
+      } else {
+        lines.push(String(step))
+      }
+    }
+  }
 
   if (input.employeeName) {
     lines.push(`Reported By: ${input.employeeName}`)
@@ -85,6 +148,7 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
     const formData = await request.formData()
 
     return {
+      assetId: toOptionalNumber(formData.get("assetId")),
       assetCode: toTrimmedString(formData.get("assetCode")),
       assetName: toTrimmedString(formData.get("assetName")),
       assetType: toTrimmedString(formData.get("assetType")),
@@ -97,11 +161,17 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
       employeeId: toEmployeeId(formData.get("employeeId")),
       employeeName: toTrimmedString(formData.get("employeeName")),
       employeeEmail: toTrimmedString(formData.get("employeeEmail")),
+      troubleshootingAttempted: toBoolean(formData.get("troubleshootingAttempted")),
+      troubleshootingProblem: toTrimmedString(formData.get("troubleshootingProblem")),
+      troubleshootingStepsCompleted: toCompletedSteps(formData.get("troubleshootingStepsCompleted")),
+      troubleshootingResult: toTroubleshootingResult(formData.get("troubleshootingResult")),
+      source: toSource(formData.get("source")),
     }
   }
 
   const jsonBody = (await request.json()) as Record<string, unknown>
   return {
+    assetId: toOptionalNumber(jsonBody.assetId),
     assetCode: toTrimmedString(jsonBody.assetCode),
     assetName: toTrimmedString(jsonBody.assetName),
     assetType: toTrimmedString(jsonBody.assetType),
@@ -114,6 +184,13 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
     employeeId: toEmployeeId(jsonBody.employeeId),
     employeeName: toTrimmedString(jsonBody.employeeName),
     employeeEmail: toTrimmedString(jsonBody.employeeEmail),
+    troubleshootingAttempted: Boolean(jsonBody.troubleshootingAttempted),
+    troubleshootingProblem: toTrimmedString(jsonBody.troubleshootingProblem),
+    troubleshootingStepsCompleted: Array.isArray(jsonBody.troubleshootingStepsCompleted)
+      ? jsonBody.troubleshootingStepsCompleted
+      : [],
+    troubleshootingResult: toTroubleshootingResult(jsonBody.troubleshootingResult),
+    source: toSource(jsonBody.source),
   }
 }
 
@@ -167,10 +244,17 @@ export async function POST(request: NextRequest) {
     priority: toPriority(parsedInput.urgency),
     location: parsedInput.location,
     department: parsedInput.department,
+    asset_id: parsedInput.assetId,
+    asset_code: parsedInput.assetCode,
     asset: `${parsedInput.assetName} (${parsedInput.assetCode})`,
     impact: "Reported from Asset Fault QR flow",
     employee_id: parsedInput.employeeId,
     reporter_reviewed_problem: true,
+    troubleshooting_attempted: parsedInput.troubleshootingAttempted,
+    troubleshooting_problem: parsedInput.troubleshootingProblem,
+    troubleshooting_steps_completed: parsedInput.troubleshootingStepsCompleted,
+    troubleshooting_result: parsedInput.troubleshootingResult,
+    source: parsedInput.source,
   }
 
   try {

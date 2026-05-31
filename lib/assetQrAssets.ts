@@ -76,6 +76,19 @@ function looksLikeNetwork(value: string): boolean {
   return ["router", "switch", "wifi", "network", "lan", "wan", "access point"].some((token) => normalized.includes(token))
 }
 
+function looksLikeSwitch(value: string): boolean {
+  return value.toLowerCase().includes("switch")
+}
+
+function looksLikeUps(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return ["ups", "battery backup"].some((token) => normalized.includes(token))
+}
+
+function looksLikeServer(value: string): boolean {
+  return value.toLowerCase().includes("server")
+}
+
 function looksLikePaper(value: string): boolean {
   const normalized = value.toLowerCase()
   return ["paper", "a4", "ream", "stationery", "typek", "bond"].some((token) => normalized.includes(token))
@@ -90,6 +103,15 @@ export function inferTroubleshootingDomain(assetType: string): AssetTroubleshoot
   }
   if (looksLikeComputer(assetType)) {
     return "computer"
+  }
+  if (looksLikeUps(assetType)) {
+    return "ups"
+  }
+  if (looksLikeSwitch(assetType)) {
+    return "switch"
+  }
+  if (looksLikeServer(assetType)) {
+    return "server"
   }
   if (looksLikeNetwork(assetType)) {
     return "network"

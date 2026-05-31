@@ -16,12 +16,19 @@ export type CreateTicketPayload = {
   priority?: string
   department?: string
   asset?: string
+  asset_id?: number
+  asset_code?: string
   impact?: string
   ai_confidence?: number
   employee_id: number
   reporter_reviewed_problem: boolean
   caller_name?: string
   logged_by_admin_id?: number
+  troubleshooting_attempted?: boolean
+  troubleshooting_problem?: string
+  troubleshooting_steps_completed?: unknown[]
+  troubleshooting_result?: "failed" | "skipped" | "not_attempted"
+  source?: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
 }
 
 export type Ticket = {
@@ -37,6 +44,9 @@ export type Ticket = {
   caller_name?: string | null
   logged_by_admin_id?: number | null
   logged_by_admin_name?: string | null
+  asset_id?: number | null
+  asset_code?: string
+  asset_name?: string
   technician_id?: number | null
   technician_user_id?: number | null
   technician_name?: string | null
@@ -45,6 +55,11 @@ export type Ticket = {
   routed_to_role?: UserRole
   routing_note?: string
   reporter_reviewed_problem?: boolean
+  troubleshooting_attempted?: boolean
+  troubleshooting_problem?: string
+  troubleshooting_steps_completed?: unknown[]
+  troubleshooting_result?: "failed" | "skipped" | "not_attempted"
+  source?: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
   created_at?: string
   updated_at?: string
   is_currently_assigned_to_me?: boolean
@@ -168,6 +183,7 @@ export type Employee = {
   id: number
   name: string
   email: string
+  phone_number: string
   branch: string
   department: string
   role: UserRole
@@ -252,6 +268,10 @@ export type PerformanceMetrics = {
     technician_check_outs?: number
     currently_checked_in_technicians?: number
     technician_activity_events?: number
+    total_qr_scans?: number
+    total_troubleshooting_attempts?: number
+    total_system_solved_issues?: number
+    total_failed_troubleshooting_reports?: number
   }
   by_status: CountDatum[]
   by_priority: CountDatum[]
@@ -310,6 +330,18 @@ export type PerformanceMetrics = {
   }>
   technician_activity_summary?: TechnicianActivitySummaryDatum[]
   technician_recent_activity?: TechnicianRecentActivityDatum[]
+  troubleshooting_analytics?: {
+    total_qr_scans: number
+    total_troubleshooting_attempts: number
+    total_system_solved_issues: number
+    total_failed_troubleshooting_reports: number
+    most_common_asset_problems: CountDatum[]
+    assets_with_repeated_failed_troubleshooting: Array<{
+      asset_code: string
+      asset_name: string
+      count: number
+    }>
+  }
   filters?: {
     range: string
     start_date?: string | null
@@ -480,6 +512,7 @@ export type ConsumableReturn = {
 }
 
 export type AssetQrFaultReportPayload = {
+  assetId?: number
   assetCode: string
   assetName: string
   assetType: string
@@ -492,6 +525,11 @@ export type AssetQrFaultReportPayload = {
   employeeId?: number
   employeeName?: string
   employeeEmail?: string
+  troubleshootingAttempted?: boolean
+  troubleshootingProblem?: string
+  troubleshootingStepsCompleted?: unknown[]
+  troubleshootingResult?: "failed" | "skipped" | "not_attempted"
+  source?: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
   attachment?: File | null
 }
 
@@ -500,6 +538,64 @@ export type AssetQrFaultReportResponse = {
   ticketId: number
   referenceNumber: string
   routingNote?: string
+}
+
+export type AssetQrTroubleshootingStep = {
+  id: number | string
+  step_number: number
+  instruction: string
+}
+
+export type AssetQrCommonProblem = {
+  id: number | string
+  asset_type?: string
+  asset_category?: string
+  title: string
+  description: string
+  category?: string
+  steps: AssetQrTroubleshootingStep[]
+}
+
+export type AssetQrFlowAsset = {
+  id: number
+  asset_code: string
+  asset_name: string
+  asset_type: string
+  asset_category?: string
+  branch: string
+  location: string
+  department: string
+  status: string
+  last_maintenance_date: string | null
+  responsible_technician: string | null
+}
+
+export type AssetQrFlowResponse = {
+  asset: AssetQrFlowAsset
+  common_problems: AssetQrCommonProblem[]
+}
+
+export type TroubleshootingResolutionPayload = {
+  asset_id?: number
+  asset_code: string
+  problem_id?: number
+  problem_title: string
+  completed_steps: unknown[]
+  resolution_status: "solved" | "failed" | "skipped"
+  solved_by?: "system_guided_troubleshooting" | "user" | "technician"
+  solved_by_display?: string
+  source: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
+  branch?: string
+  department?: string
+}
+
+export type TroubleshootingResolutionResponse = TroubleshootingResolutionPayload & {
+  id: number
+  asset_id?: number | null
+  user_id?: number | null
+  problem_id?: number | null
+  message: string
+  created_at: string
 }
 
 export type ChatbotResponse = {
@@ -742,6 +838,22 @@ function getStoredToken(): string | null {
   }
 }
 
+function getStoredSessionUserId(): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as { id?: unknown }
+    return typeof parsed.id === "number" && parsed.id > 0 ? String(parsed.id) : null
+  } catch {
+    return null
+  }
+}
+
 function unwrapApiData<T>(payload: unknown): T {
   if (payload && typeof payload === "object" && "data" in payload) {
     return (payload as { data: T }).data
@@ -906,6 +1018,7 @@ function resolveBrowserBackendProxyTarget(baseUrl: string, path: string): { base
 function buildRequestInit(options: RequestOptions): RequestInit {
   const authMode = options.authMode ?? "session"
   const token = authMode === "session" ? options.token ?? getStoredToken() : null
+  const sessionUserId = token ? getStoredSessionUserId() : null
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
   const hasBody = typeof options.body !== "undefined"
 
@@ -915,6 +1028,7 @@ function buildRequestInit(options: RequestOptions): RequestInit {
       Accept: "application/json",
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(sessionUserId ? { "X-LEC-Session-User-ID": sessionUserId } : {}),
       ...(options.headers ?? {}),
     },
     body: hasBody
@@ -1310,6 +1424,7 @@ export async function getEmployees(): Promise<Employee[]> {
 export async function createEmployee(payload: {
   name: string
   email: string
+  phone_number?: string
   branch?: string
   department?: string
   is_active?: boolean
@@ -1338,6 +1453,7 @@ export async function updateEmployeeDetails(
   payload: {
     name: string
     email: string
+    phone_number?: string
     branch?: string
     department?: string
   }
@@ -1615,10 +1731,32 @@ export async function rejectConsumableReturn(
   })
 }
 
+export async function getAssetQrFlow(assetCode: string): Promise<AssetQrFlowResponse> {
+  return requestJson<AssetQrFlowResponse>(
+    BACKEND_BASE_URL,
+    `/api/assets/${encodeURIComponent(assetCode)}/qr-flow/`,
+    {
+      authMode: "none",
+    }
+  )
+}
+
+export async function createTroubleshootingResolution(
+  payload: TroubleshootingResolutionPayload
+): Promise<TroubleshootingResolutionResponse> {
+  return requestJson<TroubleshootingResolutionResponse>(BACKEND_BASE_URL, "/api/troubleshooting/resolutions/", {
+    method: "POST",
+    body: payload,
+  })
+}
+
 export async function submitAssetQrFaultReport(
   payload: AssetQrFaultReportPayload
 ): Promise<AssetQrFaultReportResponse> {
   const formData = new FormData()
+  if (typeof payload.assetId === "number") {
+    formData.append("assetId", String(payload.assetId))
+  }
   formData.append("assetCode", payload.assetCode)
   formData.append("assetName", payload.assetName)
   formData.append("assetType", payload.assetType)
@@ -1636,6 +1774,21 @@ export async function submitAssetQrFaultReport(
   }
   if (payload.employeeEmail) {
     formData.append("employeeEmail", payload.employeeEmail)
+  }
+  if (typeof payload.troubleshootingAttempted === "boolean") {
+    formData.append("troubleshootingAttempted", String(payload.troubleshootingAttempted))
+  }
+  if (payload.troubleshootingProblem) {
+    formData.append("troubleshootingProblem", payload.troubleshootingProblem)
+  }
+  if (Array.isArray(payload.troubleshootingStepsCompleted)) {
+    formData.append("troubleshootingStepsCompleted", JSON.stringify(payload.troubleshootingStepsCompleted))
+  }
+  if (payload.troubleshootingResult) {
+    formData.append("troubleshootingResult", payload.troubleshootingResult)
+  }
+  if (payload.source) {
+    formData.append("source", payload.source)
   }
 
   const response = await fetch("/api/asset-qr/report", {

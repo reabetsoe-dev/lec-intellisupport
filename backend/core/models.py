@@ -268,6 +268,14 @@ class Ticket(models.Model):
     PRIORITY_HIGH = "High"
     PRIORITY_CRITICAL = "Critical"
 
+    TROUBLESHOOTING_RESULT_NOT_ATTEMPTED = "not_attempted"
+    TROUBLESHOOTING_RESULT_FAILED = "failed"
+    TROUBLESHOOTING_RESULT_SKIPPED = "skipped"
+
+    SOURCE_MANUAL = "manual"
+    SOURCE_QR_ASSET_TROUBLESHOOTING = "qr_asset_troubleshooting"
+    SOURCE_QR_ASSET_MANUAL_REPORT = "qr_asset_manual_report"
+
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_IN_PROCESS, "In Progress"),
@@ -280,6 +288,18 @@ class Ticket(models.Model):
         (PRIORITY_MEDIUM, "Medium"),
         (PRIORITY_HIGH, "High"),
         (PRIORITY_CRITICAL, "Critical"),
+    ]
+
+    TROUBLESHOOTING_RESULT_CHOICES = [
+        (TROUBLESHOOTING_RESULT_NOT_ATTEMPTED, "Not Attempted"),
+        (TROUBLESHOOTING_RESULT_FAILED, "Failed"),
+        (TROUBLESHOOTING_RESULT_SKIPPED, "Skipped"),
+    ]
+
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, "Manual"),
+        (SOURCE_QR_ASSET_TROUBLESHOOTING, "QR Asset Troubleshooting"),
+        (SOURCE_QR_ASSET_MANUAL_REPORT, "QR Asset Manual Report"),
     ]
 
     title = models.CharField(max_length=255)
@@ -297,9 +317,26 @@ class Ticket(models.Model):
         blank=True,
         related_name="logged_call_tickets",
     )
+    asset = models.ForeignKey(
+        "Consumable",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fault_tickets",
+    )
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
     )
+    channel = models.CharField(max_length=32, blank=True, default=SOURCE_MANUAL)
+    troubleshooting_attempted = models.BooleanField(default=False)
+    troubleshooting_problem = models.TextField(blank=True, default="")
+    troubleshooting_steps_completed = models.JSONField(default=list, blank=True)
+    troubleshooting_result = models.CharField(
+        max_length=32,
+        choices=TROUBLESHOOTING_RESULT_CHOICES,
+        default=TROUBLESHOOTING_RESULT_NOT_ATTEMPTED,
+    )
+    source = models.CharField(max_length=64, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
     assigned_at = models.DateTimeField(default=timezone.now)
     accepted_at = models.DateTimeField(null=True, blank=True)
     last_activity_at = models.DateTimeField(null=True, blank=True)
@@ -618,6 +655,151 @@ class Consumable(models.Model):
 
     def __str__(self) -> str:
         return f"{self.item_name} ({self.quantity})"
+
+
+class AssetCommonProblem(models.Model):
+    asset_type = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    asset_category = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=180)
+    description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "asset_common_problems"
+        ordering = ["asset_type", "asset_category", "title"]
+        indexes = [
+            models.Index(fields=["asset_type", "is_active"], name="asset_problem_type_idx"),
+            models.Index(fields=["asset_category", "is_active"], name="asset_problem_cat_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["asset_type", "asset_category", "title"],
+                name="unique_asset_problem_scope_title",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        scope = self.asset_type or self.asset_category or "General"
+        return f"{scope}: {self.title}"
+
+
+class TroubleshootingStep(models.Model):
+    problem = models.ForeignKey(AssetCommonProblem, on_delete=models.CASCADE, related_name="steps")
+    step_number = models.PositiveIntegerField()
+    instruction = models.TextField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "troubleshooting_steps"
+        ordering = ["problem_id", "step_number", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["problem", "step_number"], name="unique_problem_step_number"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.problem.title} - Step {self.step_number}"
+
+
+class AssetQrScan(models.Model):
+    asset = models.ForeignKey(
+        Consumable,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="qr_scans",
+    )
+    asset_code = models.CharField(max_length=120, db_index=True)
+    source = models.CharField(max_length=64, blank=True, default="asset_qr_flow")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "asset_qr_scans"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["asset_code", "created_at"], name="asset_qr_code_at_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"AssetQrScan #{self.pk} {self.asset_code}"
+
+
+class TroubleshootingResolution(models.Model):
+    STATUS_SOLVED = "solved"
+    STATUS_FAILED = "failed"
+    STATUS_SKIPPED = "skipped"
+
+    SOLVED_BY_SYSTEM_GUIDED = "system_guided_troubleshooting"
+    SOLVED_BY_USER = "user"
+    SOLVED_BY_TECHNICIAN = "technician"
+
+    SOURCE_QR_ASSET_TROUBLESHOOTING = "qr_asset_troubleshooting"
+    SOURCE_QR_ASSET_MANUAL_REPORT = "qr_asset_manual_report"
+    SOURCE_MANUAL = "manual"
+
+    STATUS_CHOICES = [
+        (STATUS_SOLVED, "Solved"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_SKIPPED, "Skipped"),
+    ]
+    SOLVED_BY_CHOICES = [
+        (SOLVED_BY_SYSTEM_GUIDED, "LEC IntelliSupport Guided Troubleshooting"),
+        (SOLVED_BY_USER, "User"),
+        (SOLVED_BY_TECHNICIAN, "Technician"),
+    ]
+    SOURCE_CHOICES = [
+        (SOURCE_QR_ASSET_TROUBLESHOOTING, "QR Asset Troubleshooting"),
+        (SOURCE_QR_ASSET_MANUAL_REPORT, "QR Asset Manual Report"),
+        (SOURCE_MANUAL, "Manual"),
+    ]
+
+    asset = models.ForeignKey(
+        Consumable,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="troubleshooting_resolutions",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="troubleshooting_resolutions",
+    )
+    problem = models.ForeignKey(
+        AssetCommonProblem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolutions",
+    )
+    asset_code = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    problem_title = models.CharField(max_length=180)
+    completed_steps = models.JSONField(default=list, blank=True)
+    resolution_status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    solved_by = models.CharField(max_length=64, choices=SOLVED_BY_CHOICES, default=SOLVED_BY_SYSTEM_GUIDED)
+    solved_by_display = models.CharField(
+        max_length=120,
+        blank=True,
+        default="LEC IntelliSupport Guided Troubleshooting",
+    )
+    source = models.CharField(max_length=64, choices=SOURCE_CHOICES, default=SOURCE_QR_ASSET_TROUBLESHOOTING)
+    branch = models.CharField(max_length=120, blank=True, default="")
+    department = models.CharField(max_length=120, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "troubleshooting_resolutions"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["resolution_status", "created_at"], name="trouble_res_status_at_idx"),
+            models.Index(fields=["asset_code", "resolution_status"], name="trouble_res_asset_status_idx"),
+            models.Index(fields=["problem_title", "created_at"], name="trouble_res_problem_at_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.problem_title} ({self.resolution_status})"
 
 
 class InventoryAssignment(models.Model):

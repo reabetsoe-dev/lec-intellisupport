@@ -239,6 +239,16 @@ export function PerformanceAnalyticsPanel() {
   const technicianCheckOuts = metrics?.kpis.technician_check_outs ?? 0
   const currentlyCheckedIn = metrics?.kpis.currently_checked_in_technicians ?? 0
   const technicianActivityEvents = metrics?.kpis.technician_activity_events ?? 0
+  const troubleshootingAnalytics = metrics?.troubleshooting_analytics
+  const totalQrScans = troubleshootingAnalytics?.total_qr_scans ?? metrics?.kpis.total_qr_scans ?? 0
+  const totalTroubleshootingAttempts =
+    troubleshootingAnalytics?.total_troubleshooting_attempts ?? metrics?.kpis.total_troubleshooting_attempts ?? 0
+  const totalSystemSolvedIssues =
+    troubleshootingAnalytics?.total_system_solved_issues ?? metrics?.kpis.total_system_solved_issues ?? 0
+  const totalFailedTroubleshootingReports =
+    troubleshootingAnalytics?.total_failed_troubleshooting_reports ??
+    metrics?.kpis.total_failed_troubleshooting_reports ??
+    0
 
   const technicianWorkloadChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const technicianTimeChartHeight = Math.max(320, technicianActivitySummary.length * 56)
@@ -326,7 +336,7 @@ export function PerformanceAnalyticsPanel() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-slate-600">Total Tickets</CardTitle>
@@ -374,6 +384,84 @@ export function PerformanceAnalyticsPanel() {
           <CardContent className="px-6 pb-6">
             <p className="text-3xl font-semibold text-slate-900">{currentlyCheckedIn}</p>
             <p className="mt-1 text-xs text-slate-500">{technicianActivityEvents} technician activity events in range</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4">
+            <CardTitle className="text-sm text-slate-600">QR Scans</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-3xl font-semibold text-slate-900">{totalQrScans}</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4">
+            <CardTitle className="text-sm text-slate-600">Troubleshooting Attempts</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-3xl font-semibold text-slate-900">{totalTroubleshootingAttempts}</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4">
+            <CardTitle className="text-sm text-slate-600">System-Solved Issues</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-3xl font-semibold text-slate-900">{totalSystemSolvedIssues}</p>
+            <p className="mt-1 text-xs text-slate-500">Resolved by guided troubleshooting</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4">
+            <CardTitle className="text-sm text-slate-600">Failed Troubleshooting Reports</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-3xl font-semibold text-slate-900">{totalFailedTroubleshootingReports}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Most Common Asset Problems</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            {(troubleshootingAnalytics?.most_common_asset_problems ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">No guided troubleshooting outcomes recorded in this range.</p>
+            ) : (
+              <div className="space-y-2">
+                {(troubleshootingAnalytics?.most_common_asset_problems ?? []).map((item) => (
+                  <div key={item.name} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span className="font-medium text-slate-700">{item.name}</span>
+                    <span className="rounded-full bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Repeated Failed Troubleshooting</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            {(troubleshootingAnalytics?.assets_with_repeated_failed_troubleshooting ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">No assets have repeated failed troubleshooting in this range.</p>
+            ) : (
+              <div className="space-y-2">
+                {(troubleshootingAnalytics?.assets_with_repeated_failed_troubleshooting ?? []).map((item) => (
+                  <div key={item.asset_code} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-slate-800">{item.asset_code}</span>
+                      <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">{item.count}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{item.asset_name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

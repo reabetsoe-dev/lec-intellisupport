@@ -35,6 +35,8 @@ from .models import (
     BusinessHoliday,
     BusinessHours,
     BusinessLeave,
+    AssetCommonProblem,
+    AssetQrScan,
     Consumable,
     ConsumableReturn,
     ConsumableRequest,
@@ -48,6 +50,7 @@ from .models import (
     TicketComment,
     TicketMessage,
     TicketMaterialRequest,
+    TroubleshootingResolution,
     User,
     UserInvite,
     WhatsAppInboundMessage,
@@ -1813,12 +1816,20 @@ def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) ->
         "caller_name": ticket.caller_name,
         "logged_by_admin_id": ticket.logged_by_admin_id,
         "logged_by_admin_name": ticket.logged_by_admin.name if ticket.logged_by_admin_id else None,
+        "asset_id": ticket.asset_id,
+        "asset_code": _asset_code_for_consumable(ticket.asset) if ticket.asset_id else "",
+        "asset_name": _asset_name_for_consumable(ticket.asset) if ticket.asset_id else "",
         "technician_id": ticket.technician_id,
         "technician_user_id": ticket.technician.user_id if ticket.technician_id else None,
         "technician_name": ticket.technician.user.name if ticket.technician_id else None,
         "assignment_notice": None if ticket.technician_id else "No technician available. Awaiting assignment.",
         "routed_to_role": User.ROLE_TECHNICIAN if ticket.technician_id else User.ROLE_ADMIN_FAULT,
         "reporter_reviewed_problem": ticket.reporter_reviewed_problem,
+        "troubleshooting_attempted": ticket.troubleshooting_attempted,
+        "troubleshooting_problem": ticket.troubleshooting_problem,
+        "troubleshooting_steps_completed": ticket.troubleshooting_steps_completed,
+        "troubleshooting_result": ticket.troubleshooting_result,
+        "source": ticket.source,
         "assigned_at": ticket.assigned_at.isoformat() if ticket.assigned_at else None,
         "accepted_at": ticket.accepted_at.isoformat() if ticket.accepted_at else None,
         "last_activity_at": ticket.last_activity_at.isoformat() if ticket.last_activity_at else None,
@@ -3127,11 +3138,27 @@ def _create_ticket_from_intake_data(data: dict) -> tuple[dict, int]:
     location = str(data.get("location", "")).strip()
     department = str(data.get("department", "")).strip()
     asset = str(data.get("asset", "")).strip()
+    linked_asset = _find_consumable_from_payload(data)
+    if linked_asset and not asset:
+        asset = f"{_asset_name_for_consumable(linked_asset)} ({_asset_code_for_consumable(linked_asset)})"
     impact = str(data.get("impact", "")).strip()
     employee_id = data.get("employee_id")
     caller_name = str(data.get("caller_name", "")).strip()
     logged_by_admin_id = data.get("logged_by_admin_id")
     reporter_reviewed_problem = _to_optional_bool(data.get("reporter_reviewed_problem"))
+    troubleshooting_attempted = _to_optional_bool(data.get("troubleshooting_attempted")) is True
+    troubleshooting_problem = str(data.get("troubleshooting_problem", "")).strip()
+    troubleshooting_steps_completed = _completed_steps_from_payload(data.get("troubleshooting_steps_completed"))
+    troubleshooting_result = str(
+        data.get("troubleshooting_result") or Ticket.TROUBLESHOOTING_RESULT_NOT_ATTEMPTED
+    ).strip()
+    source = str(data.get("source") or Ticket.SOURCE_MANUAL).strip()
+    valid_troubleshooting_results = {choice for choice, _label in Ticket.TROUBLESHOOTING_RESULT_CHOICES}
+    valid_sources = {choice for choice, _label in Ticket.SOURCE_CHOICES}
+    if troubleshooting_result not in valid_troubleshooting_results:
+        return {"message": "Invalid troubleshooting_result."}, status.HTTP_400_BAD_REQUEST
+    if source not in valid_sources:
+        return {"message": "Invalid source."}, status.HTTP_400_BAD_REQUEST
 
     if not title or not description or not employee_id:
         return {"message": "title, description, and employee_id are required."}, status.HTTP_400_BAD_REQUEST
@@ -3192,7 +3219,14 @@ def _create_ticket_from_intake_data(data: dict) -> tuple[dict, int]:
         employee=employee,
         caller_name=caller_name or employee.name,
         logged_by_admin=logged_by_admin,
+        asset=linked_asset,
         technician=auto_assigned_technician,
+        channel=source,
+        troubleshooting_attempted=troubleshooting_attempted,
+        troubleshooting_problem=troubleshooting_problem,
+        troubleshooting_steps_completed=troubleshooting_steps_completed,
+        troubleshooting_result=troubleshooting_result,
+        source=source,
         assigned_at=assignment_time,
         last_activity_at=assignment_time,
         reporter_reviewed_problem=True,
@@ -3703,7 +3737,7 @@ def whatsapp_incoming_view(request):
 def tickets_collection_view(request):
     if request.method == "GET":
         employee_id = request.query_params.get("employee_id")
-        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
+        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin", "asset").all().order_by("-created_at")
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
         return Response(
@@ -3726,7 +3760,7 @@ def assigned_tickets_view(request, technician_id: int):
         return Response([], status=status.HTTP_200_OK)
 
     queryset = (
-        Ticket.objects.select_related("employee", "technician__user", "logged_by_admin")
+        Ticket.objects.select_related("employee", "technician__user", "logged_by_admin", "asset")
         .filter(technician_id=technician.id)
         .order_by("-updated_at", "-created_at")
     )
@@ -3742,7 +3776,7 @@ def assigned_tickets_view(request, technician_id: int):
 
 @api_view(["GET"])
 def ticket_detail_view(request, ticket_id: int):
-    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin", "asset").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -4787,6 +4821,66 @@ def performance_metrics_view(request):
         queryset = queryset.filter(created_at__date__lte=end_date)
     tickets = list(queryset)
 
+    scan_queryset = AssetQrScan.objects.all()
+    resolution_queryset = TroubleshootingResolution.objects.select_related("asset", "user", "problem").all()
+    if start_date is not None:
+        scan_queryset = scan_queryset.filter(created_at__date__gte=start_date)
+        resolution_queryset = resolution_queryset.filter(created_at__date__gte=start_date)
+    if end_date is not None:
+        scan_queryset = scan_queryset.filter(created_at__date__lte=end_date)
+        resolution_queryset = resolution_queryset.filter(created_at__date__lte=end_date)
+    troubleshooting_resolutions = list(resolution_queryset)
+
+    total_qr_scans = scan_queryset.count()
+    total_troubleshooting_attempts = sum(
+        1
+        for item in troubleshooting_resolutions
+        if item.resolution_status != TroubleshootingResolution.STATUS_SKIPPED
+    )
+    total_system_solved_issues = sum(
+        1
+        for item in troubleshooting_resolutions
+        if item.resolution_status == TroubleshootingResolution.STATUS_SOLVED
+        and item.solved_by == TroubleshootingResolution.SOLVED_BY_SYSTEM_GUIDED
+    )
+    total_failed_troubleshooting_reports = sum(
+        1
+        for item in tickets
+        if item.source == Ticket.SOURCE_QR_ASSET_TROUBLESHOOTING
+        and item.troubleshooting_result == Ticket.TROUBLESHOOTING_RESULT_FAILED
+    )
+
+    most_common_asset_problems = [
+        {
+            "name": item["problem_title"] or "Unknown problem",
+            "count": item["count"],
+        }
+        for item in resolution_queryset.exclude(problem_title="")
+        .values("problem_title")
+        .annotate(count=Count("id"))
+        .order_by("-count", "problem_title")[:10]
+    ]
+    repeated_failed_assets = []
+    repeated_failed_queryset = (
+        resolution_queryset.filter(resolution_status=TroubleshootingResolution.STATUS_FAILED)
+        .exclude(asset_code="")
+        .values("asset_code", "asset__item_name", "asset__brand", "asset__model_number")
+        .annotate(count=Count("id"))
+        .filter(count__gte=2)
+        .order_by("-count", "asset_code")[:10]
+    )
+    for item in repeated_failed_queryset:
+        asset_name = f"{item.get('asset__brand') or ''} {item.get('asset__model_number') or ''}".strip()
+        if not asset_name:
+            asset_name = str(item.get("asset__item_name") or "").strip()
+        repeated_failed_assets.append(
+            {
+                "asset_code": item["asset_code"],
+                "asset_name": asset_name or "Unknown asset",
+                "count": item["count"],
+            }
+        )
+
     now = timezone.now()
     total_tickets = len(tickets)
     resolved_tickets = sum(1 for item in tickets if _normalize_ticket_status(item.status) == Ticket.STATUS_SOLVED)
@@ -5196,6 +5290,18 @@ def performance_metrics_view(request):
             "technician_check_outs": technician_check_outs,
             "currently_checked_in_technicians": sum(1 for item in technicians if item.is_available),
             "technician_activity_events": len(activity_logs),
+            "total_qr_scans": total_qr_scans,
+            "total_troubleshooting_attempts": total_troubleshooting_attempts,
+            "total_system_solved_issues": total_system_solved_issues,
+            "total_failed_troubleshooting_reports": total_failed_troubleshooting_reports,
+        },
+        "troubleshooting_analytics": {
+            "total_qr_scans": total_qr_scans,
+            "total_troubleshooting_attempts": total_troubleshooting_attempts,
+            "total_system_solved_issues": total_system_solved_issues,
+            "total_failed_troubleshooting_reports": total_failed_troubleshooting_reports,
+            "most_common_asset_problems": most_common_asset_problems,
+            "assets_with_repeated_failed_troubleshooting": repeated_failed_assets,
         },
         "by_status": [{"name": key, "count": value} for key, value in sorted(by_status.items())],
         "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
@@ -5371,6 +5477,299 @@ def _consumable_to_dict(consumable: Consumable) -> dict:
         "created_at": consumable.created_at.isoformat(),
         "updated_at": consumable.updated_at.isoformat(),
     }
+
+
+def _normalize_asset_code(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _asset_code_for_consumable(consumable: Consumable) -> str:
+    return _normalize_asset_code(consumable.asset_tag or f"AST-{consumable.id}")
+
+
+def _asset_name_for_consumable(consumable: Consumable) -> str:
+    return f"{consumable.brand} {consumable.model_number}".strip() or consumable.item_name or "Unknown Asset"
+
+
+def _asset_type_for_consumable(consumable: Consumable) -> str:
+    return (
+        consumable.subcategory
+        or consumable.device_type
+        or consumable.printer_type
+        or consumable.category
+        or consumable.item_name
+        or "General Asset"
+    )
+
+
+def _asset_scope_labels(asset_type: str, asset_category: str) -> set[str]:
+    labels = {
+        str(asset_type or "").strip(),
+        str(asset_category or "").strip(),
+    }
+    normalized = " ".join(label.lower() for label in labels if label)
+    if any(token in normalized for token in ("paper", "ream", "a4", "stationery")):
+        labels.update({"Paper"})
+    if any(token in normalized for token in ("printer", "laser", "inkjet", "toner")):
+        labels.update({"Printer"})
+    if any(token in normalized for token in ("laptop", "desktop", "computer", "workstation", "notebook")):
+        labels.update({"Computer"})
+    if any(token in normalized for token in ("router", "network", "wifi", "wi-fi", "access point")):
+        labels.update({"Router", "Network"})
+    if "switch" in normalized:
+        labels.update({"Switch", "Network"})
+    if "ups" in normalized or "battery backup" in normalized:
+        labels.update({"UPS", "Power"})
+    if "server" in normalized:
+        labels.update({"Server", "Infrastructure"})
+    return {label for label in labels if label}
+
+
+def _find_consumable_for_asset_code(asset_code: object) -> Consumable | None:
+    normalized_code = _normalize_asset_code(asset_code)
+    if not normalized_code:
+        return None
+
+    ast_match = re.fullmatch(r"AST-(\d+)", normalized_code)
+    if ast_match:
+        asset = Consumable.objects.filter(id=int(ast_match.group(1))).first()
+        if asset:
+            return asset
+
+    return Consumable.objects.filter(asset_tag__iexact=normalized_code).first()
+
+
+def _find_consumable_from_payload(data: dict) -> Consumable | None:
+    raw_asset_id = data.get("asset_id")
+    if raw_asset_id not in (None, "", "null"):
+        try:
+            asset_id = int(raw_asset_id)
+        except (TypeError, ValueError):
+            asset_id = None
+        if asset_id is not None:
+            asset = Consumable.objects.filter(id=asset_id).first()
+            if asset:
+                return asset
+
+    for key in ("asset_code", "assetCode"):
+        asset = _find_consumable_for_asset_code(data.get(key))
+        if asset:
+            return asset
+    return None
+
+
+def _responsible_technician_for_asset(asset_type: str, asset_category: str) -> str | None:
+    labels = _asset_scope_labels(asset_type, asset_category)
+    skill = Technician.SKILL_HARDWARE
+    if {"Network", "Router", "Switch"} & labels:
+        skill = Technician.SKILL_NETWORK
+    elif {"Computer", "Server"} & labels:
+        skill = Technician.SKILL_SOFTWARE if "Server" in labels else Technician.SKILL_HARDWARE
+    elif "Printer" in labels or "UPS" in labels:
+        skill = Technician.SKILL_HARDWARE
+
+    technician = (
+        Technician.objects.select_related("user")
+        .filter(user__is_active=True, user__role=User.ROLE_TECHNICIAN, skillset=skill)
+        .order_by("user__name")
+        .first()
+    )
+    return technician.user.name if technician else None
+
+
+def _asset_qr_flow_asset_to_dict(asset: Consumable) -> dict:
+    asset_type = _asset_type_for_consumable(asset)
+    branch = "Head Office"
+    department = asset.department or "General"
+    return {
+        "id": asset.id,
+        "asset_code": _asset_code_for_consumable(asset),
+        "asset_name": _asset_name_for_consumable(asset),
+        "asset_type": asset_type,
+        "asset_category": asset.category or asset_type,
+        "branch": branch,
+        "location": f"{branch} - {department}",
+        "department": department,
+        "status": asset.status or "Active",
+        "last_maintenance_date": asset.updated_at.date().isoformat() if asset.updated_at else None,
+        "responsible_technician": _responsible_technician_for_asset(asset_type, asset.category),
+    }
+
+
+def _asset_common_problem_to_dict(problem: AssetCommonProblem) -> dict:
+    return {
+        "id": problem.id,
+        "asset_type": problem.asset_type,
+        "asset_category": problem.asset_category,
+        "title": problem.title,
+        "description": problem.description,
+        "steps": [
+            {
+                "id": step.id,
+                "step_number": step.step_number,
+                "instruction": step.instruction,
+            }
+            for step in problem.steps.all()
+            if step.is_active
+        ],
+    }
+
+
+def _common_problems_for_asset(asset: Consumable) -> list[AssetCommonProblem]:
+    asset_type = _asset_type_for_consumable(asset)
+    labels = _asset_scope_labels(asset_type, asset.category)
+    problem_filter = Q(asset_type__iexact=asset_type) | Q(asset_category__iexact=asset.category)
+    for label in labels:
+        problem_filter |= Q(asset_type__iexact=label) | Q(asset_category__iexact=label)
+
+    return list(
+        AssetCommonProblem.objects.prefetch_related("steps")
+        .filter(is_active=True)
+        .filter(problem_filter)
+        .distinct()
+        .order_by("asset_type", "asset_category", "title")
+    )
+
+
+@api_view(["GET"])
+def asset_qr_flow_view(request, asset_code: str):
+    normalized_code = _normalize_asset_code(asset_code)
+    asset = _find_consumable_for_asset_code(normalized_code)
+    AssetQrScan.objects.create(asset=asset, asset_code=normalized_code or str(asset_code or "").strip())
+
+    if not asset:
+        return Response({"message": "Asset not found for this QR code."}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(
+        {
+            "asset": _asset_qr_flow_asset_to_dict(asset),
+            "common_problems": [_asset_common_problem_to_dict(problem) for problem in _common_problems_for_asset(asset)],
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+def _completed_steps_from_payload(value: object) -> list:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
+def _troubleshooting_resolution_to_dict(item: TroubleshootingResolution) -> dict:
+    return {
+        "id": item.id,
+        "asset_id": item.asset_id,
+        "asset_code": item.asset_code,
+        "user_id": item.user_id,
+        "problem_id": item.problem_id,
+        "problem_title": item.problem_title,
+        "completed_steps": item.completed_steps,
+        "resolution_status": item.resolution_status,
+        "solved_by": item.solved_by,
+        "solved_by_display": item.solved_by_display,
+        "source": item.source,
+        "branch": item.branch,
+        "department": item.department,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+@api_view(["POST"])
+@authentication_classes([CachedBearerAuthentication])
+@permission_classes([IsAuthenticated])
+def troubleshooting_resolutions_collection_view(request):
+    user = request.user if isinstance(getattr(request, "user", None), User) else None
+    if not user:
+        return Response({"message": "Employee login is required."}, status=status.HTTP_401_UNAUTHORIZED)
+    if user.role != User.ROLE_EMPLOYEE:
+        return Response({"message": "Only employee accounts can record QR troubleshooting outcomes."}, status=status.HTTP_403_FORBIDDEN)
+
+    asset = _find_consumable_from_payload(request.data)
+    asset_code = _normalize_asset_code(request.data.get("asset_code") or request.data.get("assetCode"))
+    if asset and not asset_code:
+        asset_code = _asset_code_for_consumable(asset)
+    if not asset and not asset_code:
+        return Response({"message": "asset_code or asset_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    problem = None
+    raw_problem_id = request.data.get("problem_id")
+    if raw_problem_id not in (None, "", "null"):
+        try:
+            problem_id = int(raw_problem_id)
+        except (TypeError, ValueError):
+            problem_id = None
+        if problem_id is not None:
+            problem = AssetCommonProblem.objects.prefetch_related("steps").filter(id=problem_id, is_active=True).first()
+            if not problem:
+                return Response({"message": "Selected troubleshooting problem was not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    problem_title = str(request.data.get("problem_title") or (problem.title if problem else "")).strip()
+    if not problem_title:
+        return Response({"message": "problem_title is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    completed_steps = _completed_steps_from_payload(request.data.get("completed_steps"))
+    resolution_status = str(request.data.get("resolution_status", "")).strip().lower()
+    valid_statuses = {choice for choice, _label in TroubleshootingResolution.STATUS_CHOICES}
+    if resolution_status not in valid_statuses:
+        return Response({"message": "resolution_status must be solved, failed, or skipped."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if resolution_status == TroubleshootingResolution.STATUS_SOLVED and problem:
+        active_step_count = problem.steps.filter(is_active=True).count()
+        if active_step_count and len(completed_steps) < active_step_count:
+            return Response(
+                {"message": "Complete all troubleshooting steps before marking this problem as solved."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    source = str(
+        request.data.get("source") or TroubleshootingResolution.SOURCE_QR_ASSET_TROUBLESHOOTING
+    ).strip()
+    valid_sources = {choice for choice, _label in TroubleshootingResolution.SOURCE_CHOICES}
+    if source not in valid_sources:
+        source = TroubleshootingResolution.SOURCE_QR_ASSET_TROUBLESHOOTING
+
+    solved_by = str(
+        request.data.get("solved_by") or TroubleshootingResolution.SOLVED_BY_SYSTEM_GUIDED
+    ).strip()
+    valid_solved_by = {choice for choice, _label in TroubleshootingResolution.SOLVED_BY_CHOICES}
+    if solved_by not in valid_solved_by:
+        solved_by = TroubleshootingResolution.SOLVED_BY_SYSTEM_GUIDED
+
+    solved_by_display = str(
+        request.data.get("solved_by_display") or "LEC IntelliSupport Guided Troubleshooting"
+    ).strip()
+    branch = str(request.data.get("branch") or (asset and "Head Office") or user.branch or "").strip()
+    department = str(request.data.get("department") or (asset.department if asset else "") or user.department or "").strip()
+
+    resolution = TroubleshootingResolution.objects.create(
+        asset=asset,
+        user=user,
+        problem=problem,
+        asset_code=asset_code,
+        problem_title=problem_title,
+        completed_steps=completed_steps,
+        resolution_status=resolution_status,
+        solved_by=solved_by,
+        solved_by_display=solved_by_display,
+        source=source,
+        branch=branch,
+        department=department,
+    )
+
+    payload = _troubleshooting_resolution_to_dict(resolution)
+    if resolution_status == TroubleshootingResolution.STATUS_SOLVED:
+        payload["message"] = "Problem marked as solved. LEC IntelliSupport guided troubleshooting resolved this issue."
+    else:
+        payload["message"] = "Troubleshooting outcome recorded."
+    return Response(payload, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "POST"])

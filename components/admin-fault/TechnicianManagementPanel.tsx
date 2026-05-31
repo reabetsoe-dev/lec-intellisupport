@@ -59,6 +59,9 @@ type EditableEmployee = {
   id: number
   name: string
   email: string
+  phone_number: string
+  branch: string
+  department: string
 }
 type EditableTechnician = {
   id: number
@@ -77,6 +80,7 @@ export function TechnicianManagementPanel() {
   const [skillset, setSkillset] = useState("")
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
+  const [employeePhoneNumber, setEmployeePhoneNumber] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
   const [employeeDepartment, setEmployeeDepartment] = useState("")
   const [saving, setSaving] = useState(false)
@@ -165,6 +169,9 @@ export function TechnicianManagementPanel() {
       id: employee.id,
       name: employee.name,
       email: employee.email,
+      phone_number: employee.phone_number ?? "",
+      branch: employee.branch ?? "",
+      department: employee.department ?? "",
     })
   }
 
@@ -184,6 +191,9 @@ export function TechnicianManagementPanel() {
 
     const trimmedName = editingEmployee.name.trim()
     const trimmedEmail = editingEmployee.email.trim()
+    const trimmedPhoneNumber = editingEmployee.phone_number.trim()
+    const trimmedBranch = editingEmployee.branch.trim()
+    const trimmedDepartment = editingEmployee.department.trim()
 
     if (!trimmedName) {
       showResultDialog("error", "Employee name is required.")
@@ -200,6 +210,9 @@ export function TechnicianManagementPanel() {
       await updateEmployeeDetails(editingEmployee.id, {
         name: trimmedName,
         email: trimmedEmail,
+        phone_number: trimmedPhoneNumber,
+        branch: trimmedBranch,
+        department: trimmedDepartment,
       })
       await loadEmployees()
       setEditingEmployee(null)
@@ -348,12 +361,14 @@ export function TechnicianManagementPanel() {
       await createEmployee({
         name: employeeName.trim(),
         email: employeeEmail.trim(),
+        phone_number: employeePhoneNumber.trim(),
         branch: employeeBranch,
         department: employeeDepartment,
         is_active: true,
       })
       setEmployeeName("")
       setEmployeeEmail("")
+      setEmployeePhoneNumber("")
       setEmployeeBranch("")
       setEmployeeDepartment("")
       await loadEmployees()
@@ -458,6 +473,18 @@ export function TechnicianManagementPanel() {
               value={employeeEmail}
               onChange={(event) => setEmployeeEmail(event.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="employee-phone-number" className="text-sm font-medium text-[#1E3A6D]">
+              WhatsApp Phone Number
+            </label>
+            <Input
+              id="employee-phone-number"
+              type="tel"
+              value={employeePhoneNumber}
+              onChange={(event) => setEmployeePhoneNumber(event.target.value)}
+              placeholder="e.g. +266 6222 0000"
             />
           </div>
           <div className="space-y-2">
@@ -621,6 +648,9 @@ export function TechnicianManagementPanel() {
                       <div className="flex-1">
                         <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
                         <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
+                        <p className="text-xs text-[#4A6A96]">
+                          Phone: {employee.phone_number || "Not set"}
+                        </p>
                         <p className="text-xs text-[#4A6A96]">
                           Branch: {employee.branch || "Not set"} | Department: {employee.department || "Not set"}
                         </p>
@@ -819,7 +849,7 @@ export function TechnicianManagementPanel() {
           setEditingEmployee(null)
         }
       }}>
-        <DialogContent className="max-w-lg border-[#0072CE]/25">
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto border-[#0072CE]/25">
           <DialogHeader>
             <DialogTitle className="text-[#0B1F3A]">Edit Employee</DialogTitle>
             <DialogDescription className="text-[#1E3A6D]">
@@ -828,36 +858,98 @@ export function TechnicianManagementPanel() {
           </DialogHeader>
           {editingEmployee ? (
             <form className="space-y-4" onSubmit={handleEditEmployeeSubmit}>
-              <div className="space-y-2">
-                <label htmlFor="edit-employee-name" className="text-sm font-medium text-[#1E3A6D]">
-                  Employee Name
-                </label>
-                <Input
-                  id="edit-employee-name"
-                  value={editingEmployee.name}
-                  onChange={(event) =>
-                    setEditingEmployee((current) =>
-                      current ? { ...current, name: event.target.value } : current
-                    )
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="edit-employee-email" className="text-sm font-medium text-[#1E3A6D]">
-                  Employee Email
-                </label>
-                <Input
-                  id="edit-employee-email"
-                  type="email"
-                  value={editingEmployee.email}
-                  onChange={(event) =>
-                    setEditingEmployee((current) =>
-                      current ? { ...current, email: event.target.value } : current
-                    )
-                  }
-                  required
-                />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="edit-employee-name" className="text-sm font-medium text-[#1E3A6D]">
+                    Employee Name
+                  </label>
+                  <Input
+                    id="edit-employee-name"
+                    value={editingEmployee.name}
+                    onChange={(event) =>
+                      setEditingEmployee((current) =>
+                        current ? { ...current, name: event.target.value } : current
+                      )
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-employee-email" className="text-sm font-medium text-[#1E3A6D]">
+                    Employee Email
+                  </label>
+                  <Input
+                    id="edit-employee-email"
+                    type="email"
+                    value={editingEmployee.email}
+                    onChange={(event) =>
+                      setEditingEmployee((current) =>
+                        current ? { ...current, email: event.target.value } : current
+                      )
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-employee-phone-number" className="text-sm font-medium text-[#1E3A6D]">
+                    WhatsApp Phone Number
+                  </label>
+                  <Input
+                    id="edit-employee-phone-number"
+                    type="tel"
+                    value={editingEmployee.phone_number}
+                    onChange={(event) =>
+                      setEditingEmployee((current) =>
+                        current ? { ...current, phone_number: event.target.value } : current
+                      )
+                    }
+                    placeholder="e.g. +266 6222 0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-employee-branch" className="text-sm font-medium text-[#1E3A6D]">
+                    Employee Branch
+                  </label>
+                  <select
+                    id="edit-employee-branch"
+                    className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
+                    value={editingEmployee.branch}
+                    onChange={(event) =>
+                      setEditingEmployee((current) =>
+                        current ? { ...current, branch: event.target.value } : current
+                      )
+                    }
+                  >
+                    <option value="">Select branch</option>
+                    {BRANCH_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label htmlFor="edit-employee-department" className="text-sm font-medium text-[#1E3A6D]">
+                    Employee Department
+                  </label>
+                  <select
+                    id="edit-employee-department"
+                    className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
+                    value={editingEmployee.department}
+                    onChange={(event) =>
+                      setEditingEmployee((current) =>
+                        current ? { ...current, department: event.target.value } : current
+                      )
+                    }
+                  >
+                    <option value="">Select department</option>
+                    {DEPARTMENT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <DialogFooter>
                 <Button

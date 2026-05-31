@@ -1,105 +1,392 @@
-export type AssetTroubleshootingDomain = "printer" | "computer" | "network" | "paper" | "general"
+export type AssetTroubleshootingDomain =
+  | "printer"
+  | "computer"
+  | "network"
+  | "paper"
+  | "ups"
+  | "switch"
+  | "server"
+  | "general"
 
 export type TroubleshootingStep = {
   id: string
-  text: string
+  step_number: number
+  instruction: string
 }
 
 export type AssetCommonProblem = {
   id: string
-  label: string
+  title: string
+  description: string
   category: string
-  quickCheck: string
-}
-
-const TROUBLESHOOTING_STEPS_BY_DOMAIN: Record<AssetTroubleshootingDomain, TroubleshootingStep[]> = {
-  printer: [
-    { id: "printer-power", text: "Check if the printer is powered on." },
-    { id: "printer-paper", text: "Check paper tray and confirm paper is loaded correctly." },
-    { id: "printer-toner", text: "Check toner level and replace toner if needed." },
-    { id: "printer-connection", text: "Check printer USB/LAN/Wi-Fi connection." },
-    { id: "printer-restart", text: "Restart the printer and wait for readiness." },
-    { id: "printer-jam", text: "Clear any paper jam from tray and rollers." },
-    { id: "printer-selected", text: "Confirm the correct printer is selected on the device." },
-    { id: "printer-test-page", text: "Try printing a test page." },
-  ],
-  computer: [
-    { id: "computer-restart", text: "Restart the device." },
-    { id: "computer-power-adapter", text: "Check power adapter and battery/charging state." },
-    { id: "computer-network", text: "Check internet connection and network access." },
-    { id: "computer-updates", text: "Check system updates and install pending updates." },
-    { id: "computer-antivirus", text: "Run an antivirus scan." },
-  ],
-  network: [
-    { id: "network-power", text: "Check power lights and status indicators." },
-    { id: "network-restart", text: "Restart the router/network device." },
-    { id: "network-ethernet", text: "Check Ethernet cables and port connectivity." },
-    { id: "network-availability", text: "Confirm Wi-Fi/network availability from another device." },
-  ],
-  paper: [
-    { id: "paper-stock", text: "Check whether paper stock is finished." },
-  ],
-  general: [
-    { id: "general-power", text: "Verify the device has power and no hardware alert lights." },
-    { id: "general-restart", text: "Restart the device and retry the task." },
-    { id: "general-network", text: "Confirm network connectivity where applicable." },
-    { id: "general-check", text: "Check cables/adapters and retry." },
-  ],
+  steps: TroubleshootingStep[]
 }
 
 const CATEGORY_OPTIONS_BY_DOMAIN: Record<AssetTroubleshootingDomain, string[]> = {
-  printer: ["Paper Jam", "Toner", "Connectivity", "Driver", "Hardware Failure"],
+  printer: ["Paper Jam", "Toner", "Connectivity", "Print Quality", "Hardware Failure"],
   computer: ["Hardware", "Software", "Performance", "Power", "Connectivity"],
   network: ["Connectivity", "Wi-Fi", "LAN", "Power", "Configuration"],
-  paper: ["Paper Out"],
+  paper: ["Paper Out", "Stock Recording", "Damaged Stock", "Wrong Stock"],
+  ups: ["Power", "Battery", "Overload", "Hardware Failure"],
+  switch: ["Connectivity", "LAN", "Power", "Configuration"],
+  server: ["Infrastructure", "Storage", "Network", "Power", "Service Outage"],
   general: ["Hardware", "Software", "Connectivity", "Performance", "Other"],
 }
 
-const COMMON_PROBLEMS_BY_DOMAIN: Record<AssetTroubleshootingDomain, AssetCommonProblem[]> = {
-  printer: [
-    { id: "printer-paper-out", label: "Paper finished", category: "Paper Jam", quickCheck: "Check if paper tray is empty and reload paper." },
-    { id: "printer-paper-jam", label: "Paper jam error", category: "Paper Jam", quickCheck: "Open tray/rollers and clear stuck paper carefully." },
-    { id: "printer-toner-low", label: "Low toner or faded print", category: "Toner", quickCheck: "Check toner level and reseat/replace cartridge." },
-    { id: "printer-offline", label: "Printer appears offline", category: "Connectivity", quickCheck: "Check USB/LAN/Wi-Fi and ensure printer is online." },
-    { id: "printer-driver", label: "Driver/queue issue", category: "Driver", quickCheck: "Clear queue, reselect printer, and retry test page." },
-    { id: "printer-not-detected", label: "Printer not detected on PC", category: "Connectivity", quickCheck: "Reconnect cable/network and restart printer." },
-    { id: "printer-slow", label: "Printing is very slow", category: "Performance", quickCheck: "Reduce print quality mode and check network latency." },
-    { id: "printer-no-power", label: "Printer not powering on", category: "Hardware Failure", quickCheck: "Check power cable/socket and power switch." },
-  ],
-  computer: [
-    { id: "computer-no-power", label: "Device not powering on", category: "Power", quickCheck: "Check adapter/battery, power button, and socket." },
-    { id: "computer-no-charge", label: "Battery not charging", category: "Power", quickCheck: "Check adapter, port, and charging indicator." },
-    { id: "computer-slow", label: "Very slow performance", category: "Performance", quickCheck: "Close heavy apps and restart device." },
-    { id: "computer-crash", label: "Frequent crash/blue screen", category: "Hardware", quickCheck: "Capture error details and reboot safely." },
-    { id: "computer-no-network", label: "No internet connection", category: "Connectivity", quickCheck: "Reconnect Wi-Fi/LAN and verify IP/network access." },
-    { id: "computer-app-fail", label: "Application not opening", category: "Software", quickCheck: "Restart app/device and check for pending updates." },
-    { id: "computer-overheat", label: "Overheating", category: "Hardware", quickCheck: "Ensure vents are clear and cooling is functioning." },
-    { id: "computer-security", label: "Possible malware/security issue", category: "Software", quickCheck: "Run antivirus scan and isolate risky activity." },
-  ],
-  network: [
-    { id: "network-down", label: "No internet/network access", category: "Connectivity", quickCheck: "Check upstream link and restart router/switch." },
-    { id: "network-intermittent", label: "Intermittent connection", category: "Connectivity", quickCheck: "Check cable stability and signal quality." },
-    { id: "network-wifi-missing", label: "Wi-Fi SSID not visible", category: "Wi-Fi", quickCheck: "Confirm SSID broadcast and AP status." },
-    { id: "network-weak-signal", label: "Weak Wi-Fi signal", category: "Wi-Fi", quickCheck: "Test closer range and inspect AP placement." },
-    { id: "network-lan-port", label: "LAN port not working", category: "LAN", quickCheck: "Swap cable/port and verify port LEDs." },
-    { id: "network-config", label: "Configuration/VLAN issue", category: "Configuration", quickCheck: "Validate VLAN/IP settings against standard." },
-    { id: "network-power", label: "Network device not powering", category: "Power", quickCheck: "Check power supply and indicators." },
-  ],
-  paper: [
-    { id: "paper-finished", label: "Is the paper finished?", category: "Paper Out", quickCheck: "Check stock quantity and restock if empty." },
-  ],
-  general: [
-    { id: "general-power", label: "Power issue", category: "Hardware", quickCheck: "Check power source and device startup state." },
-    { id: "general-connectivity", label: "Connectivity issue", category: "Connectivity", quickCheck: "Verify network/cable connectivity." },
-    { id: "general-performance", label: "Performance issue", category: "Performance", quickCheck: "Restart and check resource usage." },
-    { id: "general-software", label: "Software/app issue", category: "Software", quickCheck: "Reopen app and check updates/errors." },
-    { id: "general-hardware", label: "Hardware fault", category: "Hardware", quickCheck: "Inspect physical condition and indicators." },
-    { id: "general-other", label: "Other issue", category: "Other", quickCheck: "Capture symptoms and escalate with details." },
-  ],
+function steps(problemId: string, items: string[]): TroubleshootingStep[] {
+  return items.map((instruction, index) => ({
+    id: `${problemId}-step-${index + 1}`,
+    step_number: index + 1,
+    instruction,
+  }))
 }
 
-export function getTroubleshootingSteps(domain: AssetTroubleshootingDomain): TroubleshootingStep[] {
-  return TROUBLESHOOTING_STEPS_BY_DOMAIN[domain] ?? TROUBLESHOOTING_STEPS_BY_DOMAIN.general
+const COMMON_PROBLEMS_BY_DOMAIN: Record<AssetTroubleshootingDomain, AssetCommonProblem[]> = {
+  paper: [
+    {
+      id: "paper-stock-finished",
+      title: "Paper stock finished",
+      description: "Paper cannot be used because the expected stock is empty or unavailable.",
+      category: "Paper Out",
+      steps: steps("paper-stock-finished", [
+        "Check the physical paper tray or storage area.",
+        "Confirm whether sealed paper packages are available.",
+        "Confirm the asset code matches the scanned paper stock.",
+        "Check if another department recently collected the paper.",
+        "If paper is available, update the issue as resolved.",
+      ]),
+    },
+    {
+      id: "paper-wrong-loaded",
+      title: "Wrong paper loaded",
+      description: "The wrong paper size, type, or department stock appears to be loaded.",
+      category: "Wrong Stock",
+      steps: steps("paper-wrong-loaded", [
+        "Check the paper size and label on the package.",
+        "Compare it with the required paper type for the device or department.",
+        "Remove incorrect paper from the tray or storage area.",
+        "Load the correct paper and keep the packaging label visible.",
+      ]),
+    },
+    {
+      id: "paper-not-recorded",
+      title: "Paper not recorded in stock",
+      description: "Paper exists physically but does not appear correctly in stock records.",
+      category: "Stock Recording",
+      steps: steps("paper-not-recorded", [
+        "Count the available sealed and opened paper packages.",
+        "Confirm the scanned asset code matches the physical stock label.",
+        "Check whether stock was recently moved between departments.",
+        "Record the corrected quantity if you have stock update access.",
+      ]),
+    },
+    {
+      id: "paper-damaged-package",
+      title: "Damaged paper package",
+      description: "Paper packaging or sheets are damaged and may not be usable.",
+      category: "Damaged Stock",
+      steps: steps("paper-damaged-package", [
+        "Inspect the package for water, dust, tears, or bending.",
+        "Separate damaged sheets from usable paper.",
+        "Check whether another sealed package is available.",
+        "Keep the damaged package aside for consumables review.",
+      ]),
+    },
+  ],
+  printer: [
+    {
+      id: "printer-paper-jam",
+      title: "Paper jam",
+      description: "The printer reports a jam or paper is visibly stuck.",
+      category: "Paper Jam",
+      steps: steps("printer-paper-jam", [
+        "Power off the printer before opening trays or panels.",
+        "Open the indicated tray or rear access panel.",
+        "Remove stuck paper slowly in the paper path direction.",
+        "Reload paper neatly and close all panels.",
+        "Power on the printer and print a test page.",
+      ]),
+    },
+    {
+      id: "printer-offline",
+      title: "Printer offline",
+      description: "The printer is powered on but shows offline or unavailable.",
+      category: "Connectivity",
+      steps: steps("printer-offline", [
+        "Confirm the printer is powered on and ready.",
+        "Check the USB, LAN, or Wi-Fi connection.",
+        "Confirm the correct printer is selected on the workstation.",
+        "Restart the printer and wait for it to reconnect.",
+        "Try printing a test page.",
+      ]),
+    },
+    {
+      id: "printer-low-toner",
+      title: "Low toner",
+      description: "The printer warns about toner or print output is faded.",
+      category: "Toner",
+      steps: steps("printer-low-toner", [
+        "Check the toner level on the printer display.",
+        "Remove and gently reseat the toner cartridge.",
+        "Check whether a replacement cartridge is available.",
+        "Print a test page after reseating or replacing toner.",
+      ]),
+    },
+    {
+      id: "printer-poor-quality",
+      title: "Poor print quality",
+      description: "Printed pages are faded, streaked, smudged, or misaligned.",
+      category: "Print Quality",
+      steps: steps("printer-poor-quality", [
+        "Check paper type and confirm it is dry and undamaged.",
+        "Run the printer cleaning or calibration option if available.",
+        "Check toner or ink levels.",
+        "Print a test page to confirm whether quality improves.",
+      ]),
+    },
+    {
+      id: "printer-cannot-connect",
+      title: "Cannot connect to printer",
+      description: "A workstation cannot find or connect to the printer.",
+      category: "Connectivity",
+      steps: steps("printer-cannot-connect", [
+        "Confirm the printer is connected to the same network.",
+        "Check the printer IP address or shared printer name.",
+        "Restart the printer and workstation if safe to do so.",
+        "Try adding the printer again from the workstation.",
+      ]),
+    },
+  ],
+  network: [
+    {
+      id: "network-no-internet",
+      title: "No internet connection",
+      description: "Users connected through this network device cannot reach the internet.",
+      category: "Connectivity",
+      steps: steps("network-no-internet", [
+        "Check power and internet or link indicator lights.",
+        "Confirm upstream cable is firmly connected.",
+        "Test internet access from another device.",
+        "Restart the network device if business impact allows it.",
+        "Wait for link lights to stabilize and retest.",
+      ]),
+    },
+    {
+      id: "network-slow",
+      title: "Slow connection",
+      description: "Network access works but is unusually slow.",
+      category: "Connectivity",
+      steps: steps("network-slow", [
+        "Check if multiple users are affected.",
+        "Test a wired connection if available.",
+        "Check device temperature and indicator lights.",
+        "Restart the device if approved for the location.",
+        "Retest a known business application.",
+      ]),
+    },
+    {
+      id: "network-power",
+      title: "Power issue",
+      description: "The network device does not power on or loses power.",
+      category: "Power",
+      steps: steps("network-power", [
+        "Check the wall socket or UPS output.",
+        "Confirm the power adapter is firmly connected.",
+        "Look for damaged adapter or cable marks.",
+        "Try a known working outlet if safe.",
+      ]),
+    },
+    {
+      id: "network-loose-cable",
+      title: "Loose cable",
+      description: "A loose network or power cable may be interrupting service.",
+      category: "LAN",
+      steps: steps("network-loose-cable", [
+        "Inspect WAN, LAN, and power cables.",
+        "Push each connector in until it clicks or seats firmly.",
+        "Check link lights after reseating cables.",
+        "Replace the cable if the connector is damaged.",
+      ]),
+    },
+    {
+      id: "network-overheating",
+      title: "Device overheating",
+      description: "The network device feels hot or is in a poorly ventilated area.",
+      category: "Hardware Failure",
+      steps: steps("network-overheating", [
+        "Check whether air vents are blocked.",
+        "Move papers or equipment away from the device.",
+        "Confirm the device is not in direct sunlight.",
+        "Allow it to cool and retest network access.",
+      ]),
+    },
+  ],
+  computer: [
+    {
+      id: "computer-no-power",
+      title: "Laptop or computer will not power on",
+      description: "The device does not start or shows no power indicators.",
+      category: "Power",
+      steps: steps("computer-no-power", [
+        "Check the charger or power cable connection.",
+        "Confirm the wall socket or docking station has power.",
+        "Hold the power button for ten seconds, then try again.",
+        "Remove non-essential USB devices and retry startup.",
+      ]),
+    },
+    {
+      id: "computer-slow",
+      title: "Very slow performance",
+      description: "The computer responds slowly or applications take too long to open.",
+      category: "Performance",
+      steps: steps("computer-slow", [
+        "Close unused applications and browser tabs.",
+        "Restart the computer if it is safe to do so.",
+        "Check whether storage is nearly full.",
+        "Confirm antivirus or updates are not actively running.",
+      ]),
+    },
+    {
+      id: "computer-no-network",
+      title: "Cannot connect to network",
+      description: "The computer cannot access Wi-Fi, LAN, or internal systems.",
+      category: "Connectivity",
+      steps: steps("computer-no-network", [
+        "Check Wi-Fi or LAN cable connection.",
+        "Confirm airplane mode is off.",
+        "Reconnect to the approved LEC network.",
+        "Restart the device and test a known internal system.",
+      ]),
+    },
+    {
+      id: "computer-app-not-opening",
+      title: "Application not opening",
+      description: "A required application fails to launch or closes immediately.",
+      category: "Software",
+      steps: steps("computer-app-not-opening", [
+        "Close and reopen the application.",
+        "Restart the computer if the application remains stuck.",
+        "Check whether another user can open the same application.",
+        "Note any error message shown on screen.",
+      ]),
+    },
+    {
+      id: "computer-overheating",
+      title: "Device overheating",
+      description: "The computer becomes unusually hot or the fan runs constantly.",
+      category: "Hardware",
+      steps: steps("computer-overheating", [
+        "Check that air vents are not blocked.",
+        "Move the device to a flat ventilated surface.",
+        "Close heavy applications and wait a few minutes.",
+        "Restart the device if performance remains poor.",
+      ]),
+    },
+  ],
+  ups: [
+    {
+      id: "ups-no-backup",
+      title: "UPS not providing backup power",
+      description: "The UPS does not keep connected equipment running during power loss.",
+      category: "Battery",
+      steps: steps("ups-no-backup", [
+        "Confirm the UPS is switched on.",
+        "Check battery or fault indicator lights.",
+        "Confirm critical devices are plugged into battery-backed outlets.",
+        "Run a brief self-test if the UPS supports it.",
+      ]),
+    },
+    {
+      id: "ups-alarm",
+      title: "UPS alarm beeping",
+      description: "The UPS is making an audible alarm.",
+      category: "Power",
+      steps: steps("ups-alarm", [
+        "Check the display or indicator light meaning.",
+        "Confirm the UPS is not overloaded.",
+        "Check whether mains power is available.",
+        "Remove non-critical loads and observe whether the alarm clears.",
+      ]),
+    },
+  ],
+  switch: [
+    {
+      id: "switch-port-not-working",
+      title: "Switch port not working",
+      description: "A network switch port has no link or cannot pass traffic.",
+      category: "LAN",
+      steps: steps("switch-port-not-working", [
+        "Check the port link light.",
+        "Reseat the Ethernet cable on both ends.",
+        "Try a known working cable.",
+        "Move the device to another approved port and retest.",
+      ]),
+    },
+    {
+      id: "switch-multiple-users",
+      title: "Multiple users disconnected",
+      description: "Several users connected to the switch lost network access.",
+      category: "Connectivity",
+      steps: steps("switch-multiple-users", [
+        "Check switch power and uplink lights.",
+        "Confirm the uplink cable is firmly connected.",
+        "Check if only one area or all users are affected.",
+        "Restart only if approved for the affected area.",
+      ]),
+    },
+  ],
+  server: [
+    {
+      id: "server-service-unavailable",
+      title: "Server service unavailable",
+      description: "A service hosted by the server cannot be reached.",
+      category: "Service Outage",
+      steps: steps("server-service-unavailable", [
+        "Confirm the server has power and normal indicator lights.",
+        "Check whether other services on the same server are reachable.",
+        "Confirm network cable or link lights are active.",
+        "Record the service name and exact error message.",
+      ]),
+    },
+    {
+      id: "server-storage-warning",
+      title: "Server storage warning",
+      description: "The server reports low disk space or a storage alert.",
+      category: "Storage",
+      steps: steps("server-storage-warning", [
+        "Capture the exact storage warning.",
+        "Check if any scheduled backup or export is running.",
+        "Do not delete files without authorization.",
+        "Record affected service and urgency for escalation.",
+      ]),
+    },
+  ],
+  general: [
+    {
+      id: "general-power",
+      title: "Power issue",
+      description: "The asset has no power or does not start normally.",
+      category: "Hardware",
+      steps: steps("general-power", [
+        "Verify the device has power and no hardware alert lights.",
+        "Check cables, adapters, and wall socket.",
+        "Restart the device and retry the task.",
+        "Record any visible warning lights or error messages.",
+      ]),
+    },
+    {
+      id: "general-connectivity",
+      title: "Connectivity issue",
+      description: "The asset cannot connect to a required device, network, or service.",
+      category: "Connectivity",
+      steps: steps("general-connectivity", [
+        "Check all relevant cables or wireless connection status.",
+        "Restart the device if safe to do so.",
+        "Test from another device or location if available.",
+        "Capture any exact error message before reporting.",
+      ]),
+    },
+  ],
 }
 
 export function getFaultCategoryOptions(domain: AssetTroubleshootingDomain): string[] {
