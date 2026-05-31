@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { readHttpResponse } from "@/lib/http-response"
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
+const RENDER_BACKEND_URL = "https://lec-intellisupport-backend.onrender.com"
 
 function toIpv4Localhost(baseUrl: string): string {
   return baseUrl.replace("://localhost", "://127.0.0.1")
@@ -42,6 +43,7 @@ async function fetchBackendResponse(baseUrl: string, path: string, init?: Reques
 export async function forwardToBackend(path: string, init?: RequestInit): Promise<Response> {
   const configuredBaseUrl = getConfiguredBackendBaseUrl()
   const fallbackBaseUrl = normalizeBackendBaseUrl(DEFAULT_BACKEND_URL)
+  const renderBaseUrl = normalizeBackendBaseUrl(RENDER_BACKEND_URL)
 
   try {
     const primaryResponse = await fetchBackendResponse(configuredBaseUrl, path, init)
@@ -55,15 +57,19 @@ export async function forwardToBackend(path: string, init?: RequestInit): Promis
       return primaryResponse
     }
   } catch {
-    if (configuredBaseUrl === fallbackBaseUrl) {
-      throw new Error(`Cannot reach backend service at ${configuredBaseUrl}.`)
+    if (configuredBaseUrl !== fallbackBaseUrl) {
+      try {
+        return await fetchBackendResponse(fallbackBaseUrl, path, init)
+      } catch {
+        // Fall through to the deployed backend fallback below.
+      }
     }
   }
 
   try {
-    return await fetchBackendResponse(fallbackBaseUrl, path, init)
+    return await fetchBackendResponse(renderBaseUrl, path, init)
   } catch {
-    throw new Error(`Cannot reach backend service at ${fallbackBaseUrl}.`)
+    throw new Error(`Cannot reach backend service at ${configuredBaseUrl}.`)
   }
 }
 
