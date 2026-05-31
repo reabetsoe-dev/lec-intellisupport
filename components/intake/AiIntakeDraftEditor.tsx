@@ -3,13 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { type TicketIntakeDraft, type TicketIntakeMode } from "@/lib/api"
+import { type TicketIntakeDraft } from "@/lib/api"
 import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
 
 type AiIntakeDraftEditorProps = {
   draft: TicketIntakeDraft
-  confidence: number
-  intakeMode: TicketIntakeMode
   followUpQuestions: string[]
   submitting: boolean
   submitLabel: string
@@ -17,34 +15,8 @@ type AiIntakeDraftEditorProps = {
   onSubmit: () => void
 }
 
-const categoryOptions = ["Hardware", "Software", "Network", "Security"] as const
-const priorityOptions = ["Low", "Medium", "High", "Critical"] as const
-
-function confidenceBannerClass(mode: TicketIntakeMode): string {
-  if (mode === "direct") {
-    return "border-[#9CD8C2] bg-[#EAF8F0] text-[#176B4A]"
-  }
-  if (mode === "follow_up") {
-    return "border-[#E5D2AB] bg-[#FFF9EC] text-[#7A5700]"
-  }
-  return "border-[#EDB0B0] bg-[#FFEAEA] text-[#8A2D2D]"
-}
-
-function confidenceMessage(mode: TicketIntakeMode, confidence: number): string {
-  const percent = Math.round(confidence * 100)
-  if (mode === "direct") {
-    return `AI intake is confident (${percent}%). Review the draft and submit.`
-  }
-  if (mode === "follow_up") {
-    return `AI intake needs a little confirmation (${percent}%). Review the follow-up prompts and adjust the draft before submitting.`
-  }
-  return `AI intake is low-confidence (${percent}%). Manual review is required before submission.`
-}
-
 export function AiIntakeDraftEditor({
   draft,
-  confidence,
-  intakeMode,
   followUpQuestions,
   submitting,
   submitLabel,
@@ -54,13 +26,9 @@ export function AiIntakeDraftEditor({
   return (
     <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
       <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-        <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Ticket Draft Preview</CardTitle>
+        <CardTitle className="text-base font-semibold text-[#0B1F3A]">Ticket Draft Preview</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 px-5 py-5">
-        <div className={`rounded-lg border px-4 py-3 text-sm ${confidenceBannerClass(intakeMode)}`}>
-          {confidenceMessage(intakeMode, confidence)}
-        </div>
-
         {followUpQuestions.length > 0 ? (
           <div className="rounded-lg border border-[#E5D2AB] bg-[#FFF9EC] px-4 py-3">
             <p className="text-sm font-semibold text-[#7A5700]">Follow-up Questions</p>
@@ -135,68 +103,6 @@ export function AiIntakeDraftEditor({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="ai-draft-category" className="text-sm font-medium text-[#0B1F3A]">
-              Category
-            </label>
-            <select
-              id="ai-draft-category"
-              value={draft.category}
-              onChange={(event) => onChange({ ...draft, category: event.target.value })}
-              className="h-9 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-            >
-              {categoryOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="ai-draft-priority" className="text-sm font-medium text-[#0B1F3A]">
-              Priority
-            </label>
-            <select
-              id="ai-draft-priority"
-              value={draft.priority}
-              onChange={(event) => onChange({ ...draft, priority: event.target.value })}
-              className="h-9 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-            >
-              {priorityOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="ai-draft-asset" className="text-sm font-medium text-[#0B1F3A]">
-              Affected Asset
-            </label>
-            <Input
-              id="ai-draft-asset"
-              value={draft.asset ?? ""}
-              onChange={(event) => onChange({ ...draft, asset: event.target.value })}
-              className="h-9 border-[#0072CE]/30 text-[#0B1F3A]"
-              placeholder="Printer, laptop, Outlook, VPN..."
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="ai-draft-impact" className="text-sm font-medium text-[#0B1F3A]">
-              Business Impact
-            </label>
-            <Input
-              id="ai-draft-impact"
-              value={draft.impact ?? ""}
-              onChange={(event) => onChange({ ...draft, impact: event.target.value })}
-              className="h-9 border-[#0072CE]/30 text-[#0B1F3A]"
-              placeholder="Single user, team blocked, recurring..."
-            />
           </div>
         </div>
 

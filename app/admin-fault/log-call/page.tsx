@@ -67,14 +67,10 @@ const emptyDraft: TicketIntakeDraft = {
 }
 
 function buildAssistantSummary(payload: TicketIntakeDraftResponse): string {
-  const confidencePercent = Math.round(payload.confidence * 100)
-  if (payload.intake_mode === "direct") {
-    return `AI call intake is confident (${confidencePercent}%). Review the structured draft and submit it when ready.`
-  }
   if (payload.intake_mode === "follow_up") {
-    return `AI call intake produced a draft (${confidencePercent}%), but it still needs a few confirmations before submission.`
+    return "Ticket draft ready. Review the follow-up prompts and update the preview before logging the call."
   }
-  return `AI call intake is low-confidence (${confidencePercent}%). Manual review is required before the ticket is logged.`
+  return "Ticket draft ready. Review the preview below, then log the call."
 }
 
 export default function AdminFaultLogCallPage() {
@@ -376,7 +372,6 @@ export default function AdminFaultLogCallPage() {
         department: draft.department.trim(),
         asset: draft.asset?.trim(),
         impact: draft.impact?.trim(),
-        ai_confidence: draftResponse?.confidence,
         employee_id: Number(employeeId),
         reporter_reviewed_problem: true,
         caller_name: callerName.trim(),
@@ -532,8 +527,6 @@ export default function AdminFaultLogCallPage() {
       {draftResponse ? (
         <AiIntakeDraftEditor
           draft={draft}
-          confidence={draftResponse.confidence}
-          intakeMode={draftResponse.intake_mode}
           followUpQuestions={draftResponse.follow_up_questions}
           submitting={submitting}
           submitLabel="Confirm and Log Call"

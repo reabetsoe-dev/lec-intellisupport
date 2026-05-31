@@ -31,14 +31,10 @@ const emptyDraft: TicketIntakeDraft = {
 }
 
 function buildAssistantSummary(payload: TicketIntakeDraftResponse): string {
-  const confidencePercent = Math.round(payload.confidence * 100)
-  if (payload.intake_mode === "direct") {
-    return `I drafted a structured ticket with ${confidencePercent}% confidence. Review it below, then confirm the submission.`
-  }
   if (payload.intake_mode === "follow_up") {
-    return `I drafted a ticket with ${confidencePercent}% confidence, but I still need a few confirmations before you submit it.`
+    return "Ticket draft ready. Review the follow-up prompts and update the preview before submitting."
   }
-  return `I drafted a low-confidence ticket (${confidencePercent}%). Please complete the manual details before submission.`
+  return "Ticket draft ready. Review the preview below, then confirm the submission."
 }
 
 export default function EmployeeReportPage() {
@@ -122,7 +118,7 @@ export default function EmployeeReportPage() {
 
     const trimmedMessage = message.trim()
     if (!trimmedMessage) {
-      showResultDialog("error", "Describe the issue before requesting an AI draft.")
+      showResultDialog("error", "Describe the issue before sending.")
       return
     }
 
@@ -145,7 +141,7 @@ export default function EmployeeReportPage() {
     } catch (draftError) {
       showResultDialog(
         "error",
-        draftError instanceof Error ? draftError.message : "Failed to prepare AI draft."
+        draftError instanceof Error ? draftError.message : "Failed to prepare ticket draft."
       )
     } finally {
       setAnalyzing(false)
@@ -187,7 +183,6 @@ export default function EmployeeReportPage() {
         department: draft.department.trim(),
         asset: draft.asset?.trim(),
         impact: draft.impact?.trim(),
-        ai_confidence: draftResponse?.confidence,
         employee_id: user.id,
         reporter_reviewed_problem: true,
       })
@@ -226,12 +221,12 @@ export default function EmployeeReportPage() {
 
       <EmployeePageHero
         title="Report Fault"
-        description="Describe the issue in natural language, let AI draft the ticket, then confirm the final version before submission."
+        description="Describe the issue in natural language, review the ticket draft, then confirm the final version before submission."
       />
 
       <Card className="mx-auto w-full max-w-[900px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Conversational Intake</CardTitle>
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Text Intake</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
           <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
@@ -258,7 +253,7 @@ export default function EmployeeReportPage() {
               disabled={analyzing}
               className="h-10 rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8] focus-visible:ring-2 focus-visible:ring-[#0072CE]/40 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {analyzing ? "Building Draft..." : "Create AI Draft"}
+              {analyzing ? "Sending..." : "Send"}
             </Button>
           </div>
 
@@ -284,8 +279,6 @@ export default function EmployeeReportPage() {
       {draftResponse ? (
         <AiIntakeDraftEditor
           draft={draft}
-          confidence={draftResponse.confidence}
-          intakeMode={draftResponse.intake_mode}
           followUpQuestions={draftResponse.follow_up_questions}
           submitting={submitting}
           submitLabel="Confirm and Submit Ticket"
