@@ -169,6 +169,7 @@ export type Employee = {
   name: string
   email: string
   branch: string
+  department: string
   role: UserRole
   is_active: boolean
   created_at: string
@@ -1310,6 +1311,7 @@ export async function createEmployee(payload: {
   name: string
   email: string
   branch?: string
+  department?: string
   is_active?: boolean
 }): Promise<Employee> {
   return requestJson<Employee>(BACKEND_BASE_URL, "/api/employees", {
@@ -1337,6 +1339,7 @@ export async function updateEmployeeDetails(
     name: string
     email: string
     branch?: string
+    department?: string
   }
 ): Promise<Employee> {
   return requestJson<Employee>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {

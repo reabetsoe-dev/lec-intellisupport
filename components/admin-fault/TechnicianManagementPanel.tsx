@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { BRANCH_OPTIONS } from "@/lib/organization-options"
+import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
 import {
   getInterfaceActionCardClassName,
   getInterfaceCardDescriptionClassName,
@@ -59,7 +59,6 @@ type EditableEmployee = {
   id: number
   name: string
   email: string
-  branch: string
 }
 type EditableTechnician = {
   id: number
@@ -79,6 +78,7 @@ export function TechnicianManagementPanel() {
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
+  const [employeeDepartment, setEmployeeDepartment] = useState("")
   const [saving, setSaving] = useState(false)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
@@ -165,7 +165,6 @@ export function TechnicianManagementPanel() {
       id: employee.id,
       name: employee.name,
       email: employee.email,
-      branch: employee.branch ?? "",
     })
   }
 
@@ -185,7 +184,6 @@ export function TechnicianManagementPanel() {
 
     const trimmedName = editingEmployee.name.trim()
     const trimmedEmail = editingEmployee.email.trim()
-    const trimmedBranch = editingEmployee.branch.trim()
 
     if (!trimmedName) {
       showResultDialog("error", "Employee name is required.")
@@ -202,7 +200,6 @@ export function TechnicianManagementPanel() {
       await updateEmployeeDetails(editingEmployee.id, {
         name: trimmedName,
         email: trimmedEmail,
-        branch: trimmedBranch,
       })
       await loadEmployees()
       setEditingEmployee(null)
@@ -352,11 +349,13 @@ export function TechnicianManagementPanel() {
         name: employeeName.trim(),
         email: employeeEmail.trim(),
         branch: employeeBranch,
+        department: employeeDepartment,
         is_active: true,
       })
       setEmployeeName("")
       setEmployeeEmail("")
       setEmployeeBranch("")
+      setEmployeeDepartment("")
       await loadEmployees()
       showResultDialog("success", "Employee created. Setup link sent to their email.")
     } catch (submitError) {
@@ -474,6 +473,25 @@ export function TechnicianManagementPanel() {
             >
               <option value="">Select branch</option>
               {BRANCH_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="employee-department" className="text-sm font-medium text-[#1E3A6D]">
+              Employee Department
+            </label>
+            <select
+              id="employee-department"
+              className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
+              value={employeeDepartment}
+              onChange={(event) => setEmployeeDepartment(event.target.value)}
+              required
+            >
+              <option value="">Select department</option>
+              {DEPARTMENT_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -603,7 +621,9 @@ export function TechnicianManagementPanel() {
                       <div className="flex-1">
                         <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
                         <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
-                        <p className="text-xs text-[#4A6A96]">Branch: {employee.branch || "Not set"}</p>
+                        <p className="text-xs text-[#4A6A96]">
+                          Branch: {employee.branch || "Not set"} | Department: {employee.department || "Not set"}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge
@@ -838,28 +858,6 @@ export function TechnicianManagementPanel() {
                   }
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="edit-employee-branch" className="text-sm font-medium text-[#1E3A6D]">
-                  Employee Branch
-                </label>
-                <select
-                  id="edit-employee-branch"
-                  className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-                  value={editingEmployee.branch}
-                  onChange={(event) =>
-                    setEditingEmployee((current) =>
-                      current ? { ...current, branch: event.target.value } : current
-                    )
-                  }
-                >
-                  <option value="">Not set</option>
-                  {BRANCH_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
               </div>
               <DialogFooter>
                 <Button

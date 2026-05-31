@@ -2124,7 +2124,7 @@ def _user_to_dict(user: User) -> dict:
         "email": user.email,
         "phone_number": user.phone_number,
         "branch": user.branch,
-        "department": _infer_user_department(user),
+        "department": user.department,
         "role": user.role,
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,

@@ -107,6 +107,24 @@ export default function AdminFaultLogCallPage() {
     message: "",
   })
 
+  const selectedEmployee = employeeId
+    ? employees.find((employee) => String(employee.id) === employeeId)
+    : undefined
+
+  const getIntakeContext = () => ({
+    branch: draft.branch?.trim() || selectedEmployee?.branch.trim() || "",
+    department: draft.department?.trim() || selectedEmployee?.department.trim() || "",
+  })
+
+  const fillDraftFromEmployee = (
+    nextDraft: TicketIntakeDraft,
+    employee: Employee | undefined = selectedEmployee
+  ): TicketIntakeDraft => ({
+    ...nextDraft,
+    branch: nextDraft.branch?.trim() ? nextDraft.branch : employee?.branch.trim() || "",
+    department: nextDraft.department?.trim() ? nextDraft.department : employee?.department.trim() || "",
+  })
+
   const showResultDialog = (
     status: "success" | "error",
     nextMessage: string,
@@ -159,7 +177,23 @@ export default function AdminFaultLogCallPage() {
 
   const applyDraftPayload = (payload: TicketIntakeDraftResponse | VoiceTicketDraftResponse) => {
     setDraftResponse(payload)
-    setDraft(payload.draft)
+    setDraft(fillDraftFromEmployee(payload.draft))
+  }
+
+  const handleEmployeeChange = (nextEmployeeId: string) => {
+    setEmployeeId(nextEmployeeId)
+
+    const nextEmployee = employees.find((employee) => String(employee.id) === nextEmployeeId)
+    if (!nextEmployee) {
+      return
+    }
+
+    setCallerName(nextEmployee.name)
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      branch: nextEmployee.branch.trim(),
+      department: nextEmployee.department.trim(),
+    }))
   }
 
   const handleGenerateFromNotes = async () => {
@@ -176,10 +210,13 @@ export default function AdminFaultLogCallPage() {
     try {
       setAnalyzingNotes(true)
       setDraftStatusMessage("")
+      const intakeContext = getIntakeContext()
       const payload = await createAiIntakeDraft({
         message: trimmedNotes,
         employee_id: Number(employeeId),
         caller_name: callerName.trim(),
+        branch: intakeContext.branch,
+        department: intakeContext.department,
         channel: "admin_call_notes",
       })
       applyDraftPayload(payload)
@@ -227,11 +264,14 @@ export default function AdminFaultLogCallPage() {
     try {
       setUploadingVoice(true)
       setDraftStatusMessage("")
+      const intakeContext = getIntakeContext()
       const payload = await createVoiceTicketDraft({
         audio: audioBlob,
         employee_id: Number(employeeId),
         caller_name: callerName.trim(),
         transcript_hint: transcript.trim(),
+        branch: intakeContext.branch,
+        department: intakeContext.department,
       })
       applyDraftPayload(payload)
       setTranscript(payload.transcript)
@@ -401,7 +441,7 @@ export default function AdminFaultLogCallPage() {
               <select
                 id="employee-account"
                 value={employeeId}
-                onChange={(event) => setEmployeeId(event.target.value)}
+                onChange={(event) => handleEmployeeChange(event.target.value)}
                 className="h-9 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
                 disabled={loadingEmployees}
               >
