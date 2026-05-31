@@ -7,6 +7,7 @@ from .communication_views import (
     ticket_messages_view,
     ticket_participants_view,
 )
+from .health import health_view
 from .views import (
     ai_intake_draft_view,
     ai_service_chat_proxy_view,
@@ -48,6 +49,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("health", health_view),
     path("auth/login", login_view),
     path("auth/technician-checkpoint", technician_checkpoint_view),
     path("auth/forgot-password", forgot_password_view),
