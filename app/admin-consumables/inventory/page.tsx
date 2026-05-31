@@ -12,7 +12,7 @@ export default function AdminConsumablesInventoryPage() {
       <EmployeePageHero
         compact
         title="Assets Inventory"
-        description="Review inventory assets, current stock levels, and condition details."
+        description="Review supported IT assets and condition details."
       />
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" className="border-[#7EB3E4] bg-white text-[#0A2445]">

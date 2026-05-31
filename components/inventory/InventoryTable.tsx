@@ -5,10 +5,9 @@ import { useEffect, useMemo, useState } from "react"
 import { Printer, SquareArrowOutUpRight } from "lucide-react"
 import QRCode from "qrcode"
 
-import { AssetQrImage } from "@/components/inventory/AssetQrImage"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -22,15 +21,111 @@ import { buildAssetScanPath, buildAssetScanToken, buildAssetScanUrl, getClientOr
 
 const REFRESH_INTERVAL_MS = 15_000
 
+function normalizeText(value?: string | null): string {
+  return (value || "").trim().toLowerCase()
+}
+
+function getCategoryLabel(item: Consumable): string {
+  return item.category || item.department || "N/A"
+}
+
+function getSubtypeLabel(item: Consumable): string {
+  return item.subcategory || item.device_type || item.item_name || "N/A"
+}
+
+function getSearchText(item: Consumable): string {
+  return [
+    item.type,
+    item.asset_tag,
+    item.item_name,
+    item.category,
+    item.subcategory,
+    item.device_type,
+    item.brand,
+    item.model_number,
+  ]
+    .map((value) => normalizeText(value))
+    .filter(Boolean)
+    .join(" ")
+}
+
+function isComputerAsset(item: Consumable): boolean {
+  const text = getSearchText(item)
+  return text.includes("computer") || text.includes("desktop") || text.includes("laptop")
+}
+
+function isMouseAsset(item: Consumable): boolean {
+  return getSearchText(item).includes("mouse")
+}
+
+function isKeyboardAsset(item: Consumable): boolean {
+  return getSearchText(item).includes("keyboard")
+}
+
+function isGadgetAsset(item: Consumable): boolean {
+  return normalizeText(item.category).includes("gadget") || normalizeText(item.type).includes("gadget")
+}
+
+function isSupportedInventoryAsset(item: Consumable): boolean {
+  return isComputerAsset(item) || isMouseAsset(item) || isKeyboardAsset(item) || isGadgetAsset(item)
+}
+
+function getFamilyLabel(item: Consumable): string {
+  if (isComputerAsset(item)) {
+    return "Computer"
+  }
+  if (isMouseAsset(item)) {
+    return "Mouse"
+  }
+  if (isKeyboardAsset(item)) {
+    return "Keyboard"
+  }
+  return "Gadget"
+}
+
+function getFamilyClassName(value: string): string {
+  if (value === "Computer") {
+    return "border-[#9CB7F6] bg-[#EEF2FF] text-[#2F3A8F]"
+  }
+  if (value === "Mouse") {
+    return "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]"
+  }
+  if (value === "Keyboard") {
+    return "border-[#F4D88D] bg-[#FFF5D8] text-[#8A5F00]"
+  }
+  return "border-[#9CD9EA] bg-[#E8FAFF] text-[#176A7D]"
+}
+
+function getConditionClassName(condition: string): string {
+  const normalized = condition.toLowerCase()
+  if (normalized.includes("new")) {
+    return "border-[#9ED4B2] bg-[#ECF9F1] text-[#1E7A45]"
+  }
+  if (normalized.includes("refurb")) {
+    return "border-[#D9C38D] bg-[#FFF7E5] text-[#8B5A12]"
+  }
+  if (normalized.includes("fault") || normalized.includes("damag")) {
+    return "border-[#D9A2A2] bg-[#FFEAEA] text-[#A33C3C]"
+  }
+  return "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 export function InventoryTable() {
   const [items, setItems] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const totalStock = useMemo(
-    () => items.reduce((runningTotal, item) => runningTotal + (item.quantity ?? 0), 0),
-    [items]
-  )
+  const supportedItems = useMemo(() => items.filter(isSupportedInventoryAsset), [items])
+  const hiddenAssetCount = Math.max(0, items.length - supportedItems.length)
 
   const loadItems = async () => {
     try {
@@ -38,7 +133,7 @@ export function InventoryTable() {
       const data = await getConsumables()
       setItems(data)
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Failed to load consumables.")
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load assets.")
     } finally {
       setLoading(false)
     }
@@ -59,44 +154,9 @@ export function InventoryTable() {
     }
   }, [])
 
-  const getConditionClassName = (condition: string): string => {
-    const normalized = condition.toLowerCase()
-    if (normalized.includes("new")) {
-      return "border-emerald-300/70 bg-emerald-100/80 text-emerald-900"
-    }
-    if (normalized.includes("refurb")) {
-      return "border-amber-300/80 bg-amber-100/85 text-amber-900"
-    }
-    if (normalized.includes("fault") || normalized.includes("damag")) {
-      return "border-rose-300/80 bg-rose-100/85 text-rose-800"
-    }
-    return "border-sky-300/70 bg-sky-100/80 text-sky-900"
-  }
-
-  const getCategoryClassName = (value: string): string => {
-    const normalized = value.toLowerCase()
-    if (normalized.includes("computer")) {
-      return "border-indigo-300/70 bg-indigo-100/80 text-indigo-900"
-    }
-    if (normalized.includes("gadget")) {
-      return "border-cyan-300/70 bg-cyan-100/80 text-cyan-900"
-    }
-    if (normalized.includes("printer")) {
-      return "border-fuchsia-300/70 bg-fuchsia-100/80 text-fuchsia-900"
-    }
-    return "border-slate-300/70 bg-slate-100/85 text-slate-900"
-  }
-
-  const escapeHtml = (value: string): string =>
-    value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;")
-
   const openQrPrintDialog = async (assetId?: number) => {
-    const selectedItems = typeof assetId === "number" ? items.filter((item) => item.id === assetId) : items
+    const selectedItems =
+      typeof assetId === "number" ? supportedItems.filter((item) => item.id === assetId) : supportedItems
     if (selectedItems.length === 0) {
       return
     }
@@ -185,155 +245,154 @@ export function InventoryTable() {
   const origin = getClientOrigin()
 
   return (
-    <Card className="relative overflow-hidden rounded-2xl border border-[#97C3EA]/55 bg-[radial-gradient(circle_at_top_right,_#F8FCFF_0%,_#EAF5FF_42%,_#E3F0FF_100%)] py-0 shadow-[0_30px_70px_-48px_rgba(6,49,92,0.92)]">
-      <div className="pointer-events-none absolute -top-28 -right-20 h-80 w-80 rounded-full bg-[#60AEFF]/15 blur-3xl" />
-      <div className="pointer-events-none absolute -left-20 bottom-0 h-72 w-72 rounded-full bg-[#1E75CA]/10 blur-3xl" />
+    <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
+      <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-[#203B63]">Assets Inventory</h3>
+              <p className="mt-1 text-xs text-[#5E7FA6]">Computer, mouse, keyboard, and gadget assets only</p>
+            </div>
+            <span className="text-xs text-[#5E7FA6]">Compact inventory table</span>
+          </div>
 
-      <CardHeader className="relative flex flex-wrap items-center justify-between gap-4 border-b border-[#BBD4EB] bg-white/70 px-6 py-5 backdrop-blur">
-        <div className="space-y-1">
-          <CardTitle className="text-xl font-semibold text-[#06264A]">Assets Inventory</CardTitle>
-          <p className="text-sm text-[#36628E]">Smart inventory register with QR actions and instant label printing.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex rounded-full border border-[#99C5EA] bg-[#EAF5FF] px-3 py-1 text-xs font-semibold text-[#1B4974]">
-            {loading ? "Loading..." : `${items.length} Assets`}
-          </span>
-          <span className="inline-flex rounded-full border border-[#99C5EA] bg-[#EAF5FF] px-3 py-1 text-xs font-semibold text-[#1B4974]">
-            {loading ? "..." : `${totalStock} Units`}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            className="border-[#63A6E6] bg-white text-[#0A2445] shadow-[0_12px_26px_-20px_rgba(22,89,154,0.9)]"
-            onClick={() => void openQrPrintDialog()}
-          >
-            <Printer className="h-4 w-4" />
-            Print QR Labels
-          </Button>
-          <Button asChild variant="outline" className="border-[#63A6E6] bg-white text-[#0A2445]">
-            <Link href="/admin-consumables/inventory/fault-labels">
-              <SquareArrowOutUpRight className="h-4 w-4" />
-              Fault QR Labels
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+              {loading ? "Loading" : `${supportedItems.length} Assets`}
+            </span>
+            {hiddenAssetCount > 0 ? (
+              <span className="inline-flex items-center rounded border border-[#C8B675] bg-[#FFF8E8] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
+                {hiddenAssetCount} unsupported hidden
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-[#93AECA] bg-white text-[#20466D]"
+              onClick={() => void openQrPrintDialog()}
+            >
+              <Printer className="h-4 w-4" />
+              Print QR Labels
+            </Button>
+            <Button asChild size="sm" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
+              <Link href="/admin-consumables/inventory/fault-labels">
+                <SquareArrowOutUpRight className="h-4 w-4" />
+                Fault QR Labels
+              </Link>
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="relative overflow-x-auto p-0">
-        <Table>
-          <TableHeader className="sticky top-0 z-10">
-            <TableRow className="border-y-0 bg-gradient-to-r from-[#0E4579] via-[#1A5D96] to-[#2F79B0] hover:bg-gradient-to-r">
-              <TableHead className="px-6 text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Asset Tag</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Category</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Type</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Brand / Model</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Serial</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Quantity</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Condition</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-[0.08em] text-white uppercase">Cost</TableHead>
-              <TableHead className="pr-6 text-[11px] font-semibold tracking-[0.08em] text-white uppercase">QR</TableHead>
+      <CardContent className="p-0">
+        <Table className="table-fixed" containerClassName="overflow-x-hidden">
+          <TableHeader>
+            <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+              <TableHead className="w-[16%] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Asset Tag
+              </TableHead>
+              <TableHead className="w-[14%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Type
+              </TableHead>
+              <TableHead className="w-[28%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Brand / Model
+              </TableHead>
+              <TableHead className="hidden w-[16%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase lg:table-cell">
+                Serial
+              </TableHead>
+              <TableHead className="w-[12%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Condition
+              </TableHead>
+              <TableHead className="w-[14%] py-3 pr-4 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-7 text-center text-sm text-[#4E7398]">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-7 text-center text-sm text-[#B42318]">
+                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-rose-600">
                   {error}
                 </TableCell>
               </TableRow>
-            ) : items.length === 0 ? (
+            ) : supportedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-7 text-center text-sm text-[#4E7398]">
-                  No assets found.
+                <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-[#234A71]">
+                  No supported assets found.
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((item, index) => {
+              supportedItems.map((item) => {
                 const token = buildAssetScanToken(item.id)
                 const scanPath = buildAssetScanPath(token)
                 const absoluteScanUrl = buildAssetScanUrl(origin, token)
-                const categoryLabel = item.category || item.department || "N/A"
-                const typeLabel = item.subcategory || item.device_type || item.printer_type || item.item_name || "N/A"
-                const quantityValue = item.quantity ?? 0
+                const familyLabel = getFamilyLabel(item)
+                const subtypeLabel = getSubtypeLabel(item)
+                const brandModel = `${item.brand || item.manufacturer || ""} ${item.model_number || item.brand_model || ""}`.trim()
                 return (
-                  <TableRow
-                    key={item.id}
-                    className={`group border-b border-[#C7DDF2] align-top transition-all duration-200 ${
-                      index % 2 === 0 ? "bg-white/80" : "bg-[#F2F8FF]/90"
-                    } hover:bg-[#EAF4FF]`}
-                  >
-                    <TableCell className="px-6 py-4">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-[#0C3D69]">{item.asset_tag || "N/A"}</p>
-                        <p className="text-xs text-[#5B7EA1]">ID #{item.id}</p>
+                  <TableRow key={item.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                    <TableCell className="max-w-0 px-4 py-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
+                          {item.asset_tag || `AST-${item.id}`}
+                        </p>
+                        <p className="truncate text-[11px] text-[#5E7FA6]">ID #{item.id}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="py-4">
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getCategoryClassName(categoryLabel)}`}>
-                        {categoryLabel}
-                      </span>
+                    <TableCell className="max-w-0 py-3">
+                      <div className="min-w-0 space-y-1">
+                        <Badge
+                          className={`rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${getFamilyClassName(familyLabel)}`}
+                        >
+                          {familyLabel}
+                        </Badge>
+                        <p className="truncate text-[11px] text-[#5E7FA6]">{subtypeLabel}</p>
+                      </div>
                     </TableCell>
-                    <TableCell className="py-4">
-                      <span className="inline-flex rounded-full border border-[#B9D4EB] bg-[#EDF6FF] px-3 py-1 text-xs font-semibold text-[#1D4A74]">
-                        {typeLabel}
-                      </span>
+                    <TableCell className="max-w-0 py-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-xs font-semibold text-[#1F4469]">
+                          {brandModel || item.item_name || "N/A"}
+                        </p>
+                        <p className="truncate text-[11px] text-[#5E7FA6]">{getCategoryLabel(item)}</p>
+                      </div>
                     </TableCell>
-                    <TableCell className="py-4 text-[#204B72]">
-                      <span className="font-medium">{`${item.brand || ""} ${item.model_number || ""}`.trim() || item.item_name || "N/A"}</span>
+                    <TableCell className="hidden max-w-0 py-3 lg:table-cell">
+                      <p className="truncate font-mono text-xs text-[#234A71]">{item.serial_number || "N/A"}</p>
                     </TableCell>
-                    <TableCell className="py-4 font-mono text-sm text-[#264E73]">{item.serial_number || "N/A"}</TableCell>
-                    <TableCell className="py-4">
-                      <span
-                        className={`inline-flex min-w-[3rem] justify-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          quantityValue <= 5
-                            ? "border-rose-300/80 bg-rose-100/85 text-rose-800"
-                            : "border-cyan-300/70 bg-cyan-100/80 text-cyan-900"
-                        }`}
+                    <TableCell className="max-w-0 py-3">
+                      <Badge
+                        variant="outline"
+                        className={`max-w-full rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${getConditionClassName(item.condition || "N/A")}`}
                       >
-                        {quantityValue}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-4">
-                      <Badge variant="outline" className={getConditionClassName(item.condition || "N/A")}>
-                        {item.condition || "N/A"}
+                        <span className="truncate">{item.condition || "N/A"}</span>
                       </Badge>
                     </TableCell>
-                    <TableCell className="py-4">
-                      <span className="font-semibold text-[#0E416E]">
-                        {item.purchase_cost !== undefined && item.purchase_cost !== null ? `M ${item.purchase_cost}` : "N/A"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-4 pr-6">
-                      <div className="w-fit rounded-2xl border border-[#A6CAE8] bg-white/95 p-2 shadow-[0_16px_32px_-22px_rgba(16,79,138,0.8)]">
-                        <AssetQrImage
-                          value={absoluteScanUrl}
-                          size={112}
-                          className="h-[118px] w-[118px] rounded-xl border border-[#9FC5E7] bg-white"
-                        />
-                        <div className="mt-2 grid grid-cols-2 gap-2">
-                          <Button asChild size="sm" variant="outline" className="h-8 w-full border-[#72AFE6] bg-white text-[#0A2445]">
-                            <Link href={scanPath} target="_blank" rel="noreferrer">
-                              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                              Open
-                            </Link>
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-8 w-full border-[#72AFE6] bg-white text-[#0A2445]"
-                            onClick={() => void openQrPrintDialog(item.id)}
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                            Print
-                          </Button>
-                        </div>
+                    <TableCell className="py-2 pr-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
+                          <Link href={scanPath} target="_blank" rel="noreferrer" title={absoluteScanUrl}>
+                            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Open</span>
+                          </Link>
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                          onClick={() => void openQrPrintDialog(item.id)}
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Print</span>
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
