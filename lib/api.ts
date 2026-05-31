@@ -1168,9 +1168,9 @@ export async function loginUser(email: string, password: string): Promise<LoginR
 }
 
 export async function submitTechnicianCheckpoint(payload: {
-  email: string
-  password: string
   action: TechnicianCheckpointAction
+  email?: string
+  password?: string
 }): Promise<TechnicianCheckpointResponse> {
   return requestJson<TechnicianCheckpointResponse>(BACKEND_BASE_URL, "/api/auth/technician-checkpoint", {
     method: "POST",

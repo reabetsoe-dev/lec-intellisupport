@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ClipboardList, PackagePlus, type LucideIcon } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
+import { TechnicianAvailabilityPanel } from "@/components/technician/TechnicianAvailabilityPanel"
 import { TechnicianTicketTable } from "@/components/tickets/TechnicianTicketTable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -39,6 +40,8 @@ export default function TechnicianDashboardPage() {
         description="Service operations workspace for managing assigned tickets, progressing resolutions, and escalating faults when required."
         compact
       />
+
+      <TechnicianAvailabilityPanel />
 
       <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="px-5 py-4">
