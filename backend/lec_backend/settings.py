@@ -226,7 +226,7 @@ DEFAULT_FROM_EMAIL = os.getenv(
 
 WHATSAPP_WEBHOOK_VERIFY_TOKEN = os.getenv(
     "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
-    "lec-whatsapp-verify-token" if DEBUG else "",
+    "lec-whatsapp-verify-token",
 ).strip()
 WHATSAPP_WEBHOOK_SECRET = os.getenv("WHATSAPP_WEBHOOK_SECRET", "").strip()
 
