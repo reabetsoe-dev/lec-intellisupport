@@ -229,8 +229,6 @@ export default function EmployeeReportPage() {
         description="Describe the issue in natural language, let AI draft the ticket, then confirm the final version before submission."
       />
 
-      <AssetFaultQrScanner />
-
       <Card className="mx-auto w-full max-w-[900px] rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
         <CardHeader className="border-b border-[#0072CE]/15 px-5 py-4">
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">AI Conversational Intake</CardTitle>
@@ -295,6 +293,8 @@ export default function EmployeeReportPage() {
           onSubmit={() => void handleSubmit()}
         />
       ) : null}
+
+      <AssetFaultQrScanner />
 
       <ActionFeedbackDialog
         open={resultDialog.open}
