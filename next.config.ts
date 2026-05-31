@@ -6,7 +6,7 @@ const configDir = dirname(fileURLToPath(import.meta.url));
 const backendUrl = (
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://127.0.0.1:8000"
+  "https://lec-intellisupport-backend.onrender.com"
 ).replace(/\/+$/g, "");
 
 const nextConfig: NextConfig = {
