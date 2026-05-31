@@ -103,7 +103,7 @@ class TicketAutoAssignmentTests(TestCase):
             "reporter_reviewed_problem": True,
         }
 
-    def test_new_ticket_assigns_using_active_fallback_when_only_busy_technician_exists(self):
+    def test_new_ticket_uses_least_loaded_fallback_when_only_busy_technician_exists(self):
         technician = self._create_technician(
             name="Busy Technician",
             email="busy-tech@example.com",
@@ -126,8 +126,8 @@ class TicketAutoAssignmentTests(TestCase):
         response = self.client.post("/api/tickets", self._create_ticket_payload(), format="json")
 
         self.assertEqual(response.status_code, 201)
-        self.assertIsNone(response.data["technician_id"])
-        self.assertIn("Technicians are currently busy", response.data["routing_note"])
+        self.assertEqual(response.data["technician_id"], technician.id)
+        self.assertIn("auto-assigned", response.data["routing_note"].lower())
 
     def test_new_ticket_auto_assigns_when_technician_has_capacity_for_second_ticket(self):
         technician = self._create_technician(
@@ -155,8 +155,8 @@ class TicketAutoAssignmentTests(TestCase):
         self.assertIn("auto-assigned", response.data["routing_note"].lower())
         self.assertNotIn("currently busy", response.data["routing_note"].lower())
 
-    def test_new_ticket_shows_no_technicians_available_when_none_are_checked_in(self):
-        self._create_technician(
+    def test_new_ticket_assigns_active_fallback_when_none_are_checked_in(self):
+        technician = self._create_technician(
             name="Checked Out Technician",
             email="checked-out-tech@example.com",
             is_available=False,
@@ -398,8 +398,9 @@ class TicketAutoAssignmentTests(TestCase):
             format="json",
         )
         self.assertEqual(waiting_response.status_code, 201)
-        self.assertIsNone(waiting_response.data["technician_id"])
+        self.assertEqual(waiting_response.data["technician_id"], technician.id)
 
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_auth_token(technician.user)}")
         status_response = self.client.put(
             f"/api/tickets/{active_ticket.id}/status",
             {

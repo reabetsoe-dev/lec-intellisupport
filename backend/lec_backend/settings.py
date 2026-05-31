@@ -13,6 +13,11 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -56,11 +61,21 @@ _load_dotenv_file(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9u6g4zrav%ccvp(nhtkomi2t=j-+!r+c8)9hu96#x&u19i@1^a'
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-9u6g4zrav%ccvp(nhtkomi2t=j-+!r+c8)9hu96#x&u19i@1^a",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DJANGO_DEBUG", default=True)
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -84,6 +99,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'lec_backend.middleware.SimpleCORSMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -116,9 +132,20 @@ WSGI_APPLICATION = 'lec_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 #
-# Default to local SQLite for development, and allow opting into Postgres
-# by setting USE_POSTGRES=1 and the DB_* environment variables.
-if os.getenv("USE_POSTGRES", "0") == "1":
+# Default to local SQLite for development, but use Render's DATABASE_URL when
+# present. USE_POSTGRES remains available for explicit local Postgres testing.
+database_url = os.getenv("DATABASE_URL", "").strip()
+if database_url:
+    if dj_database_url is None:
+        raise RuntimeError("dj-database-url is required when DATABASE_URL is set.")
+    DATABASES = {
+        "default": dj_database_url.parse(
+            database_url,
+            conn_max_age=600,
+            ssl_require=not DEBUG,
+        )
+    }
+elif os.getenv("USE_POSTGRES", "0") == "1":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -173,6 +200,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Email configuration (supports Gmail SMTP with app password)
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
