@@ -1,12 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   AlertCircle,
   CheckCircle2,
-  Circle,
-  CircleCheckBig,
   ClipboardList,
   Loader2,
   QrCode,
@@ -149,12 +147,11 @@ function fromBackendProblem(problem: AssetQrCommonProblem, fallbackCategory: str
   }
 }
 
-function buildCompletedSteps(problem: UiProblem | null, checkedSteps: Record<string, boolean>): CompletedTroubleshootingStep[] {
+function buildCompletedSteps(problem: UiProblem | null): CompletedTroubleshootingStep[] {
   if (!problem) {
     return []
   }
   return problem.steps
-    .filter((step) => checkedSteps[step.id])
     .map((step) => ({
       step_id: step.id,
       step_number: step.step_number,
@@ -169,7 +166,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
   const [asset, setAsset] = useState<AssetQrReportAsset | null>(null)
   const [commonProblems, setCommonProblems] = useState<UiProblem[]>([])
   const [selectedProblem, setSelectedProblem] = useState<UiProblem | null>(null)
-  const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({})
   const [flowStep, setFlowStep] = useState<FlowStep>("select_problem")
   const [reportMode, setReportMode] = useState<ReportMode>("skipped")
   const [form, setForm] = useState<ReportFormState>(initialFormState)
@@ -186,6 +182,8 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     message: string
     routingNote?: string
   } | null>(null)
+  const troubleshootingPanelRef = useRef<HTMLElement | null>(null)
+  const reportPanelRef = useRef<HTMLDivElement | null>(null)
 
   const normalizedAssetCode = useMemo(() => normalizeAssetCode(assetCode), [assetCode])
   const scannedAssetId = useMemo(() => {
@@ -280,13 +278,12 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     [troubleshootingDomain]
   )
   const completedSteps = useMemo(
-    () => buildCompletedSteps(selectedProblem, checkedSteps),
-    [checkedSteps, selectedProblem]
+    () => buildCompletedSteps(selectedProblem),
+    [selectedProblem]
   )
 
   const totalSteps = selectedProblem?.steps.length ?? 0
-  const completedStepCount = completedSteps.length
-  const allTroubleshootingStepsChecked = totalSteps > 0 && completedStepCount === totalSteps
+  const troubleshootingAssetLabel = asset?.assetType || asset?.assetName || "this asset"
 
   const step1State: StepState = selectedProblem || flowStep !== "select_problem" ? "done" : "active"
   const step2State: StepState =
@@ -303,6 +300,26 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       form.description.trim()
   )
 
+  useEffect(() => {
+    if (!selectedProblem || flowStep !== "troubleshoot") {
+      return
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      troubleshootingPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [flowStep, selectedProblem])
+
+  useEffect(() => {
+    if (flowStep !== "report") {
+      return
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      reportPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [flowStep])
+
   const resetReportState = () => {
     setSubmissionResult(null)
     setSubmitError("")
@@ -312,7 +329,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
 
   const selectProblem = (problem: UiProblem) => {
     setSelectedProblem(problem)
-    setCheckedSteps({})
     setSolvedResult(null)
     setActionError("")
     resetReportState()
@@ -324,11 +340,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
       title: problem.title,
       description: `${problem.description}\n\nThe guided troubleshooting steps will be attempted before reporting if needed.`,
     })
-  }
-
-  const toggleTroubleshootingStep = (stepId: string) => {
-    setCheckedSteps((current) => ({ ...current, [stepId]: !current[stepId] }))
-    setActionError("")
   }
 
   const ensureEmployeeSession = (): boolean => {
@@ -369,8 +380,8 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
 
   const markSolved = async () => {
     setActionError("")
-    if (!allTroubleshootingStepsChecked) {
-      setActionError("Complete all troubleshooting steps before marking this problem as solved.")
+    if (!selectedProblem) {
+      setActionError("Select a common problem before recording this as solved.")
       return
     }
     try {
@@ -394,10 +405,10 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
         ...current,
         category: selectedProblem.category || current.category || categoryOptions[0] || "Other",
         title: selectedProblem.title,
-        description: `${selectedProblem.description}\n\nTroubleshooting result: failed.\nCompleted steps: ${
+        description: `${selectedProblem.description}\n\nTroubleshooting result: not solved after guided steps.\nGuided steps shown: ${
           completedSteps.length > 0
             ? completedSteps.map((step) => `${step.step_number}. ${step.instruction}`).join(" ")
-            : "No steps completed yet."
+            : "No guided steps were available."
         }`,
       }))
     }
@@ -422,7 +433,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     setActionError("")
     setSubmitError("")
     setSelectedProblem(null)
-    setCheckedSteps({})
     setSolvedResult(null)
     resetReportState()
     setReportMode("skipped")
@@ -602,7 +612,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
             <CardHeader className="px-5 py-4 md:px-6">
               <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
                 <Wrench className="h-5 w-5 text-[#0E5EA2]" />
-                Common problems for this asset
+                Common problems for {troubleshootingAssetLabel}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
@@ -610,128 +620,154 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                 <div className="rounded-xl border border-[#F0C28B] bg-[#FFF9F0] px-4 py-3 text-sm text-[#8B5A19]">
                   No common problems are configured for this asset yet.
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {commonProblems.map((problem) => (
-                    <article
-                      key={problem.id}
-                      className={`rounded-xl border px-4 py-4 transition ${
-                        selectedProblem?.id === problem.id
-                          ? "border-[#0E5EA2] bg-[#F1F8FF]"
-                          : "border-[#C8DCF0] bg-white"
-                      }`}
+              ) : selectedProblem && flowStep === "troubleshoot" ? (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
+                  <section className="order-2 space-y-3 lg:order-1">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#0A2E54]">Common issues</h2>
+                      <p className="mt-1 text-sm text-[#55789D]">Select a different issue if the current one does not match.</p>
+                    </div>
+                    <div className="space-y-2">
+                      {commonProblems.map((problem) => {
+                        const isSelected = selectedProblem.id === problem.id
+                        return (
+                          <button
+                            key={problem.id}
+                            type="button"
+                            onClick={() => selectProblem(problem)}
+                            className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                              isSelected
+                                ? "border-[#0E5EA2] bg-[#F1F8FF]"
+                                : "border-[#C8DCF0] bg-white hover:bg-[#F7FBFF]"
+                            }`}
+                          >
+                            <span className="block text-sm font-semibold text-[#0A2E54]">{problem.title}</span>
+                            <span className="mt-1 block text-sm text-[#55789D]">{problem.description}</span>
+                            <span
+                              className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                isSelected ? "bg-[#0E5EA2] text-white" : "bg-[#EAF4FF] text-[#0E5EA2]"
+                              }`}
+                            >
+                              {isSelected ? "Selected" : "Troubleshoot"}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 w-full border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5]"
+                      onClick={openManualReport}
                     >
-                      <h2 className="text-base font-semibold text-[#0A2E54]">{problem.title}</h2>
-                      <p className="mt-1 text-sm text-[#55789D]">{problem.description}</p>
+                      Report a different issue manually
+                    </Button>
+                  </section>
+
+                  <section
+                    ref={troubleshootingPanelRef}
+                    id="qr-troubleshooting-guidance"
+                    className="order-1 rounded-xl border border-[#9FC3E7] bg-[#F8FBFF] px-4 py-4 lg:order-2"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold tracking-[0.12em] text-[#0E5EA2] uppercase">
+                          Troubleshooting steps for {troubleshootingAssetLabel}
+                        </p>
+                        <h2 className="mt-1 text-lg font-semibold text-[#0A2E54]">{selectedProblem.title}</h2>
+                        <p className="mt-1 text-sm text-[#55789D]">
+                          {asset.assetName} ({asset.assetCode})
+                        </p>
+                      </div>
+                      <span className="inline-flex w-fit rounded-full border border-[#B4D2EC] bg-white px-3 py-1 text-xs font-semibold text-[#315E89]">
+                        {totalSteps} {totalSteps === 1 ? "step" : "steps"}
+                      </span>
+                    </div>
+
+                    <ol className="mt-4 space-y-2">
+                      {selectedProblem.steps.map((step) => (
+                        <li
+                          key={step.id}
+                          className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 rounded-xl border border-[#C8DCF0] bg-white px-3 py-3 text-[#22496F]"
+                        >
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#EAF4FF] text-sm font-semibold text-[#0E5EA2]">
+                            {step.step_number}
+                          </span>
+                          <p className="self-center text-sm font-medium">{step.instruction}</p>
+                        </li>
+                      ))}
+                    </ol>
+
+                    {actionError ? (
+                      <div className="mt-4 flex items-start gap-2 rounded-xl border border-[#EDB7B7] bg-[#FFF5F5] px-4 py-3 text-sm text-[#A83A3A]">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{actionError}</span>
+                      </div>
+                    ) : null}
+
+                    {solvedResult ? (
+                      <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{solvedResult.message}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-col gap-3 md:flex-row md:flex-wrap">
                       <Button
                         type="button"
-                        className="mt-4 h-10 w-full bg-[#0E5EA2] text-white hover:bg-[#0A4E87]"
-                        onClick={() => selectProblem(problem)}
+                        disabled={recordingResolution || Boolean(solvedResult)}
+                        onClick={() => void markSolved()}
+                        className="h-11 bg-emerald-600 text-white hover:bg-emerald-700"
                       >
-                        Troubleshoot this problem
+                        {recordingResolution ? "Recording..." : solvedResult ? "Solved recorded" : "Problem is solved"}
                       </Button>
-                    </article>
-                  ))}
+                      <Button
+                        type="button"
+                        disabled={recordingResolution}
+                        onClick={() => void openFailedReport()}
+                        className="h-11 bg-[#C21E2D] text-white hover:bg-[#A81927]"
+                      >
+                        Report fault manually
+                      </Button>
+                    </div>
+                  </section>
                 </div>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-full border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5] md:w-auto"
-                onClick={openManualReport}
-              >
-                Report manually without troubleshooting
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {asset && selectedProblem && flowStep === "troubleshoot" ? (
-          <Card className="rounded-2xl border-[#B4D2EC] bg-white/90 py-0 shadow-sm">
-            <CardHeader className="px-5 py-4 md:px-6">
-              <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
-                <ClipboardList className="h-5 w-5 text-[#0E5EA2]" />
-                Troubleshooting: {selectedProblem.title}
-              </CardTitle>
-              <p className="text-sm text-[#56789B]">Completed {completedStepCount} of {totalSteps} steps.</p>
-            </CardHeader>
-            <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
-              <div className="space-y-2">
-                {selectedProblem.steps.map((step) => {
-                  const checked = Boolean(checkedSteps[step.id])
-                  return (
-                    <label
-                      key={step.id}
-                      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-all ${
-                        checked
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                          : "border-[#C8DCF0] bg-white text-[#22496F] hover:bg-[#F7FBFF]"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleTroubleshootingStep(step.id)}
-                        className="mt-1 h-4 w-4"
-                      />
-                      <span className="flex-1 text-sm font-medium">
-                        <span className="font-semibold">Step {step.step_number}.</span> {step.instruction}
-                      </span>
-                      <span className="mt-[2px]">
-                        {checked ? <CircleCheckBig className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-
-              {actionError ? (
-                <div className="flex items-start gap-2 rounded-xl border border-[#EDB7B7] bg-[#FFF5F5] px-4 py-3 text-sm text-[#A83A3A]">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{actionError}</span>
-                </div>
-              ) : null}
-
-              {solvedResult ? (
-                <div className="flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{solvedResult.message}</span>
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
-                {allTroubleshootingStepsChecked ? (
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {commonProblems.map((problem) => (
+                      <article
+                        key={problem.id}
+                        className="rounded-xl border border-[#C8DCF0] bg-white px-4 py-4 transition"
+                      >
+                        <h2 className="text-base font-semibold text-[#0A2E54]">{problem.title}</h2>
+                        <p className="mt-1 text-sm text-[#55789D]">{problem.description}</p>
+                        <Button
+                          type="button"
+                          className="mt-4 h-10 w-full bg-[#0E5EA2] text-white hover:bg-[#0A4E87]"
+                          onClick={() => selectProblem(problem)}
+                        >
+                          Troubleshoot this problem
+                        </Button>
+                      </article>
+                    ))}
+                  </div>
                   <Button
                     type="button"
-                    disabled={recordingResolution}
-                    onClick={() => void markSolved()}
-                    className="h-11 bg-emerald-600 text-white hover:bg-emerald-700"
+                    variant="outline"
+                    className="h-11 w-full border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5] md:w-auto"
+                    onClick={openManualReport}
                   >
-                    {recordingResolution ? "Recording..." : "Mark problem as solved"}
+                    Report manually without troubleshooting
                   </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  disabled={recordingResolution}
-                  onClick={() => void openFailedReport()}
-                  className="h-11 bg-[#C21E2D] text-white hover:bg-[#A81927]"
-                >
-                  Still not solved? Report this fault
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 border-[#C21E2D]/30 bg-white text-[#A81927] hover:bg-[#FFF4F5]"
-                  onClick={openManualReport}
-                >
-                  Report manually without troubleshooting
-                </Button>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : null}
 
         {asset && flowStep === "report" ? (
+          <div ref={reportPanelRef}>
           <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm transition-all duration-300">
             <CardHeader className="px-5 py-4 md:px-6">
               <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
@@ -752,7 +788,9 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               {reportMode === "failed" && selectedProblem ? (
                 <div className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#264E74]">
                   <p className="font-semibold">Selected problem: {selectedProblem.title}</p>
-                  <p className="mt-1">Completed {completedStepCount} of {totalSteps} troubleshooting steps.</p>
+                  <p className="mt-1">
+                    Guided troubleshooting steps were shown for {asset.assetName}: {totalSteps} {totalSteps === 1 ? "step" : "steps"}.
+                  </p>
                 </div>
               ) : null}
 
@@ -888,6 +926,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               )}
             </CardContent>
           </Card>
+          </div>
         ) : null}
       </div>
     </div>
