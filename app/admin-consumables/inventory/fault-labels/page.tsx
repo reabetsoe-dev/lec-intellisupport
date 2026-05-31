@@ -6,19 +6,10 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import { AssetQrImage } from "@/components/inventory/AssetQrImage"
-import { QrPublicOriginControl } from "@/components/inventory/QrPublicOriginControl"
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
-import { buildAssetFaultReportPath, buildAssetFaultReportUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
+import { buildAssetFaultReportUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
 import { isFaultReportableConsumable, normalizeAssetCode } from "@/lib/assetQrAssets"
-
-function getAssetType(asset: Consumable): string {
-  return asset.subcategory || asset.device_type || asset.printer_type || asset.item_name || "N/A"
-}
-
-function getAssetName(asset: Consumable): string {
-  return `${asset.brand || ""} ${asset.model_number || ""}`.trim() || asset.item_name || "N/A"
-}
 
 function FaultQrLabelsContent() {
   const searchParams = useSearchParams()
@@ -133,8 +124,6 @@ function FaultQrLabelsContent() {
           </div>
         </div>
 
-        {origin ? <QrPublicOriginControl origin={origin} onOriginChange={setOrigin} /> : null}
-
         {!origin ? (
           <p className="rounded-2xl border border-[#B2D2F1] bg-white/85 px-5 py-4 text-[#325D89]">Preparing QR base URL...</p>
         ) : loading ? (
@@ -151,51 +140,15 @@ function FaultQrLabelsContent() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3 print:gap-2">
             {labelAssets.map((asset) => {
               const assetCode = normalizeAssetCode(asset.asset_tag || `AST-${asset.id}`)
-              const relativePath = buildAssetFaultReportPath(assetCode)
               const absoluteUrl = buildAssetFaultReportUrl(origin, assetCode)
 
               return (
                 <article
                   key={asset.id}
-                  className="rounded-2xl border border-[#95BDE4] bg-white px-3 py-3 shadow-[0_14px_30px_-22px_rgba(7,49,90,0.55)] print:break-inside-avoid print:rounded-none print:border-[#D2DCE8] print:shadow-none"
+                  className="flex flex-col items-center rounded-2xl border border-[#95BDE4] bg-white px-3 py-3 text-center shadow-[0_14px_30px_-22px_rgba(7,49,90,0.55)] print:break-inside-avoid print:rounded-none print:border-[#D2DCE8] print:shadow-none"
                 >
-                  <h2 className="text-[16px] leading-tight font-semibold text-[#052042]">
-                    {assetCode} - {getAssetName(asset)}
-                  </h2>
-                  <p className="mt-1 text-[13px] text-[#2B5A86]">{asset.category || "General"} - {getAssetType(asset)}</p>
-                  <p className="mt-1 text-[12px] text-[#2B5A86]">Flow: Asset Fault Reporting QR</p>
-
-                  <div className="mt-2 border-t border-[#CEE2F6] pt-2">
-                    <div className="flex items-start gap-3">
-                      <div className="w-[172px] shrink-0">
-                        <AssetQrImage value={absoluteUrl} size={164} className="h-[172px] w-[172px]" />
-                        <p className="mt-1 break-all text-[9px] leading-tight text-[#052042]">
-                          <span className="font-semibold">Public URL:</span> {absoluteUrl}
-                        </p>
-                      </div>
-                      <div className="space-y-1 text-[12px] text-[#1A436B]">
-                        <p>
-                          <span className="font-semibold text-[#052042]">Tag:</span> {assetCode}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Serial:</span> {asset.serial_number || "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Condition:</span> {asset.condition || "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Status:</span> {asset.status || "Active"}
-                        </p>
-                        <p className="break-all">
-                          <span className="font-semibold text-[#052042]">Public URL:</span> {absoluteUrl}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-2 break-all text-[11px] text-[#345B7E]">
-                      <span className="font-semibold text-[#052042]">QR encodes:</span> {absoluteUrl}
-                    </p>
-                    <p className="mt-1 text-[11px] text-[#45688B]">Relative path: {relativePath}</p>
-                  </div>
+                  <AssetQrImage value={absoluteUrl} size={184} className="h-[184px] w-[184px]" />
+                  <p className="mt-2 text-[13px] font-semibold text-[#052042]">Tag: {assetCode}</p>
                 </article>
               )
             })}

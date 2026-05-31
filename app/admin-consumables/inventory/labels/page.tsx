@@ -156,7 +156,7 @@ function InventoryLabelPrintContent() {
                 </Button>
                 <Button asChild variant="outline" className="border-[#76AEE3] bg-white text-[#0A2445]">
                   <Link href="/admin-consumables/inventory/fault-labels">
-                    Open Fault QR Labels
+                    Fault QR Labels
                   </Link>
                 </Button>
                 <Button

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Printer, SquareArrowOutUpRight } from "lucide-react"
 import QRCode from "qrcode"
 
+import { AssetQrImage } from "@/components/inventory/AssetQrImage"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -17,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getConsumables, type Consumable } from "@/lib/api"
-import { buildAssetScanPath, buildAssetScanToken, buildAssetScanUrl, getClientOrigin } from "@/lib/asset-qr"
+import { buildAssetScanToken, buildAssetScanUrl, getClientOrigin } from "@/lib/asset-qr"
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -305,7 +306,7 @@ export function InventoryTable() {
                 Condition
               </TableHead>
               <TableHead className="w-[14%] py-3 pr-4 text-[11px] font-semibold tracking-wide text-white uppercase">
-                Actions
+                QR
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -331,7 +332,6 @@ export function InventoryTable() {
             ) : (
               supportedItems.map((item) => {
                 const token = buildAssetScanToken(item.id)
-                const scanPath = buildAssetScanPath(token)
                 const absoluteScanUrl = buildAssetScanUrl(origin, token)
                 const familyLabel = getFamilyLabel(item)
                 const subtypeLabel = getSubtypeLabel(item)
@@ -376,13 +376,10 @@ export function InventoryTable() {
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2 pr-4">
-                      <div className="flex flex-wrap gap-2">
-                        <Button asChild size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]">
-                          <Link href={scanPath} target="_blank" rel="noreferrer" title={absoluteScanUrl}>
-                            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">Open</span>
-                          </Link>
-                        </Button>
+                      <div className="flex items-center gap-2">
+                        <div className="shrink-0 rounded-md border border-[#B8CFE6] bg-white p-1" title={absoluteScanUrl}>
+                          <AssetQrImage value={absoluteScanUrl} size={46} className="h-[46px] w-[46px]" />
+                        </div>
                         <Button
                           type="button"
                           size="sm"

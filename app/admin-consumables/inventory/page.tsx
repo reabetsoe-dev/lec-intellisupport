@@ -16,10 +16,10 @@ export default function AdminConsumablesInventoryPage() {
       />
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" className="border-[#7EB3E4] bg-white text-[#0A2445]">
-          <Link href="/admin-consumables/inventory/labels">Open Scan QR Labels</Link>
+          <Link href="/admin-consumables/inventory/labels">Scan QR Labels</Link>
         </Button>
         <Button asChild variant="outline" className="border-[#7EB3E4] bg-white text-[#0A2445]">
-          <Link href="/admin-consumables/inventory/fault-labels">Open Fault QR Labels</Link>
+          <Link href="/admin-consumables/inventory/fault-labels">Fault QR Labels</Link>
         </Button>
       </div>
       <InventoryTable />
