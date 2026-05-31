@@ -290,22 +290,22 @@ export function InventoryTable() {
         <Table className="table-fixed" containerClassName="overflow-x-hidden">
           <TableHeader>
             <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-              <TableHead className="w-[16%] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[15%] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Asset Tag
               </TableHead>
-              <TableHead className="w-[14%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[12%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Type
               </TableHead>
-              <TableHead className="w-[28%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[19%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Brand / Model
               </TableHead>
-              <TableHead className="hidden w-[16%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase lg:table-cell">
+              <TableHead className="w-[17%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Serial
               </TableHead>
-              <TableHead className="w-[12%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[11%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Condition
               </TableHead>
-              <TableHead className="w-[14%] py-3 pr-4 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[26%] py-3 pr-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 QR
               </TableHead>
             </TableRow>
@@ -364,7 +364,7 @@ export function InventoryTable() {
                         <p className="truncate text-[11px] text-[#5E7FA6]">{getCategoryLabel(item)}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden max-w-0 py-3 lg:table-cell">
+                    <TableCell className="max-w-0 py-3">
                       <p className="truncate font-mono text-xs text-[#234A71]">{item.serial_number || "N/A"}</p>
                     </TableCell>
                     <TableCell className="max-w-0 py-3">
@@ -375,20 +375,21 @@ export function InventoryTable() {
                         <span className="truncate">{item.condition || "N/A"}</span>
                       </Badge>
                     </TableCell>
-                    <TableCell className="py-2 pr-4">
+                    <TableCell className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         <div className="shrink-0 rounded-md border border-[#B8CFE6] bg-white p-1" title={absoluteScanUrl}>
-                          <AssetQrImage value={absoluteScanUrl} size={46} className="h-[46px] w-[46px]" />
+                          <AssetQrImage value={absoluteScanUrl} size={42} className="h-[42px] w-[42px]" />
                         </div>
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon-sm"
                           variant="outline"
-                          className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                          aria-label={`Print QR label for ${item.asset_tag || `AST-${item.id}`}`}
+                          title="Print QR label"
+                          className="h-8 w-8 border-[#93AECA] bg-white text-[#20466D]"
                           onClick={() => void openQrPrintDialog(item.id)}
                         >
                           <Printer className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">Print</span>
                         </Button>
                       </div>
                     </TableCell>
