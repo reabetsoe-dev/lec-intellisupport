@@ -37,8 +37,7 @@ Add these to the backend service only if you use those features:
 - `EMAIL_HOST_PASSWORD`
 - `DEFAULT_FROM_EMAIL`
 - `WHATSAPP_WEBHOOK_SECRET`
-- `WHATSAPP_VERIFY_TOKEN`
-- `WHATSAPP_APP_SECRET`
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 
 ## Create Admin Data
 
