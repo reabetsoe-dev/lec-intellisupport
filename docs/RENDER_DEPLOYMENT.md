@@ -37,7 +37,22 @@ Add these to the backend service only if you use those features:
 - `EMAIL_HOST_PASSWORD`
 - `DEFAULT_FROM_EMAIL`
 - `WHATSAPP_WEBHOOK_SECRET`
-- `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+
+## WhatsApp Intake
+
+The backend exposes the employee WhatsApp report webhook at:
+
+```text
+https://lec-intellisupport-backend.onrender.com/api/whatsapp/incoming
+```
+
+For Meta WhatsApp Cloud API webhook verification, the Blueprint sets:
+
+```text
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=lec-whatsapp-verify-token
+```
+
+Use that same value in Meta's webhook setup, or change the Render backend environment variable and redeploy. `WHATSAPP_WEBHOOK_SECRET` is optional because some providers, including basic Twilio webhook setup, do not send custom authorization headers.
 
 ## Create Admin Data
 

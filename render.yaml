@@ -44,6 +44,8 @@ services:
         value: https://lec-intellisupport-frontend.onrender.com
       - key: SEED_DEMO_DATA
         value: "1"
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        value: lec-whatsapp-verify-token
       - key: INITIAL_ADMIN_EMAIL
         sync: false
       - key: INITIAL_ADMIN_PASSWORD

@@ -498,7 +498,58 @@ class WhatsAppIntakeTests(TestCase):
         self.assertEqual(ticket.category, "Network")
         self.assertIn("Intake Channel: WhatsApp", ticket.description)
         self.assertIn("WhatsApp Sender: +26662220000", ticket.description)
+        self.assertNotIn("Confidence", ticket.description)
         inbound = WhatsAppInboundMessage.objects.get(provider_message_id="SM-WA-001")
+        self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
+        self.assertEqual(inbound.ticket_id, ticket.id)
+
+    @patch("core.views._call_ai_service_json")
+    def test_meta_whatsapp_message_creates_ticket_for_registered_employee(self, mock_ai):
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "object": "whatsapp_business_account",
+                "entry": [
+                    {
+                        "id": "WHATSAPP-BUSINESS-ID",
+                        "changes": [
+                            {
+                                "field": "messages",
+                                "value": {
+                                    "contacts": [
+                                        {
+                                            "wa_id": "26662220000",
+                                            "profile": {"name": "WhatsApp Employee"},
+                                        }
+                                    ],
+                                    "messages": [
+                                        {
+                                            "from": "26662220000",
+                                            "id": "wamid.meta-001",
+                                            "timestamp": "1710000000",
+                                            "type": "text",
+                                            "text": {"body": "Internet is down in finance."},
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+            format="json",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ticket = Ticket.objects.get(employee=self.employee)
+        self.assertEqual(ticket.title, "Internet outage in finance")
+        self.assertEqual(ticket.category, "Network")
+        self.assertIn("Intake Channel: WhatsApp", ticket.description)
+        self.assertIn("WhatsApp Sender Name: WhatsApp Employee", ticket.description)
+        inbound = WhatsAppInboundMessage.objects.get(provider="meta", provider_message_id="wamid.meta-001")
         self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
         self.assertEqual(inbound.ticket_id, ticket.id)
 

@@ -3523,7 +3523,7 @@ def _fallback_whatsapp_draft(message: str, employee: User) -> dict:
     }
 
 
-def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict, *, ai_confidence: float | None) -> str:
+def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict) -> str:
     cleaned_description = str(description or "").strip()
     original_message = str(inbound_message.get("message_text", "")).strip()
     metadata_lines = [
@@ -3533,8 +3533,6 @@ def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict, *,
     sender_name = str(inbound_message.get("sender_name", "")).strip()
     if sender_name:
         metadata_lines.append(f"WhatsApp Sender Name: {sender_name}")
-    if ai_confidence is not None:
-        metadata_lines.append(f"AI Intake Confidence: {round(ai_confidence * 100)}%")
     if original_message and original_message.lower() not in cleaned_description.lower():
         metadata_lines.extend(["Original WhatsApp Message:", original_message])
     return f"{cleaned_description}\n\n" + "\n".join(metadata_lines)
@@ -3542,7 +3540,6 @@ def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict, *,
 
 def _build_whatsapp_ticket_data(inbound_message: dict, employee: User) -> tuple[dict, str]:
     message_text = str(inbound_message.get("message_text", "")).strip()
-    ai_confidence: float | None = None
     draft_source = "ai"
     try:
         ai_payload = _build_ai_intake_response(
@@ -3556,7 +3553,6 @@ def _build_whatsapp_ticket_data(inbound_message: dict, employee: User) -> tuple[
             },
         )
         draft = ai_payload["draft"]
-        ai_confidence = float(ai_payload.get("confidence", 0.0))
     except (ConnectionError, RuntimeError):
         draft = _fallback_whatsapp_draft(message_text, employee)
         draft_source = "fallback"
@@ -3564,7 +3560,6 @@ def _build_whatsapp_ticket_data(inbound_message: dict, employee: User) -> tuple[
     description = _append_whatsapp_ticket_metadata(
         str(draft.get("description", message_text)).strip() or message_text,
         inbound_message,
-        ai_confidence=ai_confidence,
     )
     return {
         "title": str(draft.get("title", "")).strip() or "WhatsApp Fault Report",
