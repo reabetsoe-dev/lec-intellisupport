@@ -274,17 +274,13 @@ def enrich_context(data: dict, user: User) -> dict:
 def _build_follow_up_questions(draft: dict, confidence: float) -> list[str]:
     questions: list[str] = []
 
-    if not str(draft.get("asset", "")).strip():
-        questions.append("Which device, application, or service is affected?")
-    if not str(draft.get("impact", "")).strip():
-        questions.append("What business impact is this causing, and how many users are affected?")
     if not str(draft.get("branch", "")).strip():
         questions.append("Which branch or location should we attach to this ticket?")
     if not str(draft.get("department", "")).strip():
         questions.append("Which department is the reporter calling from?")
 
     if confidence < AI_INTAKE_CONFIDENCE_FOLLOW_UP and not questions:
-        questions.append("Please review the draft carefully and correct the title, description, category, and priority before submitting.")
+        questions.append("Please review the draft carefully and correct the title, description, branch, and department before submitting.")
 
     return questions[:3]
 
@@ -306,8 +302,6 @@ def _compose_ticket_description(
     metadata_candidates = [
         ("Branch", location),
         ("Department", department),
-        ("Affected Asset", asset),
-        ("Business Impact", impact),
     ]
     for label, raw_value in metadata_candidates:
         value = str(raw_value or "").strip()
@@ -345,6 +339,31 @@ def _call_ai_service_json(path: str, payload: dict, *, timeout: int = 10) -> dic
         raise RuntimeError(f"AI service error: {error.code} {error_body}".strip()) from error
     except URLError as error:
         raise ConnectionError("AI service is unreachable. Ensure ai_services is running on port 8001.") from error
+
+
+def _fallback_intake_draft(
+    message: str,
+    user: User,
+    *,
+    extra_context: dict | None = None,
+    default_title: str = "IT Support Request",
+) -> dict:
+    cleaned_message = re.sub(r"\s+", " ", str(message or "")).strip()
+    first_sentence = re.split(r"(?<=[.!?])\s+", cleaned_message, maxsplit=1)[0].strip(" -")
+    title = first_sentence[:120] if first_sentence else default_title
+    category, _domain = _auto_ticket_category(title, cleaned_message)
+    priority = _auto_ticket_priority(title, cleaned_message)
+    context = extra_context or {}
+    return {
+        "title": title,
+        "description": cleaned_message,
+        "category": category,
+        "priority": priority,
+        "asset": "",
+        "impact": "",
+        "branch": str(context.get("branch", "")).strip() or user.branch,
+        "department": str(context.get("department", "")).strip() or _infer_user_department(user),
+    }
 
 
 def _build_ai_intake_response(message: str, user: User, *, extra_context: dict | None = None) -> dict:
@@ -3506,21 +3525,7 @@ def _resolve_whatsapp_employee(inbound_message: dict) -> User | None:
 
 
 def _fallback_whatsapp_draft(message: str, employee: User) -> dict:
-    cleaned_message = re.sub(r"\s+", " ", str(message or "")).strip()
-    first_sentence = re.split(r"(?<=[.!?])\s+", cleaned_message, maxsplit=1)[0].strip(" -")
-    title = first_sentence[:120] if first_sentence else "WhatsApp Fault Report"
-    category, _domain = _auto_ticket_category(title, cleaned_message)
-    priority = _auto_ticket_priority(title, cleaned_message)
-    return {
-        "title": title,
-        "description": cleaned_message,
-        "category": category,
-        "priority": priority,
-        "asset": "",
-        "impact": "",
-        "branch": employee.branch,
-        "department": _infer_user_department(employee),
-    }
+    return _fallback_intake_draft(message, employee, default_title="WhatsApp Fault Report")
 
 
 def _append_whatsapp_ticket_metadata(description: str, inbound_message: dict) -> str:
@@ -6589,21 +6594,27 @@ def ai_intake_draft_view(request):
     if not context_user:
         return Response({"message": "A valid user_id or employee_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+    extra_context = {
+        "branch": str(request.data.get("branch", "")).strip(),
+        "department": str(request.data.get("department", "")).strip(),
+        "caller_name": str(request.data.get("caller_name", "")).strip(),
+        "channel": str(request.data.get("channel", "text")).strip() or "text",
+    }
+
     try:
         payload = _build_ai_intake_response(
             message,
             context_user,
-            extra_context={
-                "branch": str(request.data.get("branch", "")).strip(),
-                "department": str(request.data.get("department", "")).strip(),
-                "caller_name": str(request.data.get("caller_name", "")).strip(),
-                "channel": str(request.data.get("channel", "text")).strip() or "text",
-            },
+            extra_context=extra_context,
         )
-    except ConnectionError as error:
-        return Response({"message": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    except RuntimeError as error:
-        return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+    except (ConnectionError, RuntimeError):
+        draft = _fallback_intake_draft(message, context_user, extra_context=extra_context)
+        payload = {
+            "draft": draft,
+            "confidence": 0,
+            "follow_up_questions": _build_follow_up_questions(draft, 0),
+            "intake_mode": "manual",
+        }
 
     return Response(payload, status=status.HTTP_200_OK)
 
@@ -6624,22 +6635,28 @@ def voice_to_ticket_view(request):
         transcript_hint=str(request.data.get("transcript_hint", "")).strip(),
     )
 
+    extra_context = {
+        "branch": str(request.data.get("branch", "")).strip(),
+        "department": str(request.data.get("department", "")).strip(),
+        "caller_name": str(request.data.get("caller_name", "")).strip(),
+        "channel": "voice",
+        "transcription_source": transcription_source,
+    }
+
     try:
         payload = _build_ai_intake_response(
             transcript,
             context_user,
-            extra_context={
-                "branch": str(request.data.get("branch", "")).strip(),
-                "department": str(request.data.get("department", "")).strip(),
-                "caller_name": str(request.data.get("caller_name", "")).strip(),
-                "channel": "voice",
-                "transcription_source": transcription_source,
-            },
+            extra_context=extra_context,
         )
-    except ConnectionError as error:
-        return Response({"message": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    except RuntimeError as error:
-        return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+    except (ConnectionError, RuntimeError):
+        draft = _fallback_intake_draft(transcript, context_user, extra_context=extra_context)
+        payload = {
+            "draft": draft,
+            "confidence": 0,
+            "follow_up_questions": _build_follow_up_questions(draft, 0),
+            "intake_mode": "manual",
+        }
 
     payload["transcript"] = transcript
     payload["transcription_source"] = transcription_source

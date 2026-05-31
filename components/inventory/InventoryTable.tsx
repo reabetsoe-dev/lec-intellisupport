@@ -19,12 +19,9 @@ import {
 } from "@/components/ui/table"
 import { getConsumables, type Consumable } from "@/lib/api"
 import { buildAssetScanToken, buildAssetScanUrl, getClientOrigin } from "@/lib/asset-qr"
+import { getInventoryAssetFamilyLabel, isSupportedInventoryAsset } from "@/lib/assetQrAssets"
 
 const REFRESH_INTERVAL_MS = 15_000
-
-function normalizeText(value?: string | null): string {
-  return (value || "").trim().toLowerCase()
-}
 
 function getCategoryLabel(item: Consumable): string {
   return item.category || item.department || "N/A"
@@ -32,56 +29,6 @@ function getCategoryLabel(item: Consumable): string {
 
 function getSubtypeLabel(item: Consumable): string {
   return item.subcategory || item.device_type || item.item_name || "N/A"
-}
-
-function getSearchText(item: Consumable): string {
-  return [
-    item.type,
-    item.asset_tag,
-    item.item_name,
-    item.category,
-    item.subcategory,
-    item.device_type,
-    item.brand,
-    item.model_number,
-  ]
-    .map((value) => normalizeText(value))
-    .filter(Boolean)
-    .join(" ")
-}
-
-function isComputerAsset(item: Consumable): boolean {
-  const text = getSearchText(item)
-  return text.includes("computer") || text.includes("desktop") || text.includes("laptop")
-}
-
-function isMouseAsset(item: Consumable): boolean {
-  return getSearchText(item).includes("mouse")
-}
-
-function isKeyboardAsset(item: Consumable): boolean {
-  return getSearchText(item).includes("keyboard")
-}
-
-function isGadgetAsset(item: Consumable): boolean {
-  return normalizeText(item.category).includes("gadget") || normalizeText(item.type).includes("gadget")
-}
-
-function isSupportedInventoryAsset(item: Consumable): boolean {
-  return isComputerAsset(item) || isMouseAsset(item) || isKeyboardAsset(item) || isGadgetAsset(item)
-}
-
-function getFamilyLabel(item: Consumable): string {
-  if (isComputerAsset(item)) {
-    return "Computer"
-  }
-  if (isMouseAsset(item)) {
-    return "Mouse"
-  }
-  if (isKeyboardAsset(item)) {
-    return "Keyboard"
-  }
-  return "Gadget"
 }
 
 function getFamilyClassName(value: string): string {
@@ -290,22 +237,19 @@ export function InventoryTable() {
         <Table className="table-fixed" containerClassName="overflow-x-hidden">
           <TableHeader>
             <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-              <TableHead className="w-[15%] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[19%] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Asset Tag
               </TableHead>
-              <TableHead className="w-[12%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[15%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Type
               </TableHead>
-              <TableHead className="w-[19%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                Brand / Model
+              <TableHead className="w-[34%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                Brand / Model / Serial
               </TableHead>
-              <TableHead className="w-[17%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                Serial
-              </TableHead>
-              <TableHead className="w-[11%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[12%] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Condition
               </TableHead>
-              <TableHead className="w-[26%] py-3 pr-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+              <TableHead className="w-[20%] py-3 pr-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                 QR
               </TableHead>
             </TableRow>
@@ -313,19 +257,19 @@ export function InventoryTable() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-slate-500">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={6} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={5} className="px-6 py-6 text-center text-sm text-rose-600">
                   {error}
                 </TableCell>
               </TableRow>
             ) : supportedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="px-6 py-8 text-center text-sm text-[#234A71]">
+                <TableCell colSpan={5} className="px-6 py-8 text-center text-sm text-[#234A71]">
                   No supported assets found.
                 </TableCell>
               </TableRow>
@@ -333,7 +277,7 @@ export function InventoryTable() {
               supportedItems.map((item) => {
                 const token = buildAssetScanToken(item.id)
                 const absoluteScanUrl = buildAssetScanUrl(origin, token)
-                const familyLabel = getFamilyLabel(item)
+                const familyLabel = getInventoryAssetFamilyLabel(item)
                 const subtypeLabel = getSubtypeLabel(item)
                 const brandModel = `${item.brand || item.manufacturer || ""} ${item.model_number || item.brand_model || ""}`.trim()
                 return (
@@ -361,11 +305,11 @@ export function InventoryTable() {
                         <p className="truncate text-xs font-semibold text-[#1F4469]">
                           {brandModel || item.item_name || "N/A"}
                         </p>
+                        <p className="truncate font-mono text-[11px] text-[#3D638C]">
+                          Serial: {item.serial_number || "N/A"}
+                        </p>
                         <p className="truncate text-[11px] text-[#5E7FA6]">{getCategoryLabel(item)}</p>
                       </div>
-                    </TableCell>
-                    <TableCell className="max-w-0 py-3">
-                      <p className="truncate font-mono text-xs text-[#234A71]">{item.serial_number || "N/A"}</p>
                     </TableCell>
                     <TableCell className="max-w-0 py-3">
                       <Badge
@@ -376,7 +320,7 @@ export function InventoryTable() {
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <div className="shrink-0 rounded-md border border-[#B8CFE6] bg-white p-1" title={absoluteScanUrl}>
                           <AssetQrImage value={absoluteScanUrl} size={42} className="h-[42px] w-[42px]" />
                         </div>

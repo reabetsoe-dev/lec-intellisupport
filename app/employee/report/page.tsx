@@ -181,8 +181,6 @@ export default function EmployeeReportPage() {
         priority: draft.priority,
         location: draft.branch.trim(),
         department: draft.department.trim(),
-        asset: draft.asset?.trim(),
-        impact: draft.impact?.trim(),
         employee_id: user.id,
         reporter_reviewed_problem: true,
       })
@@ -230,7 +228,7 @@ export default function EmployeeReportPage() {
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
           <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
-            Tell the system what happened, what is affected, and the business impact. The draft below will stay editable before submission.
+            Tell the system what happened and where it is happening. The draft below will stay editable before submission.
           </div>
 
           <div className="space-y-2">

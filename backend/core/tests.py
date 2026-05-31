@@ -672,6 +672,44 @@ class WhatsAppIntakeTests(TestCase):
         self.assertEqual(inbound.sender_phone, "+26669990000")
 
 
+class AiIntakeDraftTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.employee = User.objects.create(
+            name="Draft Employee",
+            email="draft.employee@example.com",
+            branch="Maseru HQ",
+            department="Finance",
+            role=User.ROLE_EMPLOYEE,
+            password_hash=make_password("Password123!"),
+            is_active=True,
+        )
+
+    @patch("core.views._call_ai_service_json")
+    def test_text_intake_returns_fallback_draft_when_ai_service_is_unavailable(self, mock_ai):
+        mock_ai.side_effect = ConnectionError("AI service is unreachable.")
+
+        response = self.client.post(
+            "/api/ai-intake/draft",
+            {
+                "message": "My laptop cannot connect to email.",
+                "user_id": self.employee.id,
+                "channel": "employee_text",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["intake_mode"], "manual")
+        self.assertEqual(response.data["confidence"], 0)
+        self.assertEqual(response.data["draft"]["branch"], self.employee.branch)
+        self.assertEqual(response.data["draft"]["department"], self.employee.department)
+        follow_up_text = " ".join(response.data["follow_up_questions"]).lower()
+        self.assertNotIn("business impact", follow_up_text)
+        self.assertNotIn("category", follow_up_text)
+        self.assertNotIn("priority", follow_up_text)
+
+
 class NotificationListTests(TestCase):
     def setUp(self):
         self.client = APIClient()

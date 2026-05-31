@@ -6,17 +6,13 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import { AssetQrImage } from "@/components/inventory/AssetQrImage"
-import { QrPublicOriginControl } from "@/components/inventory/QrPublicOriginControl"
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
-import { buildAssetScanPath, buildAssetScanToken, buildAssetScanUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
-
-function getAssetType(asset: Consumable): string {
-  return asset.subcategory || asset.device_type || asset.printer_type || asset.item_name || "N/A"
-}
+import { buildAssetScanToken, buildAssetScanUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
+import { isSupportedInventoryAsset } from "@/lib/assetQrAssets"
 
 function getAssetName(asset: Consumable): string {
-  return `${asset.brand || ""} ${asset.model_number || ""}`.trim() || asset.item_name || "N/A"
+  return `${asset.brand || ""} ${asset.model_number || asset.brand_model || ""}`.trim() || asset.item_name || "N/A"
 }
 
 function InventoryLabelPrintContent() {
@@ -88,10 +84,11 @@ function InventoryLabelPrintContent() {
 
   const labelAssets = useMemo(() => {
     const parsedAssetId = assetIdParam ? Number.parseInt(assetIdParam, 10) : null
+    const supportedAssets = assets.filter(isSupportedInventoryAsset)
     if (parsedAssetId && Number.isInteger(parsedAssetId)) {
-      return assets.filter((item) => item.id === parsedAssetId)
+      return supportedAssets.filter((item) => item.id === parsedAssetId)
     }
-    return assets
+    return supportedAssets
   }, [assetIdParam, assets])
 
   useEffect(() => {
@@ -176,8 +173,6 @@ function InventoryLabelPrintContent() {
           </div>
         </div>
 
-        {origin ? <QrPublicOriginControl origin={origin} onOriginChange={setOrigin} /> : null}
-
         {!origin ? (
           <p className="rounded-2xl border border-[#B2D2F1] bg-white/85 px-5 py-4 text-[#325D89]">Preparing QR base URL...</p>
         ) : loading ? (
@@ -194,47 +189,25 @@ function InventoryLabelPrintContent() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3 print:gap-2">
             {labelAssets.map((asset) => {
               const token = buildAssetScanToken(asset.id)
-              const relativeScanPath = buildAssetScanPath(token)
               const absoluteScanUrl = buildAssetScanUrl(origin, token)
+              const assetTag = (asset.asset_tag || `AST-${asset.id}`).trim()
+              const assetName = getAssetName(asset)
               return (
                 <article
                   key={asset.id}
-                  className="rounded-2xl border border-[#95BDE4] bg-white px-3 py-3 shadow-[0_14px_30px_-22px_rgba(7,49,90,0.55)] print:break-inside-avoid print:rounded-none print:border-[#D2DCE8] print:shadow-none"
+                  className="flex flex-col items-center rounded-2xl border border-[#95BDE4] bg-white px-3 py-3 text-center shadow-[0_14px_30px_-22px_rgba(7,49,90,0.55)] print:break-inside-avoid print:rounded-none print:border-[#D2DCE8] print:shadow-none"
                 >
-                  <h2 className="text-[16px] leading-tight font-semibold text-[#052042]">
-                    {(asset.asset_tag || `AST-${asset.id}`).trim()} - {getAssetName(asset)}
-                  </h2>
-                  <p className="mt-1 text-[13px] text-[#2B5A86]">{asset.category || "General"} - {getAssetType(asset)}</p>
-                  <div className="mt-2 border-t border-[#CEE2F6] pt-2">
-                    <div className="flex items-start gap-3">
-                      <div className="w-[172px] shrink-0">
-                        <AssetQrImage value={absoluteScanUrl} size={164} className="h-[172px] w-[172px]" />
-                        <p className="mt-1 break-all text-[9px] leading-tight text-[#052042]">
-                          <span className="font-semibold">Public URL:</span> {absoluteScanUrl}
-                        </p>
-                      </div>
-                      <div className="space-y-1 text-[12px] text-[#1A436B]">
-                        <p>
-                          <span className="font-semibold text-[#052042]">Tag:</span> {asset.asset_tag || "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Serial:</span> {asset.serial_number || "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Condition:</span> {asset.condition || "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[#052042]">Qty:</span> {asset.quantity ?? 0}
-                        </p>
-                        <p className="break-all">
-                          <span className="font-semibold text-[#052042]">Public URL:</span> {absoluteScanUrl}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-2 break-all text-[11px] text-[#345B7E]">
-                      <span className="font-semibold text-[#052042]">QR encodes:</span> {absoluteScanUrl}
+                  <AssetQrImage value={absoluteScanUrl} size={184} className="h-[184px] w-[184px]" />
+                  <div className="mt-2 w-full max-w-[240px] rounded-xl border border-[#D3E5F7] bg-[#F7FBFF] px-3 py-2">
+                    <p className="truncate text-[13px] font-semibold text-[#052042]" title={assetName}>
+                      {assetName}
                     </p>
-                    <p className="mt-1 text-[11px] text-[#45688B]">Relative path: {relativeScanPath}</p>
+                    <p className="mt-1 break-words text-[12px] font-semibold text-[#24527D]">
+                      Tag: {assetTag}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-[#5B7EA4]">
+                      Asset No: #{asset.id}
+                    </p>
                   </div>
                 </article>
               )

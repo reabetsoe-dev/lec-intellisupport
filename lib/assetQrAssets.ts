@@ -89,6 +89,72 @@ function looksLikeServer(value: string): boolean {
   return value.toLowerCase().includes("server")
 }
 
+function looksLikeMouse(value: string): boolean {
+  return value.toLowerCase().includes("mouse")
+}
+
+function looksLikeKeyboard(value: string): boolean {
+  return value.toLowerCase().includes("keyboard")
+}
+
+function looksLikeGadget(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return ["gadget", "phone", "tablet", "scanner", "camera", "headset"].some((token) => normalized.includes(token))
+}
+
+function getConsumableSearchText(item: Consumable): string {
+  return [
+    item.type,
+    item.asset_tag,
+    item.item_name,
+    item.category,
+    item.subcategory,
+    item.device_type,
+    item.printer_type,
+    item.brand,
+    item.model_number,
+    item.brand_model,
+    item.manufacturer,
+  ]
+    .map((value) => (value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ")
+}
+
+export function isSupportedInventoryAsset(item: Consumable): boolean {
+  const searchableText = getConsumableSearchText(item)
+  if (
+    looksLikePaperAsset(searchableText) ||
+    looksLikePrinter(searchableText) ||
+    looksLikeNetwork(searchableText) ||
+    looksLikeUps(searchableText) ||
+    looksLikeServer(searchableText)
+  ) {
+    return false
+  }
+
+  return (
+    looksLikeComputer(searchableText) ||
+    looksLikeMouse(searchableText) ||
+    looksLikeKeyboard(searchableText) ||
+    looksLikeGadget(searchableText)
+  )
+}
+
+export function getInventoryAssetFamilyLabel(item: Consumable): "Computer" | "Mouse" | "Keyboard" | "Gadget" {
+  const searchableText = getConsumableSearchText(item)
+  if (looksLikeComputer(searchableText)) {
+    return "Computer"
+  }
+  if (looksLikeMouse(searchableText)) {
+    return "Mouse"
+  }
+  if (looksLikeKeyboard(searchableText)) {
+    return "Keyboard"
+  }
+  return "Gadget"
+}
+
 export function looksLikePaperAsset(value: string): boolean {
   const normalized = value.toLowerCase()
   if (["paper", "ream", "stationery", "typek", "bond"].some((token) => normalized.includes(token))) {

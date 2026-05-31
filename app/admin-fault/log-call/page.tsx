@@ -370,8 +370,6 @@ export default function AdminFaultLogCallPage() {
         priority: draft.priority,
         location: draft.branch.trim(),
         department: draft.department.trim(),
-        asset: draft.asset?.trim(),
-        impact: draft.impact?.trim(),
         employee_id: Number(employeeId),
         reporter_reviewed_problem: true,
         caller_name: callerName.trim(),

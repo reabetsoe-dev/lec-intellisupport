@@ -9,7 +9,19 @@ import { AssetQrImage } from "@/components/inventory/AssetQrImage"
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
 import { buildAssetFaultReportUrl, isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
-import { isFaultReportableConsumable, normalizeAssetCode } from "@/lib/assetQrAssets"
+import { isSupportedInventoryAsset, normalizeAssetCode } from "@/lib/assetQrAssets"
+
+function cleanLabelValue(value?: string | null): string {
+  return (value || "").trim()
+}
+
+function getAssetDisplayName(asset: Consumable): string {
+  const brand = cleanLabelValue(asset.brand || asset.manufacturer)
+  const model = cleanLabelValue(asset.model_number || asset.brand_model)
+  const brandModel = [brand, model].filter(Boolean).join(" ").trim()
+
+  return brandModel || cleanLabelValue(asset.item_name) || cleanLabelValue(asset.subcategory) || "Asset"
+}
 
 function FaultQrLabelsContent() {
   const searchParams = useSearchParams()
@@ -72,7 +84,7 @@ function FaultQrLabelsContent() {
 
   const labelAssets = useMemo(() => {
     const parsedAssetId = assetIdParam ? Number.parseInt(assetIdParam, 10) : null
-    const reportableAssets = assets.filter(isFaultReportableConsumable)
+    const reportableAssets = assets.filter(isSupportedInventoryAsset)
     if (parsedAssetId && Number.isInteger(parsedAssetId)) {
       return reportableAssets.filter((item) => item.id === parsedAssetId)
     }
@@ -140,6 +152,7 @@ function FaultQrLabelsContent() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3 print:gap-2">
             {labelAssets.map((asset) => {
               const assetCode = normalizeAssetCode(asset.asset_tag || `AST-${asset.id}`)
+              const assetName = getAssetDisplayName(asset)
               const absoluteUrl = buildAssetFaultReportUrl(origin, assetCode)
 
               return (
@@ -148,7 +161,17 @@ function FaultQrLabelsContent() {
                   className="flex flex-col items-center rounded-2xl border border-[#95BDE4] bg-white px-3 py-3 text-center shadow-[0_14px_30px_-22px_rgba(7,49,90,0.55)] print:break-inside-avoid print:rounded-none print:border-[#D2DCE8] print:shadow-none"
                 >
                   <AssetQrImage value={absoluteUrl} size={184} className="h-[184px] w-[184px]" />
-                  <p className="mt-2 text-[13px] font-semibold text-[#052042]">Tag: {assetCode}</p>
+                  <div className="mt-2 w-full max-w-[240px] rounded-xl border border-[#D3E5F7] bg-[#F7FBFF] px-3 py-2">
+                    <p className="truncate text-[13px] font-semibold text-[#052042]" title={assetName}>
+                      {assetName}
+                    </p>
+                    <p className="mt-1 break-words text-[12px] font-semibold text-[#24527D]">
+                      Tag: {assetCode}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-[#5B7EA4]">
+                      Asset No: #{asset.id}
+                    </p>
+                  </div>
                 </article>
               )
             })}
