@@ -709,7 +709,7 @@ export function TechnicianTicketTable() {
                 <ListFilter className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <h2 className="text-base font-semibold text-[#102D4A]">Operational Ticket Queue</h2>
+                <h2 className="text-base font-semibold text-[#0A63B8]">Operational Ticket Queue</h2>
                 <p className="mt-0.5 text-xs text-[#5D7692]">
                   One unified operational queue shows what needs action, what is blocked, and what is completed.
                 </p>
@@ -765,20 +765,32 @@ export function TechnicianTicketTable() {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-[1040px] w-full border-collapse text-sm">
+          <div className="w-full overflow-hidden">
+            <table className="w-full table-fixed border-collapse text-[12px] xl:text-sm">
+              <colgroup>
+                <col className="w-[3%]" />
+                <col className="w-[8%]" />
+                <col className="w-[20%]" />
+                <col className="w-[10%]" />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[9%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <thead>
-                <tr className="bg-[#071528] text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-white">
-                  <th className="w-10 px-4 py-3"></th>
-                  <th className="px-4 py-3">Ticket</th>
-                  <th className="min-w-[260px] px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Branch</th>
-                  <th className="px-4 py-3">Reporter</th>
-                  <th className="px-4 py-3">Updated</th>
-                  <th className="px-4 py-3">SLA</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                <tr className="bg-[#0A63B8] text-left text-[10px] font-semibold uppercase tracking-[0.04em] text-white xl:text-[11px]">
+                  <th className="px-2 py-3"></th>
+                  <th className="px-2 py-3">Ticket</th>
+                  <th className="px-2 py-3">Subject</th>
+                  <th className="px-2 py-3">Status</th>
+                  <th className="px-2 py-3">Priority</th>
+                  <th className="px-2 py-3">Branch</th>
+                  <th className="px-2 py-3">Reporter</th>
+                  <th className="px-2 py-3">Updated</th>
+                  <th className="px-2 py-3">SLA</th>
+                  <th className="px-2 py-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E1EAF4]">
@@ -815,7 +827,7 @@ export function TechnicianTicketTable() {
                             ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF9F9]"
                           )}
                         >
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-4">
                             <button
                               type="button"
                               className="flex h-6 w-6 items-center justify-center rounded border border-[#C7D7E8] text-[#315A80] hover:bg-[#F0F6FC]"
@@ -825,7 +837,7 @@ export function TechnicianTicketTable() {
                               <span className="text-sm leading-none">{expanded ? "-" : "+"}</span>
                             </button>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-4">
                             <div className="space-y-1">
                               <Link
                                 href={`/technician/tickets/${ticket.id}`}
@@ -833,13 +845,13 @@ export function TechnicianTicketTable() {
                               >
                                 {ticket.trackingId}
                               </Link>
-                              <div className="flex items-center gap-1 text-[11px] text-[#4A7D5C]">
+                              <div className="flex min-w-0 items-center gap-1 text-[10px] text-[#4A7D5C] xl:text-[11px]">
                                 <span className="h-2 w-2 rounded-full bg-[#29A56A]" />
-                                {getTicketChannelLabel(ticket.raw)}
+                                <span className="truncate">{getTicketChannelLabel(ticket.raw)}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-4">
                             <div className="space-y-1">
                               <Link
                                 href={`/technician/tickets/${ticket.id}`}
@@ -848,64 +860,66 @@ export function TechnicianTicketTable() {
                               >
                                 {ticket.title}
                               </Link>
-                              <span className="inline-flex rounded bg-[#DCEEFF] px-2 py-0.5 text-[11px] font-semibold text-[#0A63B8]">
+                              <span className="inline-flex max-w-full truncate rounded bg-[#DCEEFF] px-2 py-0.5 text-[10px] font-semibold text-[#0A63B8] xl:text-[11px]">
                                 {ticket.raw.category || "ICT"}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-4">
                             <span
                               className={cn(
-                                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold",
+                                "inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold leading-4 xl:text-[11px]",
                                 getWorkflowBadgeClassName(ticket.workflowState)
                               )}
                             >
                               <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                              {ticket.workflowState}
+                              <span>{ticket.workflowState}</span>
                             </span>
                           </td>
-                          <td className="px-4 py-4">
-                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", getPriorityIndicatorClassName(ticket.priority))}>
-                              <span className="flex h-4 w-4 items-end gap-0.5">
+                          <td className="px-2 py-4">
+                            <span className={cn("inline-flex min-w-0 items-center gap-1 text-[11px] font-medium xl:text-xs", getPriorityIndicatorClassName(ticket.priority))}>
+                              <span className="flex h-4 w-4 shrink-0 items-end gap-0.5">
                                 <span className="h-1.5 w-1 rounded-sm bg-current" />
                                 <span className="h-2.5 w-1 rounded-sm bg-current" />
                                 <span className="h-4 w-1 rounded-sm bg-current" />
                               </span>
-                              {ticket.priority}
+                              <span className="truncate">{ticket.priority}</span>
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-xs font-medium text-[#36577E]">{ticket.branch}</td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#5C6BE8] text-xs font-semibold text-white">
+                          <td className="px-2 py-4 text-[11px] font-medium leading-4 text-[#36577E] xl:text-xs">
+                            <span className="line-clamp-3 break-words" title={ticket.branch}>{ticket.branch}</span>
+                          </td>
+                          <td className="px-2 py-4">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#5C6BE8] text-[11px] font-semibold text-white xl:text-xs">
                                 {ticket.reporter.charAt(0).toUpperCase()}
                               </span>
-                              <span className="max-w-[9rem] truncate text-xs font-medium text-[#1F3654]" title={ticket.reporter}>
+                              <span className="min-w-0 truncate text-[11px] font-medium text-[#1F3654] xl:text-xs" title={ticket.reporter}>
                                 {ticket.reporter}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-xs text-[#36577E]">
-                            <div className="flex items-start gap-1.5">
+                          <td className="px-2 py-4 text-[11px] text-[#36577E] xl:text-xs">
+                            <div className="flex min-w-0 items-start gap-1">
                               <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7890AA]" />
-                              <span>
+                              <span className="min-w-0 leading-4">
                                 <span className="block">{formatDateLabel(ticket.updated)}</span>
                                 <span className="block">{formatTimeLabel(ticket.updated)}</span>
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
-                            <span className={cn("font-semibold", ticket.sla.isUrgent ? "text-[#D71920]" : "text-[#24517A]")}>
+                          <td className="px-2 py-4">
+                            <span className={cn("block break-words text-[11px] font-semibold leading-4 xl:text-xs", ticket.sla.isUrgent ? "text-[#D71920]" : "text-[#24517A]")}>
                               {ticket.sla.label}
                             </span>
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="flex justify-end gap-2">
+                          <td className="px-2 py-4">
+                            <div className="flex min-w-0 flex-wrap justify-end gap-1">
                               {primaryIsStart ? (
                                 <Button
                                   size="sm"
                                   type="button"
-                                  className="h-8 min-w-[6.5rem] bg-[#0A63B8] px-3 text-white hover:bg-[#084C8C]"
+                                  className="h-8 min-w-0 bg-[#0A63B8] px-2 text-[11px] text-white hover:bg-[#084C8C] xl:px-3 xl:text-xs"
                                   disabled={busyTicketId === ticket.id}
                                   onClick={() => void handleStartWork(ticket)}
                                 >
@@ -916,7 +930,7 @@ export function TechnicianTicketTable() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 min-w-[6.5rem] border-[#93AECA] bg-white px-3 text-[#20466D] hover:bg-[#F3F8FD]"
+                                  className="h-8 min-w-0 border-[#93AECA] bg-white px-2 text-[11px] text-[#20466D] hover:bg-[#F3F8FD] xl:px-3 xl:text-xs"
                                   asChild
                                 >
                                   <Link href={`/technician/tickets/${ticket.id}`}>{primaryLabel}</Link>
@@ -979,8 +993,8 @@ export function TechnicianTicketTable() {
                         </tr>
                         {expanded ? (
                           <tr key={`${ticket.id}-expanded`} className="bg-[#F8FBFF]">
-                            <td className="px-4 py-3"></td>
-                            <td colSpan={9} className="px-4 py-3">
+                            <td className="px-2 py-3"></td>
+                            <td colSpan={9} className="px-2 py-3">
                               <p className="max-w-5xl text-sm leading-5 text-[#4A6887]">{ticket.description}</p>
                               <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
                                 {metadata.length > 0 ? metadata.map((item) => (
