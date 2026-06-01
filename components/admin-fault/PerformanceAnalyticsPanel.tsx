@@ -64,6 +64,7 @@ const quickRanges: Array<{ value: PerformanceRange; label: string }> = [
 
 type CsvRow = Record<string, string | number>
 type KpiTone = "sky" | "amber" | "rose" | "violet" | "cyan" | "teal" | "purple" | "orange" | "emerald" | "slate"
+type WorkloadSegmentKey = "assigned" | "escalated" | "pending" | "solved"
 
 type KpiCardItem = {
   label: string
@@ -85,6 +86,13 @@ const kpiToneStyles: Record<KpiTone, { bubble: string; icon: string }> = {
   orange: { bubble: "bg-orange-50", icon: "text-orange-600" },
   emerald: { bubble: "bg-emerald-50", icon: "text-emerald-600" },
   slate: { bubble: "bg-slate-100", icon: "text-slate-600" },
+}
+
+const workloadSegmentStyles: Record<WorkloadSegmentKey, { label: string; color: string }> = {
+  assigned: { label: "Assigned", color: "#2563EB" },
+  escalated: { label: "Escalated", color: "#DC2626" },
+  pending: { label: "Pending", color: "#F59E0B" },
+  solved: { label: "Solved", color: "#16A34A" },
 }
 
 function downloadCsv(filename: string, rows: CsvRow[]) {
@@ -270,6 +278,21 @@ function formatCount(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US").format(value ?? 0)
 }
 
+function getInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (parts.length === 0) {
+    return "T"
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+}
+
 function calculateTrendPercent(current: number, comparison: number | undefined): number {
   if (typeof comparison !== "number" || !Number.isFinite(comparison)) {
     return 0
@@ -361,7 +384,6 @@ export function PerformanceAnalyticsPanel() {
 
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const statusChartRef = useRef<HTMLDivElement>(null)
-  const workloadChartRef = useRef<HTMLDivElement>(null)
   const technicianTimeChartRef = useRef<HTMLDivElement>(null)
 
   const loadMetrics = useCallback(async (range: PerformanceRange, startDate?: string, endDate?: string) => {
@@ -537,7 +559,6 @@ export function PerformanceAnalyticsPanel() {
     ]
   )
 
-  const technicianWorkloadChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const technicianTimeChartHeight = Math.max(320, technicianActivitySummary.length * 56)
 
   const technicianTimeData = useMemo(
@@ -548,6 +569,33 @@ export function PerformanceAnalyticsPanel() {
         ticket_work_hours: item.total_ticket_work_hours,
       })),
     [technicianActivitySummary]
+  )
+  const technicianWorkloadRows = useMemo(
+    () =>
+      technicianBreakdown.map((item) => {
+        const totalTickets = Math.max(item.assigned, item.solved + item.pending + item.escalated)
+        const activeAssigned = Math.max(totalTickets - item.solved - item.pending - item.escalated, 0)
+
+        return {
+          name: item.name,
+          initials: getInitials(item.name),
+          totalTickets,
+          segments: [
+            { key: "assigned" as const, value: activeAssigned },
+            { key: "escalated" as const, value: item.escalated },
+            { key: "pending" as const, value: item.pending },
+            { key: "solved" as const, value: item.solved },
+          ].filter((segment) => segment.value > 0),
+        }
+      }),
+    [technicianBreakdown]
+  )
+  const workloadRawMax = Math.max(4, ...technicianWorkloadRows.map((item) => item.totalTickets))
+  const workloadTickStep = workloadRawMax <= 6 ? 1 : Math.ceil(workloadRawMax / 4)
+  const workloadAxisMax = workloadRawMax <= 6 ? workloadRawMax : workloadTickStep * 4
+  const workloadTicks = Array.from(
+    { length: Math.floor(workloadAxisMax / workloadTickStep) + 1 },
+    (_, index) => index * workloadTickStep
   )
   const priorityChartData = useMemo(
     () =>
@@ -833,36 +881,105 @@ export function PerformanceAnalyticsPanel() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm xl:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Technician Workload</CardTitle>
-            <ChartActions
-              title="technician_workload_chart"
-              csvRows={technicianBreakdown.map((item) => ({
-                technician: item.name,
-                assigned: item.assigned,
-                solved: item.solved,
-                pending: item.pending,
-                escalated: item.escalated,
-              }))}
-              containerRef={workloadChartRef}
-            />
-          </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={workloadChartRef} className="w-full" style={{ height: technicianWorkloadChartHeight }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={technicianBreakdown} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" width={180} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="assigned" stackId="workflow" fill="#2563eb" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="solved" stackId="workflow" fill="#16a34a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="pending" stackId="workflow" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="escalated" stackId="workflow" fill="#dc2626" radius={[0, 8, 8, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+        <Card className="overflow-hidden rounded-xl border-[#E1E8F2] bg-white py-0 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.55)] xl:col-span-2">
+          <CardContent className="p-0">
+            <div className="grid grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)]">
+              <div className="border-b border-[#E8EEF6] bg-[#FBFDFF] md:border-r md:border-b-0">
+                <div className="flex h-12 items-center px-5 text-xs font-bold text-[#1D3F66]">Technician</div>
+                <div>
+                  {technicianWorkloadRows.map((item) => (
+                    <div key={item.name} className="flex h-[72px] items-center gap-3 px-5">
+                      <div className="relative shrink-0">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E8F1FF] text-sm font-bold text-[#2563EB]">
+                          {item.initials}
+                        </span>
+                        <span className="absolute -right-0.5 bottom-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#16A34A]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-bold text-[#1B3557]">{item.name}</p>
+                        <p className="mt-1 flex items-center gap-2 text-[11px] text-[#6B84A6]">
+                          <span>Total Tickets</span>
+                          <span className="font-bold text-[#2563EB]">{formatCount(item.totalTickets)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="min-w-0 bg-white">
+                <div className="flex h-12 items-center px-4 text-xs font-bold text-[#1D3F66]">Tickets</div>
+                <div className="relative px-4 pb-4">
+                  <div className="pointer-events-none absolute top-0 right-4 bottom-10 left-4">
+                    {workloadTicks.map((tick) => (
+                      <span
+                        key={tick}
+                        className="absolute top-0 bottom-0 border-l border-dashed border-[#DDE6F1]"
+                        style={{ left: `${(tick / workloadAxisMax) * 100}%` }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="relative">
+                    {technicianWorkloadRows.map((item) => (
+                      <div key={item.name} className="flex h-[72px] items-center">
+                        <div className="flex h-9 w-full overflow-hidden rounded-[3px]">
+                          {item.segments.length === 0 ? (
+                            <span className="h-full w-px bg-[#CAD7E8]" />
+                          ) : (
+                            item.segments.map((segment, index) => {
+                              const segmentStyle = workloadSegmentStyles[segment.key]
+                              const isFirst = index === 0
+                              const isLast = index === item.segments.length - 1
+
+                              return (
+                                <span
+                                  key={segment.key}
+                                  className={cn(
+                                    "flex h-full items-center justify-center text-xs font-bold text-white shadow-sm",
+                                    isFirst && "rounded-l-[3px]",
+                                    isLast && "rounded-r-[3px]"
+                                  )}
+                                  style={{
+                                    width: `${Math.max((segment.value / workloadAxisMax) * 100, 2)}%`,
+                                    backgroundColor: segmentStyle.color,
+                                  }}
+                                >
+                                  {segment.value}
+                                </span>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="relative h-8 border-t border-[#B8C8DD]">
+                    {workloadTicks.map((tick) => (
+                      <span
+                        key={tick}
+                        className="absolute top-2 -translate-x-1/2 text-xs font-medium text-[#5D7290]"
+                        style={{ left: `${(tick / workloadAxisMax) * 100}%` }}
+                      >
+                        {tick}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap justify-center gap-5 pt-4 text-xs font-medium text-[#1E3554]">
+                    {(Object.keys(workloadSegmentStyles) as WorkloadSegmentKey[]).map((key) => (
+                      <span key={key} className="inline-flex items-center gap-2">
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: workloadSegmentStyles[key].color }}
+                        />
+                        {workloadSegmentStyles[key].label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
