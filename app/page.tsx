@@ -13,7 +13,7 @@ function BrandMark() {
   return (
     <div className="flex items-center gap-3 md:gap-4">
       <Image
-        src="/logo2.jpg"
+        src="/lec-logo-current.jpg"
         alt="LEC logo"
         width={56}
         height={56}
@@ -74,7 +74,7 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-3 px-5 md:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <Image
-              src="/logo2.jpg"
+              src="/lec-logo-current.jpg"
               alt="LEC logo"
               width={36}
               height={36}
