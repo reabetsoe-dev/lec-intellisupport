@@ -122,7 +122,7 @@ export default function LiveDashboardLaptop() {
         <div className="lec-laptop-bezel overflow-hidden rounded-[24px] border border-[#304a88] bg-[#091237]">
           <div className="flex items-center justify-between gap-3 border-b border-white/7 bg-[linear-gradient(180deg,rgba(18,32,76,0.95)_0%,rgba(12,24,63,0.96)_100%)] px-4 py-3 sm:px-5">
             <div className="flex items-center gap-3">
-              <Image src="/lec-logo.png" alt="LEC logo" width={78} height={24} className="h-6 w-auto object-contain" />
+              <Image src="/lec-logo.png" alt="LEC logo" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
               <span className="text-sm font-medium text-white/94 sm:text-[15px]">LEC IntelliSupport</span>
             </div>
             <div className="hidden items-center gap-6 text-xs font-medium text-white/78 sm:flex">

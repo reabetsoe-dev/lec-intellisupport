@@ -117,9 +117,9 @@ export function Sidebar({ user }: SidebarProps) {
             <Image
               src="/lec-logo.png"
               alt="LEC logo"
-              width={220}
-              height={74}
-              className="h-auto w-40 rounded-sm object-contain md:w-52"
+              width={160}
+              height={160}
+              className="h-24 w-24 rounded-full object-cover shadow-[0_12px_28px_rgba(0,0,0,0.28)] md:h-28 md:w-28"
               priority
             />
           </div>

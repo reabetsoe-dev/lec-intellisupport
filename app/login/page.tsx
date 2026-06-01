@@ -96,10 +96,10 @@ function LoginContent() {
             <Image
               src="/lec-logo.png"
               alt="LEC logo"
-              width={320}
-              height={96}
+              width={180}
+              height={180}
               priority
-              className="h-auto w-full max-w-[300px] object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.38)]"
+              className="h-32 w-32 rounded-full object-cover drop-shadow-[0_8px_20px_rgba(0,0,0,0.38)]"
             />
           </div>
           <CardTitle className="text-3xl font-semibold text-[#E5F1FF]">LEC IntelliSupport</CardTitle>

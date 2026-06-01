@@ -200,10 +200,10 @@ export default function TechnicianAccessPage() {
               <Image
                 src="/lec-logo.png"
                 alt="LEC logo"
-                width={140}
-                height={42}
+                width={96}
+                height={96}
                 priority
-                className="h-auto w-28 object-contain sm:w-32"
+                className="h-16 w-16 rounded-full object-cover sm:h-20 sm:w-20"
               />
             </div>
             <div className="min-w-0">
