@@ -26,8 +26,6 @@ import {
   Cell,
   LabelList,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -287,7 +285,6 @@ export function PerformanceAnalyticsPanel() {
 
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const statusChartRef = useRef<HTMLDivElement>(null)
-  const trendChartRef = useRef<HTMLDivElement>(null)
   const workloadChartRef = useRef<HTMLDivElement>(null)
   const technicianTimeChartRef = useRef<HTMLDivElement>(null)
 
@@ -334,7 +331,6 @@ export function PerformanceAnalyticsPanel() {
     [metrics]
   )
   const technicianRecentActivity = metrics?.technician_recent_activity ?? []
-  const createdVsResolved = metrics?.created_vs_resolved ?? []
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
   const technicianCheckIns = metrics?.kpis.technician_check_ins ?? 0
   const technicianCheckOuts = metrics?.kpis.technician_check_outs ?? 0
@@ -649,35 +645,6 @@ export function PerformanceAnalyticsPanel() {
                   </Pie>
                   <Tooltip />
                 </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Created vs Resolved Trend</CardTitle>
-            <ChartActions
-              title="created_vs_resolved_trend"
-              csvRows={createdVsResolved.map((item) => ({
-                period: item.name,
-                created: item.created,
-                resolved: item.resolved,
-              }))}
-              containerRef={trendChartRef}
-            />
-          </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={trendChartRef} className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={createdVsResolved}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="created" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="resolved" stroke="#16a34a" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
