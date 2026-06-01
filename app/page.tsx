@@ -62,7 +62,7 @@ export default function Home() {
               </h1>
 
               <p className="mt-5 max-w-[580px] text-[15px] leading-[1.45] text-white/88 md:text-[17px] lg:text-[19px]">
-                AI-powered tools to help LEC resolve incidents faster, keep teams aligned, and improve reliability across utility operations.
+                Intelligent fault reporting, technician assignment, and incident tracking for faster LEC service response.
               </p>
 
             </LandingReveal>
