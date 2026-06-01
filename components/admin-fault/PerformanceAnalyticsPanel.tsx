@@ -4,15 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import {
   ArrowDown,
   ArrowUp,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   CircleUserRound,
   ClipboardList,
   Clock3,
   Download,
+  FileImage,
   Filter,
   LogIn,
   LogOut,
+  PieChart as PieChartIcon,
   QrCode,
   UserRound,
   Wrench,
@@ -46,7 +49,8 @@ import {
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const chartPalette = ["#0ea5e9", "#f97316", "#22c55e", "#e11d48", "#a855f7", "#14b8a6", "#facc15"]
+const priorityPalette = ["#ff5157", "#18c8a0", "#0ea5ff", "#f59e0b", "#a855f7", "#22c55e"]
+const statusPalette = ["#ff8a21", "#0867ff", "#13b87a", "#f43f5e", "#8b5cf6", "#14b8a6", "#facc15"]
 
 const quickRanges: Array<{ value: PerformanceRange; label: string }> = [
   { value: "today", label: "Today" },
@@ -150,18 +154,26 @@ function ChartActions({
   title,
   csvRows,
   containerRef,
+  variant = "light",
 }: {
   title: string
   csvRows: CsvRow[]
   containerRef: RefObject<HTMLDivElement | null>
+  variant?: "light" | "dark"
 }) {
+  const isDark = variant === "dark"
   return (
     <div className="flex flex-wrap gap-2">
       <Button
         type="button"
         size="sm"
         variant="outline"
-        className="border-slate-200"
+        className={cn(
+          "h-9 gap-1.5 rounded-md px-3 text-xs font-semibold",
+          isDark
+            ? "border-[#2B4775] bg-[#102549] text-[#EAF3FF] hover:bg-[#18335F] hover:text-white"
+            : "border-slate-200"
+        )}
         disabled={csvRows.length === 0}
         onClick={() => downloadCsv(`${title.toLowerCase().replace(/\s+/g, "_")}.csv`, csvRows)}
       >
@@ -172,10 +184,15 @@ function ChartActions({
         type="button"
         size="sm"
         variant="outline"
-        className="border-slate-200"
+        className={cn(
+          "h-9 gap-1.5 rounded-md px-3 text-xs font-semibold",
+          isDark
+            ? "border-[#2B4775] bg-[#102549] text-[#EAF3FF] hover:bg-[#18335F] hover:text-white"
+            : "border-slate-200"
+        )}
         onClick={() => void downloadChartAsPng(`${title.toLowerCase().replace(/\s+/g, "_")}.png`, containerRef.current)}
       >
-        <Download className="h-4 w-4" />
+        <FileImage className="h-4 w-4" />
         PNG
       </Button>
     </div>
@@ -186,8 +203,67 @@ function rangeLabel(value: PerformanceRange): string {
   return quickRanges.find((item) => item.value === value)?.label ?? "Monthly"
 }
 
-function pieLabelRenderer({ name, value }: { name?: string; value?: number }) {
-  return `${name ?? ""}: ${value ?? 0}`
+function statusDonutLabelRenderer({
+  name,
+  value,
+  percent,
+  x,
+  y,
+  textAnchor,
+}: {
+  name?: string
+  value?: number
+  percent?: number
+  x?: number | string
+  y?: number | string
+  textAnchor?: string
+}) {
+  if (typeof x === "undefined" || typeof y === "undefined") {
+    return null
+  }
+
+  const normalizedPercent = typeof percent === "number" ? Math.round(percent * 1000) / 10 : 0
+  const labelAnchor =
+    textAnchor === "start" || textAnchor === "middle" || textAnchor === "end" || textAnchor === "inherit"
+      ? textAnchor
+      : "middle"
+
+  return (
+    <text x={x} y={y} textAnchor={labelAnchor} dominantBaseline="central" fill="#C7DAF5" fontSize={12}>
+      {name ?? "Status"} {value ?? 0} ({normalizedPercent}%)
+    </text>
+  )
+}
+
+function getPriorityColor(name: string, index: number): string {
+  const normalized = name.toLowerCase()
+  if (normalized.includes("high") || normalized.includes("critical")) {
+    return "#ff5157"
+  }
+  if (normalized.includes("medium")) {
+    return "#0ea5ff"
+  }
+  if (normalized.includes("low")) {
+    return "#18c8a0"
+  }
+  return priorityPalette[index % priorityPalette.length]
+}
+
+function getStatusColor(name: string, index: number): string {
+  const normalized = name.toLowerCase()
+  if (normalized.includes("progress") || normalized.includes("process")) {
+    return "#0867ff"
+  }
+  if (normalized.includes("review")) {
+    return "#13b87a"
+  }
+  if (normalized.includes("pending")) {
+    return "#ff8a21"
+  }
+  if (normalized.includes("solved") || normalized.includes("resolved")) {
+    return "#22c55e"
+  }
+  return statusPalette[index % statusPalette.length]
 }
 
 function formatCount(value: number | null | undefined): string {
@@ -473,6 +549,30 @@ export function PerformanceAnalyticsPanel() {
       })),
     [technicianActivitySummary]
   )
+  const priorityChartData = useMemo(
+    () =>
+      (metrics?.by_priority ?? []).map((item, index) => ({
+        ...item,
+        fill: getPriorityColor(item.name, index),
+      })),
+    [metrics]
+  )
+  const statusChartData = useMemo(
+    () =>
+      (metrics?.by_status ?? []).map((item, index) => ({
+        ...item,
+        fill: getStatusColor(item.name, index),
+      })),
+    [metrics]
+  )
+  const priorityTicketTotal = priorityChartData.reduce((total, item) => total + item.count, 0)
+  const statusTicketTotal = statusChartData.reduce((total, item) => total + item.count, 0)
+  const pendingTicketTotal = statusChartData
+    .filter((item) => item.name.toLowerCase().includes("pending"))
+    .reduce((total, item) => total + item.count, 0)
+  const pendingTicketPercent = statusTicketTotal > 0 ? Math.round((pendingTicketTotal / statusTicketTotal) * 100) : 0
+  const priorityTrendPercent = calculateTrendPercent(priorityTicketTotal, comparisonMetrics?.kpis.total_tickets)
+  const PriorityTrendIcon = priorityTrendPercent < 0 ? ArrowDown : ArrowUp
 
   const handleRangeSelect = (range: PerformanceRange) => {
     setSelectedRange(range)
@@ -599,53 +699,136 @@ export function PerformanceAnalyticsPanel() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Tickets By Priority</CardTitle>
+        <Card className="overflow-hidden rounded-xl border-[#385582] bg-[radial-gradient(circle_at_14%_10%,rgba(37,99,235,0.32),transparent_31%),linear-gradient(135deg,#071326_0%,#0B1E3B_56%,#071224_100%)] py-0 text-white shadow-[0_24px_60px_-34px_rgba(4,18,40,0.9)]">
+          <CardHeader className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#1D53D8]/55 bg-gradient-to-br from-[#164CFF] to-[#102E86] shadow-[0_0_28px_rgba(37,99,235,0.35)]">
+                <BarChart3 className="h-5 w-5 text-[#73B7FF]" />
+              </span>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold text-[#F5F9FF]">Tickets By Priority</CardTitle>
+                <p className="mt-1 text-xs text-[#8EA7CC]">Distribution of tickets by priority level</p>
+              </div>
+            </div>
             <ChartActions
               title="priority_chart"
-              csvRows={(metrics.by_priority ?? []).map((item) => ({ label: item.name, count: item.count }))}
+              csvRows={priorityChartData.map((item) => ({ label: item.name, count: item.count }))}
               containerRef={priorityChartRef}
+              variant="dark"
             />
           </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={priorityChartRef} className="h-[320px] w-full">
+          <CardContent className="space-y-4 px-4 pb-5">
+            <div ref={priorityChartRef} className="h-[270px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={metrics.by_priority}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
-                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
+                <BarChart data={priorityChartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1C3358" vertical={false} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={{ stroke: "#2E4B74" }} tick={{ fill: "#C6D6ED", fontSize: 12 }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={{ stroke: "#2E4B74" }} tick={{ fill: "#C6D6ED", fontSize: 12 }} />
+                  <Tooltip
+                    cursor={{ fill: "rgba(96,165,250,0.08)" }}
+                    contentStyle={{
+                      background: "#0B1D38",
+                      border: "1px solid #36588A",
+                      borderRadius: 8,
+                      color: "#EAF3FF",
+                    }}
+                    labelStyle={{ color: "#FFFFFF" }}
+                  />
+                  <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="count" position="top" fill="#F8FBFF" fontSize={12} />
+                    {priorityChartData.map((item) => (
+                      <Cell key={item.name} fill={item.fill} stroke={item.fill} />
+                    ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#1D355C] bg-[#10254A]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#173B86] text-[#83BDFF]">
+                  <BarChart3 className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-xl font-bold leading-6 text-white">{formatCount(priorityTicketTotal)}</p>
+                  <p className="text-xs text-[#9EB3D3]">Total Tickets</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-md bg-[#123E3A] px-3 py-2 text-xs font-semibold text-[#55E6AE]">
+                <PriorityTrendIcon className="h-3.5 w-3.5" />
+                {Math.abs(priorityTrendPercent)}% vs last week
+              </span>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Tickets By Status</CardTitle>
+        <Card className="overflow-hidden rounded-xl border-[#385582] bg-[radial-gradient(circle_at_22%_12%,rgba(91,33,182,0.36),transparent_30%),linear-gradient(135deg,#071326_0%,#0B1E3B_56%,#071224_100%)] py-0 text-white shadow-[0_24px_60px_-34px_rgba(4,18,40,0.9)]">
+          <CardHeader className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#6947FF]/55 bg-gradient-to-br from-[#5B45FF] to-[#321E91] shadow-[0_0_28px_rgba(99,102,241,0.35)]">
+                <PieChartIcon className="h-5 w-5 text-[#A7A3FF]" />
+              </span>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold text-[#F5F9FF]">Tickets By Status</CardTitle>
+                <p className="mt-1 text-xs text-[#8EA7CC]">Current status distribution</p>
+              </div>
+            </div>
             <ChartActions
               title="status_chart"
-              csvRows={(metrics.by_status ?? []).map((item) => ({ label: item.name, count: item.count }))}
+              csvRows={statusChartData.map((item) => ({ label: item.name, count: item.count }))}
               containerRef={statusChartRef}
+              variant="dark"
             />
           </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={statusChartRef} className="h-[320px] w-full">
+          <CardContent className="space-y-4 px-4 pb-5">
+            <div ref={statusChartRef} className="h-[270px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={metrics.by_status} dataKey="count" nameKey="name" outerRadius={110} label={pieLabelRenderer} labelLine>
-                    {metrics.by_status.map((item, index) => (
-                      <Cell key={item.name} fill={chartPalette[index % chartPalette.length]} />
+                  <Pie
+                    data={statusChartData}
+                    dataKey="count"
+                    nameKey="name"
+                    innerRadius={68}
+                    outerRadius={115}
+                    paddingAngle={1}
+                    label={statusDonutLabelRenderer}
+                    labelLine={{ stroke: "#4C6D9B" }}
+                  >
+                    {statusChartData.map((item) => (
+                      <Cell key={item.name} fill={item.fill} stroke="#0B1D38" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <text x="50%" y="45%" textAnchor="middle" dominantBaseline="middle" fill="#FFFFFF" fontSize={30} fontWeight={700}>
+                    {formatCount(statusTicketTotal)}
+                  </text>
+                  <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="#C6D6ED" fontSize={12}>
+                    Total Tickets
+                  </text>
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0B1D38",
+                      border: "1px solid #36588A",
+                      borderRadius: 8,
+                      color: "#EAF3FF",
+                    }}
+                    labelStyle={{ color: "#FFFFFF" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#1D355C] bg-[#10254A]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3B2714] text-[#FF9E2C]">
+                  <PieChartIcon className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-xl font-bold leading-6 text-white">{pendingTicketPercent}%</p>
+                  <p className="text-xs text-[#9EB3D3]">Pending Tickets</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-md bg-[#162947] px-3 py-2 text-xs font-medium text-[#D7E8FF]">
+                <span className="h-2 w-2 rounded-full bg-[#FFB22A]" />
+                Needs attention
+              </span>
             </div>
           </CardContent>
         </Card>
