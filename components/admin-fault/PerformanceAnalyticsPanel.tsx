@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleUserRound,
@@ -50,6 +51,7 @@ import {
   type PerformanceMetrics,
   type PerformanceRange,
   type TechnicianActivitySummaryDatum,
+  type TechnicianRecentActivityDatum,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -468,6 +470,100 @@ function formatDurationMinutes(value: number | null | undefined): string {
   return `${minutes}m`
 }
 
+function formatRelativeTime(value: string | null | undefined): string {
+  if (!value) {
+    return "Not recorded"
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return "Not recorded"
+  }
+
+  const diffMinutes = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 60000))
+  if (diffMinutes < 1) {
+    return "Just now"
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) {
+    return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`
+  }
+
+  const diffMonths = Math.floor(diffDays / 30)
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`
+  }
+
+  const diffYears = Math.floor(diffMonths / 12)
+  return `${diffYears} year${diffYears === 1 ? "" : "s"} ago`
+}
+
+function getRecentActivityVisual(item: Pick<TechnicianRecentActivityDatum, "action_type" | "action_label">): {
+  Icon: LucideIcon
+  iconWrap: string
+  badge: string
+} {
+  const normalized = `${item.action_type} ${item.action_label}`.toLowerCase()
+
+  if (normalized.includes("solv") || normalized.includes("resolved")) {
+    return {
+      Icon: CheckCircle2,
+      iconWrap: "border-[#CBEFDD] bg-[#EFFFF6] text-[#00A85A]",
+      badge: "border-[#CBEFDD] bg-[#EFFFF6] text-[#008B50]",
+    }
+  }
+  if (normalized.includes("accept")) {
+    return {
+      Icon: ClipboardList,
+      iconWrap: "border-[#F8DFB8] bg-[#FFF7EA] text-[#F08A00]",
+      badge: "border-[#F8DFB8] bg-[#FFF7EA] text-[#F08A00]",
+    }
+  }
+  if (normalized.includes("check_in") || normalized.includes("checked in")) {
+    return {
+      Icon: LogIn,
+      iconWrap: "border-[#DDD2FF] bg-[#F6F1FF] text-[#6D4DF5]",
+      badge: "border-[#DDD2FF] bg-[#F6F1FF] text-[#6D4DF5]",
+    }
+  }
+  if (normalized.includes("check_out") || normalized.includes("checked out")) {
+    return {
+      Icon: LogOut,
+      iconWrap: "border-[#FBD1D1] bg-[#FFF1F1] text-[#F12834]",
+      badge: "border-[#FBD1D1] bg-[#FFF1F1] text-[#F12834]",
+    }
+  }
+  if (normalized.includes("escal")) {
+    return {
+      Icon: ArrowUp,
+      iconWrap: "border-[#FBD1D1] bg-[#FFF1F1] text-[#DC2626]",
+      badge: "border-[#FBD1D1] bg-[#FFF1F1] text-[#DC2626]",
+    }
+  }
+  if (normalized.includes("asset") || normalized.includes("request")) {
+    return {
+      Icon: ClipboardList,
+      iconWrap: "border-[#DDD2FF] bg-[#F6F1FF] text-[#6D28D9]",
+      badge: "border-[#DDD2FF] bg-[#F6F1FF] text-[#6D28D9]",
+    }
+  }
+
+  return {
+    Icon: Clock3,
+    iconWrap: "border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]",
+    badge: "border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]",
+  }
+}
+
 export function PerformanceAnalyticsPanel() {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null)
   const [comparisonMetrics, setComparisonMetrics] = useState<PerformanceMetrics | null>(null)
@@ -477,6 +573,7 @@ export function PerformanceAnalyticsPanel() {
   const [customStart, setCustomStart] = useState("")
   const [customEnd, setCustomEnd] = useState("")
   const [activityPage, setActivityPage] = useState(1)
+  const [recentActivityPage, setRecentActivityPage] = useState(1)
 
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const statusChartRef = useRef<HTMLDivElement>(null)
@@ -547,12 +644,55 @@ export function PerformanceAnalyticsPanel() {
     avg_work_hours: item.avg_ticket_work_hours,
     current_status: item.is_currently_available ? "Checked In" : "Checked Out",
   }))
+  const technicianSkillLookup = useMemo(() => {
+    const byId = new Map<number, string>()
+    const byName = new Map<string, string>()
+
+    technicianActivitySummary.forEach((item) => {
+      byId.set(item.technician_id, item.skillset)
+      byName.set(item.name.toLowerCase(), item.skillset)
+    })
+
+    return { byId, byName }
+  }, [technicianActivitySummary])
 
   useEffect(() => {
     setActivityPage((currentPage) => Math.min(currentPage, activityTotalPages))
   }, [activityTotalPages])
 
   const technicianRecentActivity = metrics?.technician_recent_activity ?? []
+  const getRecentActivitySkillset = (item: TechnicianRecentActivityDatum) =>
+    technicianSkillLookup.byId.get(item.technician_id) ??
+    technicianSkillLookup.byName.get(item.technician_name.toLowerCase()) ??
+    "Technician"
+  const recentActivityPageSize = 7
+  const recentActivityTotalPages = Math.max(1, Math.ceil(technicianRecentActivity.length / recentActivityPageSize))
+  const recentActivityStartIndex =
+    technicianRecentActivity.length > 0 ? (recentActivityPage - 1) * recentActivityPageSize : 0
+  const visibleTechnicianRecentActivity = technicianRecentActivity.slice(
+    recentActivityStartIndex,
+    recentActivityStartIndex + recentActivityPageSize
+  )
+  const recentActivityDisplayStart = technicianRecentActivity.length > 0 ? recentActivityStartIndex + 1 : 0
+  const recentActivityDisplayEnd = Math.min(
+    recentActivityStartIndex + recentActivityPageSize,
+    technicianRecentActivity.length
+  )
+  const recentActivityCsvRows = technicianRecentActivity.map((item) => ({
+    when: formatDateTime(item.occurred_at),
+    technician: item.technician_name,
+    skillset: getRecentActivitySkillset(item),
+    action: item.action_label,
+    details: item.description || "",
+    duration: formatDurationMinutes(item.duration_minutes),
+    ticket: item.ticket_id ? `Ticket #${item.ticket_id}` : "",
+    asset_request: item.consumable_request_id ? `Asset Request #${item.consumable_request_id}` : "",
+  }))
+
+  useEffect(() => {
+    setRecentActivityPage((currentPage) => Math.min(currentPage, recentActivityTotalPages))
+  }, [recentActivityTotalPages])
+
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
   const technicianCheckIns = metrics?.kpis.technician_check_ins ?? 0
   const technicianCheckOuts = metrics?.kpis.technician_check_outs ?? 0
@@ -1364,42 +1504,199 @@ export function PerformanceAnalyticsPanel() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Recent Technician Activity</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto px-6 pb-6">
-          {technicianRecentActivity.length === 0 ? (
-            <p className="text-sm text-slate-500">No recent technician activity recorded in this range.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
-                  <th className="px-3 py-3">When</th>
-                  <th className="px-3 py-3">Technician</th>
-                  <th className="px-3 py-3">Action</th>
-                  <th className="px-3 py-3">Details</th>
-                  <th className="px-3 py-3">Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {technicianRecentActivity.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100 text-slate-700">
-                    <td className="px-3 py-3">{formatDateTime(item.occurred_at)}</td>
-                    <td className="px-3 py-3">{item.technician_name}</td>
-                    <td className="px-3 py-3">{item.action_label}</td>
-                    <td className="px-3 py-3">
-                      <p>{item.description || "No description recorded."}</p>
-                      {item.ticket_id ? <p className="text-xs text-slate-500">Ticket #{item.ticket_id}</p> : null}
-                      {item.consumable_request_id ? (
-                        <p className="text-xs text-slate-500">Asset Request #{item.consumable_request_id}</p>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3">{formatDurationMinutes(item.duration_minutes)}</td>
-                  </tr>
+      <Card className="overflow-hidden rounded-2xl border-[#DDE8F6] bg-white py-0 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.55)]">
+        <CardHeader className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#EEF6FF] text-[#0B63F6] shadow-[0_14px_28px_-24px_rgba(11,99,246,0.9)]">
+              <Clock3 className="h-8 w-8" />
+            </span>
+            <div className="min-w-0">
+              <CardTitle className="text-2xl font-bold tracking-normal text-[#071A38]">Recent Technician Activity</CardTitle>
+              <p className="mt-2 text-sm text-[#496487]">Latest actions performed by technicians</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-lg border-[#DDE8F6] bg-white px-5 text-sm font-semibold text-[#0B63F6] shadow-sm hover:bg-[#F7FBFF]"
+              onClick={() => handleRangeSelect("today")}
+            >
+              <CalendarDays className="h-5 w-5" />
+              Today
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-lg border-[#DDE8F6] bg-white px-5 text-sm font-semibold text-[#071A38] shadow-sm hover:bg-[#F7FBFF]"
+                >
+                  <Filter className="h-5 w-5 text-[#2D5485]" />
+                  Filter
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {quickRanges.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className={selectedRange === option.value ? "font-semibold text-[#0B1F3A]" : ""}
+                    onClick={() => handleRangeSelect(option.value)}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
                 ))}
-              </tbody>
-            </table>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-lg border-[#DDE8F6] bg-white px-5 text-sm font-semibold text-[#0B63F6] shadow-sm hover:bg-[#F7FBFF]"
+              disabled={recentActivityCsvRows.length === 0}
+              onClick={() => downloadCsv("recent_technician_activity.csv", recentActivityCsvRows)}
+            >
+              <Download className="h-5 w-5" />
+              Export
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-6 pb-6">
+          {technicianRecentActivity.length === 0 ? (
+            <div className="rounded-2xl border border-[#DDE8F6] px-5 py-8 text-center text-sm text-[#496487]">
+              No recent technician activity recorded in this range.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-[#DDE8F6] bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1120px] text-sm">
+                  <thead>
+                    <tr className="border-b border-[#DDE8F6] bg-[#FBFDFF] text-left text-xs uppercase tracking-[0.04em] text-[#27486F]">
+                      <th className="w-[24%] px-6 py-5">
+                        <span className="inline-flex items-center gap-2">
+                          When
+                          <span className="flex flex-col -space-y-1 text-[#7C99BF]">
+                            <ArrowUp className="h-3 w-3" />
+                            <ArrowDown className="h-3 w-3" />
+                          </span>
+                        </span>
+                      </th>
+                      <th className="w-[21%] px-6 py-5">Technician</th>
+                      <th className="w-[17%] px-6 py-5">Action</th>
+                      <th className="px-6 py-5">Details</th>
+                      <th className="w-[12%] px-6 py-5">
+                        <span className="inline-flex items-center gap-2">
+                          Duration
+                          <span className="flex flex-col -space-y-1 text-[#7C99BF]">
+                            <ArrowUp className="h-3 w-3" />
+                            <ArrowDown className="h-3 w-3" />
+                          </span>
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleTechnicianRecentActivity.map((item: TechnicianRecentActivityDatum) => {
+                      const visual = getRecentActivityVisual(item)
+                      const ActionIcon = visual.Icon
+
+                      return (
+                        <tr key={item.id} className="border-b border-[#E6EEF8] last:border-b-0">
+                          <td className="px-6 py-5 align-middle">
+                            <div className="flex items-center gap-5">
+                              <span
+                                className={cn(
+                                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border",
+                                  visual.iconWrap
+                                )}
+                              >
+                                <ActionIcon className="h-5 w-5" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-bold leading-6 text-[#071A38]">{formatDateTime(item.occurred_at)}</p>
+                                <p className="text-sm text-[#42618B]">{formatRelativeTime(item.occurred_at)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 align-middle">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#EDF5FF] text-sm font-bold text-[#0B63F6]">
+                                {getInitials(item.technician_name)}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-bold leading-6 text-[#071A38]">{item.technician_name}</p>
+                                <p className="text-sm text-[#42618B]">{getRecentActivitySkillset(item)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 align-middle">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold",
+                                visual.badge
+                              )}
+                            >
+                              <ActionIcon className="h-4 w-4" />
+                              {item.action_label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 align-middle">
+                            <p className="max-w-[520px] text-base leading-6 text-[#071A38]">
+                              {item.description || "No description recorded."}
+                            </p>
+                            {item.ticket_id ? (
+                              <p className="mt-2 text-sm font-semibold text-[#0B63F6]">Ticket #{item.ticket_id}</p>
+                            ) : null}
+                            {item.consumable_request_id ? (
+                              <p className="mt-2 text-sm font-semibold text-[#0B63F6]">
+                                Asset Request #{item.consumable_request_id}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="px-6 py-5 align-middle">
+                            <span className="inline-flex items-center gap-3 text-base font-semibold text-[#071A38]">
+                              <Clock3 className="h-5 w-5 text-[#0B63F6]" />
+                              {formatDurationMinutes(item.duration_minutes)}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-[#DDE8F6] px-5 py-4 text-sm text-[#496487] sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Showing {recentActivityDisplayStart} to {recentActivityDisplayEnd} of {technicianRecentActivity.length} activities
+                </span>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={recentActivityPage <= 1}
+                    onClick={() => setRecentActivityPage((current) => Math.max(1, current - 1))}
+                    className="h-10 w-10 rounded-lg border-[#DDE8F6] bg-white text-[#6B84A6] disabled:opacity-45"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <span className="flex h-10 min-w-10 items-center justify-center rounded-lg bg-[#2563EB] px-3 text-sm font-bold text-white shadow-sm">
+                    {recentActivityPage}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={recentActivityPage >= recentActivityTotalPages}
+                    onClick={() => setRecentActivityPage((current) => Math.min(recentActivityTotalPages, current + 1))}
+                    className="h-10 w-10 rounded-lg border-[#DDE8F6] bg-white text-[#6B84A6] disabled:opacity-45"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
