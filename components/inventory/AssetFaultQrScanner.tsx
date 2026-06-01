@@ -314,19 +314,17 @@ export function AssetFaultQrScanner() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={photoScanning}
-                className="h-10 rounded-lg border-[#0072CE]/30 bg-white px-5 text-sm font-semibold text-[#0B1F3A] hover:bg-[#F6FAFF]"
+                className="h-10 rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8]"
               >
                 {photoScanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageUp className="h-4 w-4" />}
                 Photo
               </Button>
               <Button
                 type="button"
-                variant="outline"
                 onClick={openManualAssetReport}
-                className="h-10 rounded-lg border-[#0072CE]/30 bg-white px-5 text-sm font-semibold text-[#0B1F3A] hover:bg-[#F6FAFF]"
+                className="h-10 rounded-lg border border-[#005DA8] bg-[#0072CE] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#005DA8]"
               >
                 <Keyboard className="h-4 w-4" />
                 Open
