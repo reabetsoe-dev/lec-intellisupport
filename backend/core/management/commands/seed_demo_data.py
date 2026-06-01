@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 "email": "employee@lec.com",
                 "password": "Employee@123",
                 "role": User.ROLE_EMPLOYEE,
-                "branch": "Maseru",
+                "branch": "Mokhotlong",
                 "department": "ICT",
             },
             {
