@@ -1218,6 +1218,7 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
   return requestJson<Ticket>(BACKEND_BASE_URL, "/api/tickets", {
     method: "POST",
     body: payload,
+    timeoutMs: 45_000,
   })
 }
 
@@ -1622,6 +1623,7 @@ export async function createAiIntakeDraft(payload: {
   return requestJson<TicketIntakeDraftResponse>(BACKEND_BASE_URL, "/api/ai-intake/draft", {
     method: "POST",
     body: payload,
+    timeoutMs: 45_000,
   })
 }
 

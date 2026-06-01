@@ -156,6 +156,30 @@ class TicketAutoAssignmentTests(TestCase):
         self.assertIn("auto-assigned", response.data["routing_note"].lower())
         self.assertNotIn("currently busy", response.data["routing_note"].lower())
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        EMAIL_HOST_USER="noreply@example.com",
+        EMAIL_HOST_PASSWORD="app-password",
+        DEFAULT_FROM_EMAIL="noreply@example.com",
+    )
+    def test_new_ticket_assignment_email_uses_notification_email(self):
+        technician = self._create_technician(
+            name="Assignment Mail Technician",
+            email="assignment-login@example.com",
+            notification_email="assignment-alerts@example.com",
+            is_available=True,
+        )
+
+        response = self.client.post("/api/tickets", self._create_ticket_payload(title="Payroll app failing"), format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["technician_id"], technician.id)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["assignment-alerts@example.com"])
+        self.assertIn("Payroll app failing", mail.outbox[0].body)
+        self.assertIn("Technician login email: assignment-login@example.com", mail.outbox[0].body)
+        self.assertIn("Assignment notification email: assignment-alerts@example.com", mail.outbox[0].body)
+
     def test_new_ticket_assigns_active_fallback_when_none_are_checked_in(self):
         technician = self._create_technician(
             name="Checked Out Technician",
@@ -873,6 +897,27 @@ class AiIntakeDraftTests(TestCase):
         self.assertNotIn("business impact", follow_up_text)
         self.assertNotIn("category", follow_up_text)
         self.assertNotIn("priority", follow_up_text)
+
+    @patch("core.views._call_ai_service_json")
+    def test_text_intake_returns_fallback_draft_when_ai_service_times_out(self, mock_ai):
+        mock_ai.side_effect = TimeoutError("AI service timed out.")
+
+        response = self.client.post(
+            "/api/ai-intake/draft",
+            {
+                "message": "The printer keeps disconnecting in finance.",
+                "user_id": self.employee.id,
+                "channel": "employee_text",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["intake_mode"], "manual")
+        self.assertEqual(response.data["confidence"], 0)
+        self.assertEqual(response.data["draft"]["title"], "The printer keeps disconnecting in finance.")
+        self.assertEqual(response.data["draft"]["branch"], self.employee.branch)
+        self.assertEqual(response.data["draft"]["department"], self.employee.department)
 
 
 class NotificationListTests(TestCase):

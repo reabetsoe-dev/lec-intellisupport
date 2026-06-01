@@ -578,7 +578,7 @@ export function TechnicianManagementPanel() {
           >
           <p className="md:col-span-2 text-xs text-[#4A6A96]">
             The login email receives the password setup link. The assignment notification email receives ticket
-            assignment alerts when the technician is away from the office.
+            assignment alerts whenever this technician is assigned a ticket.
           </p>
           <div className="space-y-2">
             <label htmlFor="technician-name" className="text-sm font-medium text-[#1E3A6D]">
@@ -614,7 +614,7 @@ export function TechnicianManagementPanel() {
               type="email"
               value={notificationEmail}
               onChange={(event) => setNotificationEmail(event.target.value)}
-              placeholder="Optional. Leave blank to use the login email."
+              placeholder="Ticket assignment alerts. Leave blank to use the login email."
             />
           </div>
 

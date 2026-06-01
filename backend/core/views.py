@@ -344,6 +344,10 @@ def _call_ai_service_json(path: str, payload: dict, *, timeout: int = 10) -> dic
         raise RuntimeError(f"AI service error: {error.code} {error_body}".strip()) from error
     except URLError as error:
         raise ConnectionError("AI service is unreachable. Ensure ai_services is running on port 8001.") from error
+    except TimeoutError as error:
+        raise ConnectionError("AI service timed out before returning a response.") from error
+    except OSError as error:
+        raise ConnectionError("AI service could not be reached.") from error
 
 
 def _fallback_intake_draft(
@@ -6699,7 +6703,7 @@ def ai_intake_draft_view(request):
             context_user,
             extra_context=extra_context,
         )
-    except (ConnectionError, RuntimeError):
+    except (ConnectionError, RuntimeError, TimeoutError):
         draft = _fallback_intake_draft(message, context_user, extra_context=extra_context)
         payload = {
             "draft": draft,
