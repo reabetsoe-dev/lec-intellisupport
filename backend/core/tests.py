@@ -17,6 +17,7 @@ from .models import (
     Ticket,
     TicketAssignmentHistory,
     User,
+    UserInvite,
     WhatsAppInboundMessage,
 )
 
@@ -716,6 +717,54 @@ class WhatsAppIntakeTests(TestCase):
         self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
         self.assertEqual(inbound.ticket_id, ticket.id)
         self.assertEqual(response.data["results"][0]["result"]["whatsapp_draft_source"], "fallback")
+
+
+class AccountInviteCreationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    @override_settings(EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="")
+    @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
+    def test_employee_creation_returns_setup_link_when_email_is_not_configured(self):
+        response = self.client.post(
+            "/api/employees",
+            {
+                "name": "Invite Employee",
+                "email": "invite.employee@example.com",
+                "phone_number": "+266 5888 0000",
+                "branch": "Mafeteng",
+                "department": "Finance",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(email="invite.employee@example.com")
+        self.assertTrue(user.must_change_password)
+        self.assertTrue(UserInvite.objects.filter(user=user, used_at__isnull=True).exists())
+        self.assertFalse(response.data["setup_invite_email_sent"])
+        self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
+
+    @override_settings(EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="")
+    @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
+    def test_technician_creation_returns_setup_link_when_email_is_not_configured(self):
+        response = self.client.post(
+            "/api/technicians",
+            {
+                "name": "Invite Technician",
+                "email": "invite.technician@example.com",
+                "skillset": Technician.SKILL_NETWORK,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(email="invite.technician@example.com")
+        self.assertEqual(user.role, User.ROLE_TECHNICIAN)
+        self.assertTrue(UserInvite.objects.filter(user=user, used_at__isnull=True).exists())
+        self.assertFalse(response.data["setup_invite_email_sent"])
+        self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
 
 
 class AiIntakeDraftTests(TestCase):

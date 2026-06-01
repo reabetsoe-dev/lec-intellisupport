@@ -41,6 +41,11 @@ const skillsetOptions = [
 const TECHNICIAN_BRANCH = "Maseru HQ"
 const TECHNICIAN_DEPARTMENT = "IT"
 
+type AccountInviteResult = {
+  setup_invite_url?: string
+  setup_invite_email_sent?: boolean
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "Not recorded yet"
@@ -52,6 +57,18 @@ function formatDateTime(value: string | null | undefined): string {
   }
 
   return parsed.toLocaleString()
+}
+
+function buildAccountCreatedMessage(roleLabel: string, result: AccountInviteResult): string {
+  if (result.setup_invite_email_sent) {
+    return `${roleLabel} created. Setup link sent to their email.`
+  }
+
+  if (result.setup_invite_url) {
+    return `${roleLabel} created. Email invite is not configured, so use this one-time setup link: ${result.setup_invite_url}`
+  }
+
+  return `${roleLabel} created.`
 }
 
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
@@ -335,7 +352,7 @@ export function TechnicianManagementPanel() {
 
     try {
       setSaving(true)
-      await createTechnician({
+      const createdTechnician = await createTechnician({
         name: name.trim(),
         email: email.trim(),
         notification_email: notificationEmail.trim(),
@@ -346,7 +363,7 @@ export function TechnicianManagementPanel() {
       setNotificationEmail("")
       setSkillset("")
       await loadTechnicians()
-      showResultDialog("success", "Technician created. Setup link sent to their email.")
+      showResultDialog("success", buildAccountCreatedMessage("Technician", createdTechnician))
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create technician.")
     } finally {
@@ -358,7 +375,7 @@ export function TechnicianManagementPanel() {
     event.preventDefault()
     try {
       setSavingEmployee(true)
-      await createEmployee({
+      const createdEmployee = await createEmployee({
         name: employeeName.trim(),
         email: employeeEmail.trim(),
         phone_number: employeePhoneNumber.trim(),
@@ -372,7 +389,7 @@ export function TechnicianManagementPanel() {
       setEmployeeBranch("")
       setEmployeeDepartment("")
       await loadEmployees()
-      showResultDialog("success", "Employee created. Setup link sent to their email.")
+      showResultDialog("success", buildAccountCreatedMessage("Employee", createdEmployee))
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {

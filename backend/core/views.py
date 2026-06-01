@@ -2567,7 +2567,7 @@ def _resolve_frontend_base_url() -> str:
         os.getenv("FRONTEND_APP_URL")
         or os.getenv("FRONTEND_BASE_URL")
         or os.getenv("APP_BASE_URL")
-        or "http://127.0.0.1:3000"
+        or "https://lec-intellisupport-frontend.onrender.com"
     ).rstrip("/")
 
 
@@ -2687,28 +2687,45 @@ def _send_password_reset_email(
     )
 
 
-def _create_password_setup_invite(user: User, role_label: str) -> None:
+def _create_password_setup_invite(user: User, role_label: str) -> dict:
     now = timezone.now()
     invite_ttl_hours = _env_int("PASSWORD_SETUP_INVITE_TTL_HOURS", 24, minimum=1)
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_one_time_token(raw_token)
+    expires_at = now + timedelta(hours=invite_ttl_hours)
 
     UserInvite.objects.filter(user=user, used_at__isnull=True, expires_at__gt=now).update(expires_at=now)
     UserInvite.objects.create(
         user=user,
         token_hash=token_hash,
-        expires_at=now + timedelta(hours=invite_ttl_hours),
+        expires_at=expires_at,
     )
 
     app_base_url = _resolve_frontend_base_url()
     invite_url = f"{app_base_url}/set-password?token={raw_token}"
-    _send_password_setup_invite_email(
-        recipient_name=user.name,
-        recipient_email=user.email,
-        role_label=role_label,
-        invite_url=invite_url,
-        expires_in_hours=invite_ttl_hours,
-    )
+    payload = {
+        "setup_invite_url": invite_url,
+        "setup_invite_expires_at": expires_at.isoformat(),
+        "setup_invite_email_sent": False,
+    }
+
+    try:
+        _send_password_setup_invite_email(
+            recipient_name=user.name,
+            recipient_email=user.email,
+            role_label=role_label,
+            invite_url=invite_url,
+            expires_in_hours=invite_ttl_hours,
+        )
+        payload["setup_invite_email_sent"] = True
+    except (RuntimeError, SMTPException, OSError) as error:
+        logger.warning(
+            "Password setup invite email was not sent for user_id=%s; returning setup link to admin: %s",
+            user.id,
+            error,
+        )
+
+    return payload
 
 
 def _create_password_reset_token(user: User, request) -> None:
@@ -4176,18 +4193,13 @@ def technicians_collection_view(request):
                 notification_email=notification_email,
                 is_available=is_available,
             )
-            _create_password_setup_invite(user, "Technician")
+            invite_payload = _create_password_setup_invite(user, "Technician")
     except IntegrityError:
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
-    except RuntimeError as email_config_error:
-        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    except (SMTPException, OSError):
-        return Response(
-            {"message": "Failed to send technician setup invite email. Account was not created."},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
 
-    return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
+    payload = _technician_to_dict(technician)
+    payload.update(invite_payload)
+    return Response(payload, status=status.HTTP_201_CREATED)
 
 
 @api_view(["PATCH", "DELETE"])
@@ -4313,18 +4325,13 @@ def employees_collection_view(request):
                 role=User.ROLE_EMPLOYEE,
                 is_active=is_active,
             )
-            _create_password_setup_invite(user, "Employee")
+            invite_payload = _create_password_setup_invite(user, "Employee")
     except IntegrityError:
         return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
-    except RuntimeError as email_config_error:
-        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    except (SMTPException, OSError):
-        return Response(
-            {"message": "Failed to send employee setup invite email. Account was not created."},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
 
-    return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
+    payload = _user_to_dict(user)
+    payload.update(invite_payload)
+    return Response(payload, status=status.HTTP_201_CREATED)
 
 
 @api_view(["PATCH", "DELETE"])

@@ -166,6 +166,9 @@ export type Technician = {
   availability_updated_at?: string | null
   last_check_in_at?: string | null
   last_check_out_at?: string | null
+  setup_invite_url?: string
+  setup_invite_expires_at?: string
+  setup_invite_email_sent?: boolean
 }
 
 export type TechnicianCheckpointAction = "check_in" | "check_out"
@@ -190,6 +193,9 @@ export type Employee = {
   is_active: boolean
   created_at: string
   updated_at: string
+  setup_invite_url?: string
+  setup_invite_expires_at?: string
+  setup_invite_email_sent?: boolean
 }
 
 export type CountDatum = {
