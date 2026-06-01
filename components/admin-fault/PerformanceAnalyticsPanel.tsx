@@ -195,7 +195,6 @@ export function PerformanceAnalyticsPanel() {
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const statusChartRef = useRef<HTMLDivElement>(null)
   const trendChartRef = useRef<HTMLDivElement>(null)
-  const seasonChartRef = useRef<HTMLDivElement>(null)
   const workloadChartRef = useRef<HTMLDivElement>(null)
   const technicianTimeChartRef = useRef<HTMLDivElement>(null)
 
@@ -233,7 +232,6 @@ export function PerformanceAnalyticsPanel() {
   )
   const technicianRecentActivity = metrics?.technician_recent_activity ?? []
   const createdVsResolved = metrics?.created_vs_resolved ?? []
-  const problemsBySeason = metrics?.by_season ?? []
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
   const technicianCheckIns = metrics?.kpis.technician_check_ins ?? 0
   const technicianCheckOuts = metrics?.kpis.technician_check_outs ?? 0
@@ -542,32 +540,6 @@ export function PerformanceAnalyticsPanel() {
                   <Line type="monotone" dataKey="created" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
                   <Line type="monotone" dataKey="resolved" stroke="#16a34a" strokeWidth={3} dot={{ r: 4 }} />
                 </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Problems By Season</CardTitle>
-            <ChartActions
-              title="problems_by_season_chart"
-              csvRows={problemsBySeason.map((item) => ({ season: item.name, problems: item.count }))}
-              containerRef={seasonChartRef}
-            />
-          </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={seasonChartRef} className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={problemsBySeason}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#7c3aed" radius={[8, 8, 0, 0]}>
-                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
-                  </Bar>
-                </BarChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
