@@ -260,10 +260,6 @@ export default function EmployeeReportPage() {
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Text Intake</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
-          <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
-            Tell the system what happened. A draft preview will open before submission.
-          </div>
-
           <div className="space-y-2">
             <label htmlFor="fault-intake-message" className="text-sm font-medium text-[#0B1F3A]">
               Describe the issue
