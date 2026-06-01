@@ -46,6 +46,11 @@ type AccountInviteResult = {
   setup_invite_email_sent?: boolean
 }
 
+type AccountCreatedFeedback = {
+  message: string
+  setupLink?: string
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "Not recorded yet"
@@ -59,16 +64,19 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.toLocaleString()
 }
 
-function buildAccountCreatedMessage(roleLabel: string, result: AccountInviteResult): string {
+function buildAccountCreatedFeedback(roleLabel: string, result: AccountInviteResult): AccountCreatedFeedback {
   if (result.setup_invite_email_sent) {
-    return `${roleLabel} created. Setup link sent to their email.`
+    return { message: `${roleLabel} created. Setup link sent to their email.` }
   }
 
   if (result.setup_invite_url) {
-    return `${roleLabel} created. Email invite is not configured, so use this one-time setup link: ${result.setup_invite_url}`
+    return {
+      message: `${roleLabel} created. Email invite is not configured, so open the one-time setup link now to set the password.`,
+      setupLink: result.setup_invite_url,
+    }
   }
 
-  return `${roleLabel} created.`
+  return { message: `${roleLabel} created.` }
 }
 
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
@@ -116,10 +124,12 @@ export function TechnicianManagementPanel() {
     open: boolean
     status: "success" | "error"
     message: string
+    setupLink?: string
   }>({
     open: false,
     status: "success",
     message: "",
+    setupLink: undefined,
   })
   const [pendingAction, setPendingAction] = useState<
     | {
@@ -131,12 +141,21 @@ export function TechnicianManagementPanel() {
     | null
   >(null)
 
-  const showResultDialog = (status: "success" | "error", message: string) => {
+  const showResultDialog = (status: "success" | "error", message: string, setupLink?: string) => {
     setResultDialog({
       open: true,
       status,
       message,
+      setupLink,
     })
+  }
+
+  const handleOpenSetupLink = () => {
+    if (!resultDialog.setupLink) {
+      return
+    }
+
+    window.open(resultDialog.setupLink, "_blank", "noopener,noreferrer")
   }
 
   const loadTechnicians = async () => {
@@ -363,7 +382,8 @@ export function TechnicianManagementPanel() {
       setNotificationEmail("")
       setSkillset("")
       await loadTechnicians()
-      showResultDialog("success", buildAccountCreatedMessage("Technician", createdTechnician))
+      const feedback = buildAccountCreatedFeedback("Technician", createdTechnician)
+      showResultDialog("success", feedback.message, feedback.setupLink)
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create technician.")
     } finally {
@@ -389,7 +409,8 @@ export function TechnicianManagementPanel() {
       setEmployeeBranch("")
       setEmployeeDepartment("")
       await loadEmployees()
-      showResultDialog("success", buildAccountCreatedMessage("Employee", createdEmployee))
+      const feedback = buildAccountCreatedFeedback("Employee", createdEmployee)
+      showResultDialog("success", feedback.message, feedback.setupLink)
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {
@@ -859,6 +880,9 @@ export function TechnicianManagementPanel() {
         status={resultDialog.status}
         message={resultDialog.message}
         onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+        okLabel={resultDialog.setupLink ? "Close" : "OK"}
+        secondaryActionLabel={resultDialog.setupLink ? "Open Setup Link" : undefined}
+        onSecondaryAction={resultDialog.setupLink ? handleOpenSetupLink : undefined}
       />
 
       <Dialog open={Boolean(editingEmployee)} onOpenChange={(open) => {
