@@ -269,7 +269,7 @@ export default function EmployeeReportPage() {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               className="min-h-28 w-full rounded-lg border border-[#0072CE]/30 px-3 py-2 text-sm text-[#0B1F3A]"
-              placeholder="Example: Our printer on the finance floor disconnects every afternoon and the team cannot print invoices."
+              placeholder="Example: printer cannot print"
             />
           </div>
 
