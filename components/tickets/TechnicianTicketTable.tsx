@@ -1,8 +1,18 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Filter, LoaderCircle, MoreHorizontal } from "lucide-react"
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Hourglass,
+  ListFilter,
+  LoaderCircle,
+  MoreHorizontal,
+  RefreshCw,
+  UserRound,
+} from "lucide-react"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
@@ -61,20 +71,22 @@ type TicketRow = {
   canControlWorkflow: boolean
 }
 
+type SummaryMetric = {
+  key: TicketViewFilter | "urgent"
+  label: string
+  caption: string
+  value: number
+  icon: typeof Hourglass
+  className: string
+  iconClassName: string
+}
+
 const workflowTextStyles: Record<WorkflowState, string> = {
   "Awaiting Start": "text-[#9A5B00]",
   "In Progress": "text-[#1F5E92]",
   "Waiting for Employee": "text-[#9A5B00]",
   Solved: "text-[#1E7A45]",
   Other: "text-[#475569]",
-}
-
-const workflowRowStyles: Record<WorkflowState, string> = {
-  "Awaiting Start": "border-l-[#D0891B]",
-  "In Progress": "border-l-[#2F7FC9]",
-  "Waiting for Employee": "border-l-[#E39A3A]",
-  Solved: "border-l-[#3EA56D]",
-  Other: "border-l-[#CBD5E1]",
 }
 
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
@@ -123,11 +135,59 @@ function formatDateLabel(value?: string | null): string {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
 }
 
+function formatTimeLabel(value?: string | null): string {
+  if (!value) {
+    return "N/A"
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "N/A"
+  }
+  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+}
+
 function formatDateTime(value?: string | null): string {
   if (!value) {
     return "N/A"
   }
   return new Date(value).toLocaleString()
+}
+
+function getTicketChannelLabel(ticket: Ticket): string {
+  const description = String(ticket.description || "").toLowerCase()
+  if (description.includes("intake channel: whatsapp")) {
+    return "WhatsApp"
+  }
+  if (ticket.source === "qr_asset_troubleshooting" || ticket.source === "qr_asset_manual_report") {
+    return "QR Asset"
+  }
+  return ticket.source === "manual" ? "Manual" : "Ticket"
+}
+
+function getWorkflowBadgeClassName(workflowState: WorkflowState): string {
+  if (workflowState === "Awaiting Start") {
+    return "border-[#F1C979] bg-[#FFF8E8] text-[#9A5B00]"
+  }
+  if (workflowState === "In Progress") {
+    return "border-[#B9D9F7] bg-[#EFF7FF] text-[#1F5E92]"
+  }
+  if (workflowState === "Waiting for Employee") {
+    return "border-[#F4C38B] bg-[#FFF4E8] text-[#9A4E0A]"
+  }
+  if (workflowState === "Solved") {
+    return "border-[#BDE3CC] bg-[#F0FBF5] text-[#1E7A45]"
+  }
+  return "border-[#CBD5E1] bg-[#F8FAFC] text-[#475569]"
+}
+
+function getPriorityIndicatorClassName(priority: string): string {
+  if (priority === "Critical" || priority === "High") {
+    return "text-[#D71920]"
+  }
+  if (priority === "Medium") {
+    return "text-[#D98912]"
+  }
+  return "text-[#2F7FC9]"
 }
 
 function isCheckedInTechnician(technician: Technician): boolean {
@@ -451,8 +511,6 @@ export function TechnicianTicketTable() {
     return allRows.filter((row) => row.workflowState === "Solved")
   }, [activeFilter, allRows])
 
-  const activeFilterLabel = filterOptions.find((option) => option.key === activeFilter)?.label ?? "All Tickets"
-
   const toggleExpandedTicket = (ticketId: number) => {
     setExpandedTicketIds((currentIds) => {
       const nextIds = new Set(currentIds)
@@ -565,227 +623,384 @@ export function TechnicianTicketTable() {
     }
   }
 
+  const summaryMetrics: SummaryMetric[] = [
+    {
+      key: "awaiting_start",
+      label: "Awaiting Start",
+      caption: "Needs attention",
+      value: summary.awaitingStart,
+      icon: Hourglass,
+      className: "border-[#F3DFB4] bg-[#FFF8E8]",
+      iconClassName: "bg-[#FFE8AC] text-[#B36A00]",
+    },
+    {
+      key: "in_progress",
+      label: "In Progress",
+      caption: "Currently open",
+      value: summary.inProgress,
+      icon: RefreshCw,
+      className: "border-[#C8DEF5] bg-[#F0F7FF]",
+      iconClassName: "bg-[#DCEEFF] text-[#0A63B8]",
+    },
+    {
+      key: "waiting_employee",
+      label: "Waiting for Employee",
+      caption: "Customer response",
+      value: summary.waitingEmployee,
+      icon: UserRound,
+      className: "border-[#F0D0B6] bg-[#FFF4EC]",
+      iconClassName: "bg-[#FFE1CF] text-[#C55F1A]",
+    },
+    {
+      key: "solved",
+      label: "Solved",
+      caption: "Completed tickets",
+      value: summary.solved,
+      icon: CheckCircle2,
+      className: "border-[#BFE3CE] bg-[#F1FBF5]",
+      iconClassName: "bg-[#DFF5E8] text-[#1E7A45]",
+    },
+    {
+      key: "urgent",
+      label: "Urgent",
+      caption: "High priority issues",
+      value: summary.urgent,
+      icon: AlertTriangle,
+      className: "border-[#F0C6C6] bg-[#FFF1F1]",
+      iconClassName: "bg-[#FFE0E0] text-[#D71920]",
+    },
+  ]
+
   return (
-    <Card className="rounded-lg border border-[#B7CBE0] bg-[#F6FAFD] py-0 shadow-sm">
-      <CardHeader className="space-y-3 border-b border-[#D5E2EF] bg-white px-4 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded border border-[#E6C589] bg-[#FFF6E5] px-2 py-1 text-xs font-semibold text-[#8A5A0D]">
-            Awaiting Start {summary.awaitingStart}
-          </span>
-          <span className="inline-flex items-center rounded border border-[#9CC4EA] bg-[#EAF4FF] px-2 py-1 text-xs font-semibold text-[#1F4E7A]">
-            In Progress {summary.inProgress}
-          </span>
-          <span className="inline-flex items-center rounded border border-[#F2C27F] bg-[#FFF4E6] px-2 py-1 text-xs font-semibold text-[#8A4B08]">
-            Waiting for Employee {summary.waitingEmployee}
-          </span>
-          <span className="inline-flex items-center rounded border border-[#98D4B7] bg-[#EAF9F0] px-2 py-1 text-xs font-semibold text-[#1E7A45]">
-            Solved {summary.solved}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded border border-[#E3A5A5] bg-[#FFF1F1] px-2 py-1 text-xs font-semibold text-[#9F2D2D]">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Urgent {summary.urgent}
-          </span>
-        </div>
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {summaryMetrics.map((metric) => {
+          const Icon = metric.icon
+          const targetFilter = metric.key === "urgent" ? "all" : metric.key
+          return (
+            <button
+              key={metric.key}
+              type="button"
+              className={cn(
+                "flex min-h-[5.5rem] items-center gap-3 rounded-md border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                metric.className,
+                activeFilter === targetFilter && metric.key !== "urgent" && "ring-2 ring-[#0A63B8]/25"
+              )}
+              onClick={() => setActiveFilter(targetFilter)}
+            >
+              <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-md", metric.iconClassName)}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xl font-bold leading-6 text-[#0B1F3A]">{metric.value}</span>
+                <span className="block text-xs font-semibold text-[#1E3A6D]">{metric.label}</span>
+                <span className="block truncate text-[11px] text-[#5D7692]">{metric.caption}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-[#3F6288]">
-            One unified operational queue shows what needs action, what is blocked, and what is completed.
-          </p>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
-                <Filter className="h-4 w-4" />
-                Filter: {activeFilterLabel}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52 border-[#93AECA] bg-white">
-              {filterOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.key}
-                  className={cn(
-                    "text-[#20466D]",
-                    activeFilter === option.key && "bg-[#E8F1FB] font-semibold text-[#173F66]"
-                  )}
-                  onClick={() => setActiveFilter(option.key)}
-                >
-                  {option.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        {summary.awaitingStart > 0 || summary.urgent > 0 ? (
-          <div className="border-b border-[#E8D7B2] bg-[#FFFBF2] px-4 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-[#9F5F00]" />
-                <p className="min-w-0 text-sm font-semibold text-[#744A08]">
-                  {summary.awaitingStart} tickets awaiting start work
-                  {summary.urgent > 0 ? `, ${summary.urgent} SLA urgent` : ""}
+      <Card className="overflow-hidden rounded-lg border border-[#B7CBE0] bg-white py-0 shadow-sm">
+        <CardHeader className="border-b border-[#D5E2EF] bg-white px-4 py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[#C9D9EA] bg-[#F8FBFF] text-[#20466D]">
+                <ListFilter className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-[#102D4A]">Operational Ticket Queue</h2>
+                <p className="mt-0.5 text-xs text-[#5D7692]">
+                  One unified operational queue shows what needs action, what is blocked, and what is completed.
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 border-[#D3A553] bg-white text-[#7A4E08]"
-                onClick={() => setActiveFilter(summary.awaitingStart > 0 ? "awaiting_start" : "all")}
-              >
-                Review
-              </Button>
             </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="outline" className="border-[#C7D7E8] bg-white text-[#20466D]">
+                  <ListFilter className="h-4 w-4" />
+                  Filters
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52 border-[#93AECA] bg-white">
+                {filterOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.key}
+                    className={cn(
+                      "text-[#20466D]",
+                      activeFilter === option.key && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                    )}
+                    onClick={() => setActiveFilter(option.key)}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        ) : null}
+        </CardHeader>
 
-        <div className="space-y-3 p-3">
-          {loading ? (
-            <div className="px-6 py-8 text-center text-sm text-slate-500">Loading assigned tickets...</div>
-          ) : loadError ? (
-            <div className="px-6 py-8 text-center text-sm text-rose-600">{loadError}</div>
-          ) : filteredRows.length === 0 ? (
-            <div className="px-6 py-8 text-center text-sm text-slate-500">No tickets found for this filter.</div>
-          ) : (
-            filteredRows.map((ticket) => {
-              const expanded = expandedTicketIds.has(ticket.id)
-              const metadata = compactMetadata(ticket.raw)
-              const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
-              const primaryLabel = primaryIsStart ? "Start Work" : ticket.nextAction.label
-
-              return (
-                <article
-                  key={ticket.id}
-                  className={cn(
-                    "rounded-lg border border-[#DDE8F3] border-l-4 bg-white px-4 py-4 shadow-sm transition-colors hover:border-[#BBD0E5] hover:bg-[#FBFDFF]",
-                    workflowRowStyles[ticket.workflowState],
-                    ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "ring-1 ring-inset ring-[#F2C6C6]"
-                  )}
+        <CardContent className="p-0">
+          {summary.awaitingStart > 0 || summary.urgent > 0 ? (
+            <div className="border-b border-[#E8D7B2] bg-[#FFFBF2] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-[#9F5F00]" />
+                  <p className="min-w-0 text-sm font-semibold text-[#744A08]">
+                    {summary.awaitingStart} tickets awaiting start work
+                    {summary.urgent > 0 ? `, ${summary.urgent} SLA urgent` : ""}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 border-[#D3A553] bg-white text-[#7A4E08]"
+                  onClick={() => setActiveFilter(summary.awaitingStart > 0 ? "awaiting_start" : "all")}
                 >
-                  <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                    <div className="min-w-0 space-y-2.5">
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#607C98]">
-                        <span className="font-semibold text-[#2A5D8D]">{ticket.trackingId}</span>
-                        <Link
-                          href={`/technician/tickets/${ticket.id}`}
-                          className="min-w-0 truncate text-base font-semibold text-[#173A5D] underline-offset-2 hover:underline"
-                          title={ticket.title}
+                  Review
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="overflow-x-auto">
+            <table className="min-w-[1040px] w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-[#071528] text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-white">
+                  <th className="w-10 px-4 py-3"></th>
+                  <th className="px-4 py-3">Ticket</th>
+                  <th className="min-w-[260px] px-4 py-3">Subject</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Priority</th>
+                  <th className="px-4 py-3">Branch</th>
+                  <th className="px-4 py-3">Reporter</th>
+                  <th className="px-4 py-3">Updated</th>
+                  <th className="px-4 py-3">SLA</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E1EAF4]">
+                {loading ? (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-8 text-center text-sm text-slate-500">
+                      Loading assigned tickets...
+                    </td>
+                  </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-8 text-center text-sm text-rose-600">
+                      {loadError}
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-8 text-center text-sm text-slate-500">
+                      No tickets found for this filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((ticket) => {
+                    const expanded = expandedTicketIds.has(ticket.id)
+                    const metadata = compactMetadata(ticket.raw)
+                    const primaryIsStart = ticket.workflowState === "Awaiting Start" && ticket.canControlWorkflow
+                    const primaryLabel = primaryIsStart ? "Start Work" : ticket.nextAction.label
+
+                    return (
+                      <Fragment key={ticket.id}>
+                        <tr
+                          className={cn(
+                            "bg-white align-top transition-colors hover:bg-[#F8FBFF]",
+                            ticket.sla.isUrgent && ticket.workflowState !== "Solved" && "bg-[#FFF9F9]"
+                          )}
                         >
-                          {ticket.title}
-                        </Link>
-                        <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#9AAFC4]" />
-                        <span className="min-w-0 truncate" title={ticket.branch}>{ticket.branch}</span>
-                        <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#9AAFC4]" />
-                        <span>Updated {formatDateLabel(ticket.updated)}</span>
-                      </div>
-
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[#4A6887]">
-                        <span className="min-w-0 max-w-[14rem] truncate" title={ticket.reporter}>
-                          Reporter: <span className="font-medium text-[#1F4469]">{ticket.reporter}</span>
-                        </span>
-                        <span className={cn("inline-flex items-center gap-1 font-semibold", ticket.sla.isUrgent ? "text-[#9F2D2D]" : "text-[#24517A]")}>
-                          <span className={cn("h-2 w-2 rounded-full", ticket.sla.isUrgent ? "bg-[#D94848]" : "bg-[#E2A22A]")} />
-                          {ticket.sla.label}
-                        </span>
-                        <span className={cn("font-semibold", workflowTextStyles[ticket.workflowState])}>{ticket.workflowState}</span>
-                        <span className={cn("text-[11px] font-semibold", ticket.priority === "Critical" ? "text-[#A33939]" : ticket.priority === "High" ? "text-[#9A6A00]" : "text-[#2E6092]")}>
-                          {ticket.priority}
-                        </span>
-                      </div>
-
-                      <p className="line-clamp-2 max-w-5xl text-sm leading-5 text-[#4A6887]" title={ticket.description}>
-                        {ticket.description}
-                      </p>
-                      {expanded ? (
-                        <div className="flex flex-wrap gap-2 pt-1 text-xs text-[#4F6E8D]">
-                          {metadata.length > 0 ? metadata.map((item) => (
-                            <span key={item} className="rounded border border-[#D7E4F0] bg-[#F8FBFF] px-2 py-1">
-                              {item}
+                          <td className="px-4 py-4">
+                            <button
+                              type="button"
+                              className="flex h-6 w-6 items-center justify-center rounded border border-[#C7D7E8] text-[#315A80] hover:bg-[#F0F6FC]"
+                              onClick={() => toggleExpandedTicket(ticket.id)}
+                              aria-label={expanded ? `Collapse ${ticket.trackingId}` : `Expand ${ticket.trackingId}`}
+                            >
+                              <span className="text-sm leading-none">{expanded ? "-" : "+"}</span>
+                            </button>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="space-y-1">
+                              <Link
+                                href={`/technician/tickets/${ticket.id}`}
+                                className="font-semibold text-[#0A63B8] hover:underline"
+                              >
+                                {ticket.trackingId}
+                              </Link>
+                              <div className="flex items-center gap-1 text-[11px] text-[#4A7D5C]">
+                                <span className="h-2 w-2 rounded-full bg-[#29A56A]" />
+                                {getTicketChannelLabel(ticket.raw)}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="space-y-1">
+                              <Link
+                                href={`/technician/tickets/${ticket.id}`}
+                                className="line-clamp-1 font-semibold text-[#102D4A] hover:underline"
+                                title={ticket.title}
+                              >
+                                {ticket.title}
+                              </Link>
+                              <span className="inline-flex rounded bg-[#DCEEFF] px-2 py-0.5 text-[11px] font-semibold text-[#0A63B8]">
+                                {ticket.raw.category || "ICT"}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold",
+                                getWorkflowBadgeClassName(ticket.workflowState)
+                              )}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                              {ticket.workflowState}
                             </span>
-                          )) : <span>No additional metadata.</span>}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="flex shrink-0 items-start gap-2 lg:justify-end">
-                      {primaryIsStart ? (
-                        <Button
-                          size="sm"
-                          type="button"
-                          className="h-9 min-w-[7.5rem] bg-[#0A63B8] px-3 text-white hover:bg-[#084C8C]"
-                          disabled={busyTicketId === ticket.id}
-                          onClick={() => void handleStartWork(ticket)}
-                        >
-                          {busyTicketId === ticket.id ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          {primaryLabel}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 min-w-[7.5rem] border-[#93AECA] bg-white px-3 text-[#20466D] hover:bg-[#F3F8FD]"
-                          asChild
-                        >
-                          <Link href={`/technician/tickets/${ticket.id}`}>{primaryLabel}</Link>
-                        </Button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="h-9 w-9 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
-                            aria-label={`More actions for ${ticket.trackingId}`}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="z-[70] w-48 border-[#B8CDE1] bg-white">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/technician/tickets/${ticket.id}`}>View Ticket</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toggleExpandedTicket(ticket.id)}>
-                            {expanded ? "Hide Details" : "Expand Details"}
-                          </DropdownMenuItem>
-                          {ticket.raw.latest_escalation_comment ? (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                setCommentPreview({
-                                  ticketId: ticket.id,
-                                  title: ticket.title,
-                                  comment: formatEscalationPreviewText(
-                                    ticket.raw.latest_escalation_comment ?? "",
-                                    ticket.raw.latest_escalation_by
-                                  ),
-                                  by: ticket.raw.latest_escalation_by,
-                                  at: ticket.raw.latest_escalation_at,
-                                })
-                              }
-                            >
-                              View Escalation
-                            </DropdownMenuItem>
-                          ) : null}
-                          {ticket.canControlWorkflow ? (
-                            <DropdownMenuItem
-                              disabled={ticket.workflowState === "Waiting for Employee" || ticket.workflowState === "Solved"}
-                              onClick={() => void openReassignDialog(ticket)}
-                            >
-                              Transfer Ticket
-                            </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                </article>
-              )
-            })
-          )}
-        </div>
-      </CardContent>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", getPriorityIndicatorClassName(ticket.priority))}>
+                              <span className="flex h-4 w-4 items-end gap-0.5">
+                                <span className="h-1.5 w-1 rounded-sm bg-current" />
+                                <span className="h-2.5 w-1 rounded-sm bg-current" />
+                                <span className="h-4 w-1 rounded-sm bg-current" />
+                              </span>
+                              {ticket.priority}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-xs font-medium text-[#36577E]">{ticket.branch}</td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#5C6BE8] text-xs font-semibold text-white">
+                                {ticket.reporter.charAt(0).toUpperCase()}
+                              </span>
+                              <span className="max-w-[9rem] truncate text-xs font-medium text-[#1F3654]" title={ticket.reporter}>
+                                {ticket.reporter}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-xs text-[#36577E]">
+                            <div className="flex items-start gap-1.5">
+                              <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7890AA]" />
+                              <span>
+                                <span className="block">{formatDateLabel(ticket.updated)}</span>
+                                <span className="block">{formatTimeLabel(ticket.updated)}</span>
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={cn("font-semibold", ticket.sla.isUrgent ? "text-[#D71920]" : "text-[#24517A]")}>
+                              {ticket.sla.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex justify-end gap-2">
+                              {primaryIsStart ? (
+                                <Button
+                                  size="sm"
+                                  type="button"
+                                  className="h-8 min-w-[6.5rem] bg-[#0A63B8] px-3 text-white hover:bg-[#084C8C]"
+                                  disabled={busyTicketId === ticket.id}
+                                  onClick={() => void handleStartWork(ticket)}
+                                >
+                                  {busyTicketId === ticket.id ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  {primaryLabel}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 min-w-[6.5rem] border-[#93AECA] bg-white px-3 text-[#20466D] hover:bg-[#F3F8FD]"
+                                  asChild
+                                >
+                                  <Link href={`/technician/tickets/${ticket.id}`}>{primaryLabel}</Link>
+                                </Button>
+                              )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 border-[#C4D4E5] bg-white text-[#315A80] hover:bg-[#F3F8FD]"
+                                    aria-label={`More actions for ${ticket.trackingId}`}
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="z-[70] w-48 border-[#B8CDE1] bg-white">
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/technician/tickets/${ticket.id}`}>View Ticket</Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => toggleExpandedTicket(ticket.id)}>
+                                    {expanded ? "Hide Details" : "Expand Details"}
+                                  </DropdownMenuItem>
+                                  {ticket.workflowState === "In Progress" && ticket.canControlWorkflow ? (
+                                    <DropdownMenuItem onClick={() => setSolvedTicket(ticket)}>
+                                      Mark Solved
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {ticket.raw.latest_escalation_comment ? (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setCommentPreview({
+                                          ticketId: ticket.id,
+                                          title: ticket.title,
+                                          comment: formatEscalationPreviewText(
+                                            ticket.raw.latest_escalation_comment ?? "",
+                                            ticket.raw.latest_escalation_by
+                                          ),
+                                          by: ticket.raw.latest_escalation_by,
+                                          at: ticket.raw.latest_escalation_at,
+                                        })
+                                      }
+                                    >
+                                      View Escalation
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {ticket.canControlWorkflow ? (
+                                    <DropdownMenuItem
+                                      disabled={ticket.workflowState === "Waiting for Employee" || ticket.workflowState === "Solved"}
+                                      onClick={() => void openReassignDialog(ticket)}
+                                    >
+                                      Transfer Ticket
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                        {expanded ? (
+                          <tr key={`${ticket.id}-expanded`} className="bg-[#F8FBFF]">
+                            <td className="px-4 py-3"></td>
+                            <td colSpan={9} className="px-4 py-3">
+                              <p className="max-w-5xl text-sm leading-5 text-[#4A6887]">{ticket.description}</p>
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#4F6E8D]">
+                                {metadata.length > 0 ? metadata.map((item) => (
+                                  <span key={item} className="rounded border border-[#D7E4F0] bg-white px-2 py-1">
+                                    {item}
+                                  </span>
+                                )) : <span>No additional metadata.</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={Boolean(commentPreview)} onOpenChange={(open) => (!open ? setCommentPreview(null) : undefined)}>
         <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
@@ -918,6 +1133,6 @@ export function TechnicianTicketTable() {
         message={actionDialog.message}
         onOk={() => setActionDialog((current) => ({ ...current, open: false }))}
       />
-    </Card>
+    </>
   )
 }
