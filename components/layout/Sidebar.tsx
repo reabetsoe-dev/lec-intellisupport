@@ -128,7 +128,7 @@ export function Sidebar({ user }: SidebarProps) {
           </p>
         </div>
 
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6 md:px-4">
+        <nav className="scrollbar-none flex-1 space-y-6 overflow-y-auto px-3 py-6 md:px-4">
           <div>
             <p className="hidden px-3 text-xs font-semibold tracking-[0.08em] text-[#7FB3E8] uppercase md:block">
               {section.label}
