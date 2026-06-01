@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { forwardToBackend } from "../../technician-access/_shared"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
 type ParsedAssetFaultReportInput = {
   assetId: number | null
   assetCode: string
@@ -19,14 +24,6 @@ type ParsedAssetFaultReportInput = {
   troubleshootingStepsCompleted: unknown[]
   troubleshootingResult: "failed" | "skipped" | "not_attempted"
   source: "qr_asset_troubleshooting" | "qr_asset_manual_report" | "manual"
-}
-
-function resolveBackendBaseUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_BACKEND_URL?.trim()
-  if (configured) {
-    return configured.replace(/\/+$/g, "")
-  }
-  return "http://127.0.0.1:8000"
 }
 
 function toTrimmedString(value: FormDataEntryValue | unknown): string {
@@ -244,7 +241,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: validationMessage }, { status: 400 })
   }
 
-  const backendBaseUrl = resolveBackendBaseUrl()
   const backendPayload = {
     title: parsedInput.title,
     description: buildComposedDescription(parsedInput),
@@ -266,9 +262,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const backendResponse = await fetch(`${backendBaseUrl}/api/tickets`, {
+    const backendResponse = await forwardToBackend("/api/tickets", {
       method: "POST",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(backendPayload),

@@ -18,6 +18,11 @@ const FORWARDED_REQUEST_HEADERS = new Set([
   "x-lec-session-user-id",
 ])
 
+const BACKEND_TRAILING_SLASH_PATHS = [
+  /^\/api\/assets\/[^/]+\/qr-flow$/,
+  /^\/api\/troubleshooting\/resolutions$/,
+]
+
 function buildForwardHeaders(requestHeaders: Headers): Headers {
   const headers = new Headers()
 
@@ -62,7 +67,11 @@ async function proxyBackendRequest(request: NextRequest, context: RouteContext):
   }
 
   const normalizedSegments = path[0] === "api" ? path : ["api", ...path]
-  const backendPath = `/${normalizedSegments.join("/")}${request.nextUrl.search}`
+  const normalizedPath = `/${normalizedSegments.join("/")}`
+  const backendPathWithoutQuery = BACKEND_TRAILING_SLASH_PATHS.some((pattern) => pattern.test(normalizedPath))
+    ? `${normalizedPath}/`
+    : normalizedPath
+  const backendPath = `${backendPathWithoutQuery}${request.nextUrl.search}`
 
   try {
     const response = await forwardToBackend(backendPath, await buildForwardInit(request))
