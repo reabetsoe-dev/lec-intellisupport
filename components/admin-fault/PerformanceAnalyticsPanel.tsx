@@ -1,7 +1,24 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { CalendarDays, Download, Filter } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  CalendarDays,
+  CheckCircle2,
+  CircleUserRound,
+  ClipboardList,
+  Clock3,
+  Download,
+  Filter,
+  LogIn,
+  LogOut,
+  QrCode,
+  UserRound,
+  Wrench,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -29,6 +46,7 @@ import {
   type PerformanceRange,
   type TechnicianActivitySummaryDatum,
 } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 const chartPalette = ["#0ea5e9", "#f97316", "#22c55e", "#e11d48", "#a855f7", "#14b8a6", "#facc15"]
 
@@ -43,6 +61,29 @@ const quickRanges: Array<{ value: PerformanceRange; label: string }> = [
 ]
 
 type CsvRow = Record<string, string | number>
+type KpiTone = "sky" | "amber" | "rose" | "violet" | "cyan" | "teal" | "purple" | "orange" | "emerald" | "slate"
+
+type KpiCardItem = {
+  label: string
+  value: number
+  comparisonValue?: number
+  description?: string
+  icon: LucideIcon
+  tone: KpiTone
+}
+
+const kpiToneStyles: Record<KpiTone, { bubble: string; icon: string }> = {
+  sky: { bubble: "bg-sky-50", icon: "text-sky-600" },
+  amber: { bubble: "bg-amber-50", icon: "text-amber-600" },
+  rose: { bubble: "bg-rose-50", icon: "text-rose-600" },
+  violet: { bubble: "bg-violet-50", icon: "text-violet-600" },
+  cyan: { bubble: "bg-cyan-50", icon: "text-cyan-600" },
+  teal: { bubble: "bg-teal-50", icon: "text-teal-600" },
+  purple: { bubble: "bg-purple-50", icon: "text-purple-600" },
+  orange: { bubble: "bg-orange-50", icon: "text-orange-600" },
+  emerald: { bubble: "bg-emerald-50", icon: "text-emerald-600" },
+  slate: { bubble: "bg-slate-100", icon: "text-slate-600" },
+}
 
 function downloadCsv(filename: string, rows: CsvRow[]) {
   if (rows.length === 0) {
@@ -151,6 +192,57 @@ function pieLabelRenderer({ name, value }: { name?: string; value?: number }) {
   return `${name ?? ""}: ${value ?? 0}`
 }
 
+function formatCount(value: number | null | undefined): string {
+  return new Intl.NumberFormat("en-US").format(value ?? 0)
+}
+
+function calculateTrendPercent(current: number, comparison: number | undefined): number {
+  if (typeof comparison !== "number" || !Number.isFinite(comparison)) {
+    return 0
+  }
+  if (comparison <= 0) {
+    return current > 0 ? 100 : 0
+  }
+
+  return Math.round(((current - comparison) / comparison) * 100)
+}
+
+function KpiCard({ item }: { item: KpiCardItem }) {
+  const Icon = item.icon
+  const tone = kpiToneStyles[item.tone]
+  const trendPercent = calculateTrendPercent(item.value, item.comparisonValue)
+  const trendIsNegative = trendPercent < 0
+  const TrendIcon = trendIsNegative ? ArrowDown : ArrowUp
+
+  return (
+    <Card className="min-h-[112px] rounded-md border-[#E2EAF4] bg-white py-0 shadow-[0_10px_26px_-22px_rgba(15,23,42,0.65)]">
+      <CardContent className="flex h-full flex-col justify-between px-4 py-3">
+        <div className="flex items-start gap-3">
+          <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full", tone.bubble)}>
+            <Icon className={cn("h-5 w-5", tone.icon)} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-semibold text-[#1A2E4B]">{item.label}</p>
+            <p className="mt-1 text-2xl font-bold leading-7 text-[#0B1F3A]">{formatCount(item.value)}</p>
+          </div>
+        </div>
+
+        {item.description ? (
+          <p className="mt-3 truncate text-[11px] text-[#64748B]">{item.description}</p>
+        ) : (
+          <div className="mt-3 flex items-center gap-2 text-[11px]">
+            <span className={cn("inline-flex items-center gap-1 font-semibold", trendIsNegative ? "text-rose-600" : "text-emerald-600")}>
+              <TrendIcon className="h-3 w-3" />
+              {Math.abs(trendPercent)}%
+            </span>
+            <span className="text-[#64748B]">vs last 7 days</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function formatHours(value: number): string {
   return `${value.toFixed(2)}h`
 }
@@ -186,6 +278,7 @@ function formatDurationMinutes(value: number | null | undefined): string {
 
 export function PerformanceAnalyticsPanel() {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null)
+  const [comparisonMetrics, setComparisonMetrics] = useState<PerformanceMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [selectedRange, setSelectedRange] = useState<PerformanceRange>("30d")
@@ -206,7 +299,17 @@ export function PerformanceAnalyticsPanel() {
         start_date: startDate,
         end_date: endDate,
       })
+      let comparisonPayload: PerformanceMetrics | null = null
+      try {
+        comparisonPayload =
+          range === "7d" && !startDate && !endDate
+            ? payload
+            : await getPerformanceMetrics({ range: "7d" })
+      } catch {
+        comparisonPayload = null
+      }
       setMetrics(payload)
+      setComparisonMetrics(comparisonPayload)
       setError("")
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load KPI data.")
@@ -247,6 +350,120 @@ export function PerformanceAnalyticsPanel() {
     troubleshootingAnalytics?.total_failed_troubleshooting_reports ??
     metrics?.kpis.total_failed_troubleshooting_reports ??
     0
+  const comparisonTroubleshootingAnalytics = comparisonMetrics?.troubleshooting_analytics
+  const comparisonStaleOpenTickets = comparisonMetrics?.kpis.stale_open_tickets ?? 0
+  const comparisonTechnicianCheckIns = comparisonMetrics?.kpis.technician_check_ins ?? 0
+  const comparisonTechnicianCheckOuts = comparisonMetrics?.kpis.technician_check_outs ?? 0
+  const comparisonTotalQrScans =
+    comparisonTroubleshootingAnalytics?.total_qr_scans ?? comparisonMetrics?.kpis.total_qr_scans ?? 0
+  const comparisonTotalTroubleshootingAttempts =
+    comparisonTroubleshootingAnalytics?.total_troubleshooting_attempts ??
+    comparisonMetrics?.kpis.total_troubleshooting_attempts ??
+    0
+  const comparisonTotalSystemSolvedIssues =
+    comparisonTroubleshootingAnalytics?.total_system_solved_issues ??
+    comparisonMetrics?.kpis.total_system_solved_issues ??
+    0
+  const comparisonTotalFailedTroubleshootingReports =
+    comparisonTroubleshootingAnalytics?.total_failed_troubleshooting_reports ??
+    comparisonMetrics?.kpis.total_failed_troubleshooting_reports ??
+    0
+
+  const kpiCards = useMemo<KpiCardItem[]>(
+    () => [
+      {
+        label: "Total Tickets",
+        value: metrics?.kpis.total_tickets ?? 0,
+        comparisonValue: comparisonMetrics?.kpis.total_tickets,
+        icon: ClipboardList,
+        tone: "sky",
+      },
+      {
+        label: "Unassigned Tickets",
+        value: metrics?.kpis.unassigned_tickets ?? 0,
+        comparisonValue: comparisonMetrics?.kpis.unassigned_tickets,
+        icon: CircleUserRound,
+        tone: "amber",
+      },
+      {
+        label: "Open > 48h",
+        value: staleOpenTickets,
+        comparisonValue: comparisonStaleOpenTickets,
+        icon: Clock3,
+        tone: "rose",
+      },
+      {
+        label: "Technician Check-Ins",
+        value: technicianCheckIns,
+        comparisonValue: comparisonTechnicianCheckIns,
+        icon: UserRound,
+        tone: "violet",
+      },
+      {
+        label: "Technician Check-Outs",
+        value: technicianCheckOuts,
+        comparisonValue: comparisonTechnicianCheckOuts,
+        icon: LogOut,
+        tone: "cyan",
+      },
+      {
+        label: "Currently Checked In",
+        value: currentlyCheckedIn,
+        description: `${technicianActivityEvents} technician activity events in range`,
+        icon: LogIn,
+        tone: "teal",
+      },
+      {
+        label: "QR Scans",
+        value: totalQrScans,
+        comparisonValue: comparisonTotalQrScans,
+        icon: QrCode,
+        tone: "purple",
+      },
+      {
+        label: "Troubleshooting Attempts",
+        value: totalTroubleshootingAttempts,
+        comparisonValue: comparisonTotalTroubleshootingAttempts,
+        icon: Wrench,
+        tone: "orange",
+      },
+      {
+        label: "System-Solved Issues",
+        value: totalSystemSolvedIssues,
+        comparisonValue: comparisonTotalSystemSolvedIssues,
+        icon: CheckCircle2,
+        tone: "emerald",
+      },
+      {
+        label: "Failed Troubleshooting Reports",
+        value: totalFailedTroubleshootingReports,
+        comparisonValue: comparisonTotalFailedTroubleshootingReports,
+        icon: XCircle,
+        tone: "slate",
+      },
+    ],
+    [
+      comparisonMetrics,
+      comparisonStaleOpenTickets,
+      comparisonTechnicianCheckIns,
+      comparisonTechnicianCheckOuts,
+      comparisonTotalFailedTroubleshootingReports,
+      comparisonTotalQrScans,
+      comparisonTotalSystemSolvedIssues,
+      comparisonTotalTroubleshootingAttempts,
+      currentlyCheckedIn,
+      metrics?.kpis.total_tickets,
+      metrics?.kpis.unassigned_tickets,
+      staleOpenTickets,
+      technicianActivityEvents,
+      technicianCheckIns,
+      technicianCheckOuts,
+      totalFailedTroubleshootingReports,
+      totalQrScans,
+      totalSystemSolvedIssues,
+      totalTroubleshootingAttempts,
+    ]
+  )
 
   const technicianWorkloadChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const technicianTimeChartHeight = Math.max(320, technicianActivitySummary.length * 56)
@@ -334,89 +551,10 @@ export function PerformanceAnalyticsPanel() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Total Tickets</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.total_tickets}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Unassigned Tickets</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.unassigned_tickets}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Open &gt; 48h</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{staleOpenTickets}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Technician Check-Ins</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{technicianCheckIns}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Technician Check-Outs</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{technicianCheckOuts}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Currently Checked In</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{currentlyCheckedIn}</p>
-            <p className="mt-1 text-xs text-slate-500">{technicianActivityEvents} technician activity events in range</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">QR Scans</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{totalQrScans}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Troubleshooting Attempts</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{totalTroubleshootingAttempts}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">System-Solved Issues</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{totalSystemSolvedIssues}</p>
-            <p className="mt-1 text-xs text-slate-500">Resolved by guided troubleshooting</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Failed Troubleshooting Reports</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{totalFailedTroubleshootingReports}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {kpiCards.map((item) => (
+          <KpiCard key={item.label} item={item} />
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
