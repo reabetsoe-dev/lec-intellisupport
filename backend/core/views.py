@@ -2221,7 +2221,13 @@ def _phone_number_is_in_use(phone_number: str, *, exclude_user_id: int | None = 
     queryset = User.objects.filter(phone_number=normalized)
     if exclude_user_id is not None:
         queryset = queryset.exclude(id=exclude_user_id)
-    return queryset.exists()
+    if queryset.exists():
+        return True
+
+    candidates = User.objects.exclude(phone_number="")
+    if exclude_user_id is not None:
+        candidates = candidates.exclude(id=exclude_user_id)
+    return any(_normalize_phone_number(user.phone_number) == normalized for user in candidates)
 
 
 def _resolve_technician_notification_email(technician: Technician) -> str:
@@ -3517,11 +3523,22 @@ def _resolve_whatsapp_employee(inbound_message: dict) -> User | None:
     sender_phone = _normalize_phone_number(inbound_message.get("sender_phone", ""))
     if not sender_phone:
         return None
-    return User.objects.filter(
+    employee = User.objects.filter(
         phone_number=sender_phone,
         role=User.ROLE_EMPLOYEE,
         is_active=True,
     ).first()
+    if employee:
+        return employee
+
+    return next(
+        (
+            user
+            for user in User.objects.filter(role=User.ROLE_EMPLOYEE, is_active=True).exclude(phone_number="")
+            if _normalize_phone_number(user.phone_number) == sender_phone
+        ),
+        None,
+    )
 
 
 def _fallback_whatsapp_draft(message: str, employee: User) -> dict:
@@ -3558,7 +3575,14 @@ def _build_whatsapp_ticket_data(inbound_message: dict, employee: User) -> tuple[
             },
         )
         draft = ai_payload["draft"]
-    except (ConnectionError, RuntimeError):
+    except Exception as error:
+        logger.warning(
+            "WhatsApp AI drafting failed; using fallback draft for employee_id=%s sender=%s: %s",
+            employee.id,
+            inbound_message.get("sender_phone", ""),
+            error,
+            exc_info=True,
+        )
         draft = _fallback_whatsapp_draft(message_text, employee)
         draft_source = "fallback"
 
@@ -3623,8 +3647,25 @@ def _process_whatsapp_inbound_message(inbound_message: dict) -> tuple[dict, int]
             "sender_phone": sender_phone,
         }, status.HTTP_202_ACCEPTED
 
-    ticket_data, draft_source = _build_whatsapp_ticket_data({**inbound_message, "sender_phone": sender_phone}, employee)
-    ticket_payload, ticket_status = _create_ticket_from_intake_data(ticket_data)
+    try:
+        ticket_data, draft_source = _build_whatsapp_ticket_data({**inbound_message, "sender_phone": sender_phone}, employee)
+        ticket_payload, ticket_status = _create_ticket_from_intake_data(ticket_data)
+    except Exception as error:
+        inbound_record.employee = employee
+        inbound_record.status = WhatsAppInboundMessage.STATUS_FAILED
+        inbound_record.error_message = str(error)
+        inbound_record.save(update_fields=["employee", "status", "error_message", "updated_at"])
+        logger.exception(
+            "WhatsApp ticket creation crashed for inbound_message_id=%s sender=%s",
+            inbound_record.id,
+            sender_phone,
+        )
+        return {
+            "message": "WhatsApp message received, but ticket creation failed.",
+            "whatsapp_status": WhatsAppInboundMessage.STATUS_FAILED,
+            "details": {"message": str(error)},
+        }, status.HTTP_202_ACCEPTED
+
     if ticket_status != status.HTTP_201_CREATED:
         inbound_record.employee = employee
         inbound_record.status = WhatsAppInboundMessage.STATUS_FAILED

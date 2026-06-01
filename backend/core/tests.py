@@ -671,6 +671,52 @@ class WhatsAppIntakeTests(TestCase):
         self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_NEEDS_REGISTRATION)
         self.assertEqual(inbound.sender_phone, "+26669990000")
 
+    @patch("core.views._call_ai_service_json")
+    def test_whatsapp_message_matches_employee_with_formatted_saved_phone(self, mock_ai):
+        mock_ai.side_effect = lambda _path, payload: self._ai_draft(payload["message"], payload.get("context"))
+        self.employee.phone_number = "+266 6222 0000"
+        self.employee.save(update_fields=["phone_number"])
+
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+26662220000",
+                "Body": "Internet is down in finance.",
+                "MessageSid": "SM-WA-FORMATTED-PHONE",
+            },
+            format="multipart",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        inbound = WhatsAppInboundMessage.objects.get(provider_message_id="SM-WA-FORMATTED-PHONE")
+        self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
+        self.assertEqual(inbound.employee_id, self.employee.id)
+
+    @patch("core.views._call_ai_service_json")
+    def test_twilio_whatsapp_message_uses_fallback_when_ai_response_is_invalid(self, mock_ai):
+        mock_ai.side_effect = ValueError("AI service returned non-JSON HTML.")
+
+        response = self.client.post(
+            "/api/whatsapp/incoming",
+            {
+                "From": "whatsapp:+26662220000",
+                "Body": "Internet is down in finance.",
+                "MessageSid": "SM-WA-AI-FALLBACK",
+            },
+            format="multipart",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ticket = Ticket.objects.get(employee=self.employee)
+        self.assertEqual(ticket.title, "Internet is down in finance.")
+        self.assertEqual(ticket.category, "Network")
+        inbound = WhatsAppInboundMessage.objects.get(provider_message_id="SM-WA-AI-FALLBACK")
+        self.assertEqual(inbound.status, WhatsAppInboundMessage.STATUS_TICKET_CREATED)
+        self.assertEqual(inbound.ticket_id, ticket.id)
+        self.assertEqual(response.data["results"][0]["result"]["whatsapp_draft_source"], "fallback")
+
 
 class AiIntakeDraftTests(TestCase):
     def setUp(self):

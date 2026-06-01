@@ -608,52 +608,6 @@ export function SlaTrackingDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-5">
-            <CardTitle className="text-base font-semibold text-[#0B1F3A]">Score Components</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            {technicianPerformanceScores.length === 0 ? (
-              <p className="text-sm text-slate-500">No technician scoring data available yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {technicianPerformanceScores.map((item) => (
-                  <div key={item.name} className="rounded-xl border border-[#D9E6F4] bg-[#F8FBFF] px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-[#0B1F3A]">{item.name}</p>
-                        <p className="text-xs text-[#5F7196]">{item.skillset}</p>
-                      </div>
-                      <span className="rounded-full bg-[#0F766E] px-2.5 py-1 text-xs font-semibold text-white">
-                        Score {item.performance_score_percent}%
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[#36577E] sm:grid-cols-4">
-                      <div>
-                        <p className="font-medium uppercase tracking-[0.08em]">Success Rate</p>
-                        <p className="mt-1 text-sm font-semibold text-[#0B1F3A]">{item.success_rate_percent}%</p>
-                      </div>
-                      <div>
-                        <p className="font-medium uppercase tracking-[0.08em]">Resolution Score</p>
-                        <p className="mt-1 text-sm font-semibold text-[#0B1F3A]">{item.resolution_score_percent}%</p>
-                      </div>
-                      <div>
-                        <p className="font-medium uppercase tracking-[0.08em]">Avg Resolution</p>
-                        <p className="mt-1 text-sm font-semibold text-[#0B1F3A]">{item.avg_resolution_hours}h</p>
-                      </div>
-                      <div>
-                        <p className="font-medium uppercase tracking-[0.08em]">Completed</p>
-                        <p className="mt-1 text-sm font-semibold text-[#0B1F3A]">
-                          {item.completed}/{item.total_assigned}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">

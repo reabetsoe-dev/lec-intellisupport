@@ -9,6 +9,7 @@ import { QrCodeSvg } from "@/components/shared/QrCodeSvg"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { isLocalQrOrigin, resolveQrBaseOrigin } from "@/lib/asset-qr"
 import { readHttpResponse } from "@/lib/http-response"
 import { type Technician } from "@/lib/api"
 
@@ -88,21 +89,26 @@ export default function AdminFaultTechnicianAccessPage() {
       let resolvedPhoneUrl = currentHostUrl
 
       try {
-        const response = await fetch("/api/network-info", { cache: "no-store" })
-        if (!response.ok) {
-          throw new Error("Unable to detect laptop network address.")
-        }
+        const publicOrigin = await resolveQrBaseOrigin()
+        if (publicOrigin && !isLocalQrOrigin(publicOrigin)) {
+          resolvedPhoneUrl = `${publicOrigin.replace(/\/+$/g, "")}/technician-access`
+        } else {
+          const response = await fetch("/api/network-info", { cache: "no-store" })
+          if (!response.ok) {
+            throw new Error("Unable to detect laptop network address.")
+          }
 
-        const { payload } = await readHttpResponse(response)
-        const networkInfo =
-          payload && typeof payload === "object" && !Array.isArray(payload)
-            ? (payload as NetworkInfoResponse)
-            : null
-        const detectedAddress =
-          typeof networkInfo?.primaryAddress === "string" ? networkInfo.primaryAddress.trim() : ""
+          const { payload } = await readHttpResponse(response)
+          const networkInfo =
+            payload && typeof payload === "object" && !Array.isArray(payload)
+              ? (payload as NetworkInfoResponse)
+              : null
+          const detectedAddress =
+            typeof networkInfo?.primaryAddress === "string" ? networkInfo.primaryAddress.trim() : ""
 
-        if (detectedAddress && isPhoneReachableHost(detectedAddress)) {
-          resolvedPhoneUrl = buildPhoneUrl(detectedAddress)
+          if (detectedAddress && isPhoneReachableHost(detectedAddress)) {
+            resolvedPhoneUrl = buildPhoneUrl(detectedAddress)
+          }
         }
       } catch {
         // Keep the current host URL if network detection fails.
