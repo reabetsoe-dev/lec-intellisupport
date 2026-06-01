@@ -15,9 +15,9 @@ function BrandMark() {
       <Image
         src="/lec-logo-current.jpg"
         alt="LEC logo"
-        width={56}
-        height={56}
-        className="h-10 w-10 rounded-full border border-white/30 object-cover shadow-[0_10px_24px_rgba(6,20,63,0.42)] md:h-12 md:w-12"
+        width={72}
+        height={72}
+        className="h-[52px] w-[52px] rounded-full border border-white/30 object-cover shadow-[0_10px_24px_rgba(6,20,63,0.42)] md:h-16 md:w-16"
         priority
       />
       <span className="landing-display text-[18px] font-semibold tracking-[-0.015em] text-white md:text-[20px]">LEC IntelliSupport</span>
@@ -76,9 +76,9 @@ export default function Home() {
             <Image
               src="/lec-logo-current.jpg"
               alt="LEC logo"
-              width={36}
-              height={36}
-              className="h-8 w-8 rounded-full object-cover shadow-[0_6px_14px_rgba(10,25,67,0.2)]"
+              width={48}
+              height={48}
+              className="h-10 w-10 rounded-full object-cover shadow-[0_6px_14px_rgba(10,25,67,0.2)]"
             />
             <span className="landing-display text-[18px] font-semibold tracking-[-0.015em] text-[#14275f]">LEC IntelliSupport</span>
           </div>
