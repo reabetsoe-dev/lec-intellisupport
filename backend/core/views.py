@@ -4382,8 +4382,14 @@ def employees_collection_view(request):
     return Response(payload, status=status.HTTP_201_CREATED)
 
 
-@api_view(["PATCH", "DELETE"])
+@api_view(["GET", "PATCH", "DELETE"])
 def employee_detail_view(request, employee_id: int):
+    if request.method == "GET":
+        employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE, is_active=True).first()
+        if not employee:
+            return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_user_to_dict(employee), status=status.HTTP_200_OK)
+
     if request.method == "PATCH":
         employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
         if not employee:

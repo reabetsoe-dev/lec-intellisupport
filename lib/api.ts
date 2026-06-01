@@ -4,6 +4,9 @@ export type LoginResponse = {
   id: number
   name: string
   role: UserRole
+  phone_number?: string
+  branch?: string
+  department?: string
   must_change_password?: boolean
   token: string
 }
@@ -1426,6 +1429,10 @@ export async function updateTechnicianDetails(
 
 export async function getEmployees(): Promise<Employee[]> {
   return requestJson<Employee[]>(BACKEND_BASE_URL, "/api/employees")
+}
+
+export async function getEmployee(employeeId: number): Promise<Employee> {
+  return requestJson<Employee>(BACKEND_BASE_URL, `/api/employees/${employeeId}`)
 }
 
 export async function createEmployee(payload: {

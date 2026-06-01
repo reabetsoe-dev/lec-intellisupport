@@ -11,14 +11,8 @@ import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { createAiIntakeDraft, createTicket, type TicketIntakeDraft, type TicketIntakeDraftResponse } from "@/lib/api"
-import { getStoredUserSession } from "@/lib/auth"
-
-type IntakeMessage = {
-  id: number
-  role: "employee" | "assistant"
-  content: string
-}
+import { createAiIntakeDraft, createTicket, getEmployee, type TicketIntakeDraft, type TicketIntakeDraftResponse } from "@/lib/api"
+import { getStoredUserSession, persistUserSession, type AuthUser } from "@/lib/auth"
 
 const emptyDraft: TicketIntakeDraft = {
   title: "",
@@ -31,17 +25,54 @@ const emptyDraft: TicketIntakeDraft = {
   department: "",
 }
 
-function buildAssistantSummary(payload: TicketIntakeDraftResponse): string {
-  if (payload.intake_mode === "follow_up") {
-    return "Ticket draft ready. Review the follow-up prompts and update the preview before submitting."
+type EmployeeIntakeContext = {
+  branch: string
+  department: string
+}
+
+async function getEmployeeIntakeContext(user: AuthUser): Promise<EmployeeIntakeContext> {
+  let branch = user.branch?.trim() ?? ""
+  let department = user.department?.trim() ?? ""
+
+  if (!branch || !department) {
+    try {
+      const employee = await getEmployee(user.id)
+      branch = branch || employee.branch.trim()
+      department = department || employee.department.trim()
+      persistUserSession({
+        ...user,
+        branch: branch || user.branch,
+        department: department || user.department,
+      })
+    } catch {
+      // Keep the draft usable even if the profile refresh cannot complete.
+    }
   }
-  return "Ticket draft ready. Review the preview below, then confirm the submission."
+
+  return { branch, department }
+}
+
+function applyEmployeeContextToDraft(
+  payload: TicketIntakeDraftResponse,
+  context: EmployeeIntakeContext
+): TicketIntakeDraftResponse {
+  const branch = payload.draft.branch?.trim() || context.branch
+  const department = payload.draft.department?.trim() || context.department
+
+  return {
+    ...payload,
+    draft: {
+      ...payload.draft,
+      branch,
+      department,
+    },
+    follow_up_questions: [],
+  }
 }
 
 export default function EmployeeReportPage() {
   const router = useRouter()
   const [message, setMessage] = useState("")
-  const [conversation, setConversation] = useState<IntakeMessage[]>([])
   const [draftResponse, setDraftResponse] = useState<TicketIntakeDraftResponse | null>(null)
   const [draftDialogOpen, setDraftDialogOpen] = useState(false)
   const [draft, setDraft] = useState<TicketIntakeDraft>(emptyDraft)
@@ -126,19 +157,18 @@ export default function EmployeeReportPage() {
 
     try {
       setAnalyzing(true)
+      const intakeContext = await getEmployeeIntakeContext(user)
       const payload = await createAiIntakeDraft({
         message: trimmedMessage,
         user_id: user.id,
+        branch: intakeContext.branch,
+        department: intakeContext.department,
         channel: "employee_text",
       })
+      const contextAwarePayload = applyEmployeeContextToDraft(payload, intakeContext)
 
-      setConversation((current) => [
-        ...current,
-        { id: current.length + 1, role: "employee", content: trimmedMessage },
-        { id: current.length + 2, role: "assistant", content: buildAssistantSummary(payload) },
-      ])
-      setDraftResponse(payload)
-      setDraft(payload.draft)
+      setDraftResponse(contextAwarePayload)
+      setDraft(contextAwarePayload.draft)
       setDraftDialogOpen(true)
       setMessage("")
     } catch (draftError) {
@@ -195,7 +225,6 @@ export default function EmployeeReportPage() {
       setDraftDialogOpen(false)
       setDraftResponse(null)
       setDraft(emptyDraft)
-      setConversation([])
     } catch (submitError) {
       showResultDialog(
         "error",
@@ -232,7 +261,7 @@ export default function EmployeeReportPage() {
         </CardHeader>
         <CardContent className="space-y-4 px-5 py-5">
           <div className="rounded-lg border border-[#9FC5EA] bg-[#F6FAFF] px-4 py-3 text-sm text-[#1F4E7A]">
-            Tell the system what happened and where it is happening. The draft below will stay editable before submission.
+            Tell the system what happened. A draft preview will open before submission.
           </div>
 
           <div className="space-y-2">
@@ -258,23 +287,6 @@ export default function EmployeeReportPage() {
               {analyzing ? "Sending..." : "Send"}
             </Button>
           </div>
-
-          {conversation.length > 0 ? (
-            <div className="space-y-3 rounded-xl border border-[#DCE8F5] bg-[#FAFCFF] p-4">
-              {conversation.map((item) => (
-                <div
-                  key={item.id}
-                  className={`rounded-xl px-4 py-3 text-sm ${
-                    item.role === "employee"
-                      ? "ml-8 bg-[#0072CE] text-white"
-                      : "mr-8 border border-[#9FC5EA] bg-white text-[#1F4E7A]"
-                  }`}
-                >
-                  {item.content}
-                </div>
-              ))}
-            </div>
-          ) : null}
 
           {draftResponse && !draftDialogOpen ? (
             <div className="flex justify-center rounded-xl border border-[#DCE8F5] bg-[#FAFCFF] px-4 py-3">
