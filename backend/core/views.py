@@ -321,7 +321,7 @@ def _compose_ticket_description(
     return f"{cleaned_description}\n\n" + "\n".join(metadata_lines)
 
 
-def _call_ai_service_json(path: str, payload: dict, *, timeout: int = 10) -> dict:
+def _call_ai_service_json(path: str, payload: dict, *, timeout: int = 45) -> dict:
     ai_base_url = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001").rstrip("/")
     ai_service_url = f"{ai_base_url}{path}"
     request_body = json.dumps(payload).encode("utf-8")
@@ -1199,6 +1199,67 @@ def _auto_ticket_priority(title: str, description: str) -> str:
     if any(phrase in searchable_text for phrase in MEDIUM_PRIORITY_PHRASES):
         return Ticket.PRIORITY_MEDIUM
     return Ticket.PRIORITY_LOW
+
+
+CHATBOT_FALLBACK_PLAYBOOK = {
+    Technician.SKILL_NETWORK: [
+        "Check whether other websites or network services are also failing.",
+        "Turn Wi-Fi off and on, or reconnect the network cable firmly.",
+        "Restart the router or device if allowed, then try the connection again.",
+    ],
+    Technician.SKILL_HARDWARE: [
+        "Confirm the device is powered on and all cables are firmly connected.",
+        "Restart the affected device and check for warning lights or error messages.",
+        "Try another cable, port, cartridge, paper tray, keyboard, mouse, or monitor if available.",
+    ],
+    Technician.SKILL_SOFTWARE: [
+        "Close and reopen the affected application.",
+        "Restart the computer and try the action again.",
+        "Note the exact error message, affected app, and when the problem started.",
+    ],
+    Technician.SKILL_SECURITY: [
+        "Disconnect from the network if you suspect malware or account compromise.",
+        "Do not click suspicious links or enter passwords again.",
+        "Capture the alert or email details and report it immediately for security review.",
+    ],
+    DEFAULT_TICKET_CATEGORY: [
+        "Restart the affected device or application.",
+        "Try the same action again and write down the exact error message.",
+        "Check whether another user or device is experiencing the same problem.",
+    ],
+}
+
+
+def _fallback_chat_category(message: str) -> str:
+    searchable_text = _normalize_skill_text(message)
+    if any(keyword in searchable_text for keyword in ("printer", "print", "scanner", "toner", "paper jam")):
+        return Technician.SKILL_HARDWARE
+
+    category, _domain = _auto_ticket_category(message, message)
+    if category in CHATBOT_FALLBACK_PLAYBOOK:
+        return category
+    return DEFAULT_TICKET_CATEGORY
+
+
+def _build_fallback_chat_response(message: str) -> dict:
+    category = _fallback_chat_category(message)
+    priority = _auto_ticket_priority(message, message)
+    steps = CHATBOT_FALLBACK_PLAYBOOK.get(category, CHATBOT_FALLBACK_PLAYBOOK[DEFAULT_TICKET_CATEGORY])
+    numbered_steps = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+    reply = (
+        f"Recommended troubleshooting actions ({category})\n"
+        "Troubleshooting steps:\n"
+        f"{numbered_steps}\n"
+        "If unresolved, use Report Fault and include the exact error, branch, department, and business impact."
+    )
+    return {
+        "reply": reply,
+        "category": category,
+        "priority": priority,
+        "confidence": 0.55,
+        "needs_clarification": False,
+        "fallback": True,
+    }
 
 
 def _normalize_technician_skill_domain(skillset: str) -> str | None:
@@ -6776,16 +6837,8 @@ def ai_service_chat_proxy_view(request):
         if isinstance(data, dict):
             data.pop("recommended_technician", None)
         return Response(data, status=status.HTTP_200_OK)
-    except RuntimeError as error:
-        return Response(
-            {"message": str(error)},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
-    except ConnectionError as error:
-        return Response(
-            {"message": str(error)},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    except (ConnectionError, RuntimeError, TimeoutError):
+        return Response(_build_fallback_chat_response(message), status=status.HTTP_200_OK)
     
 
 

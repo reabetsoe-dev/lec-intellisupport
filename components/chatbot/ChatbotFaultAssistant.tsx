@@ -78,6 +78,48 @@ const CHATBOT_GREETING_TOKENS = new Set([
   "assist",
   "help",
 ])
+const CHATBOT_FALLBACK_PLAYBOOK = {
+  network: {
+    title: "Network troubleshooting",
+    category: "Network",
+    keywords: ["internet", "wifi", "wi-fi", "network", "vpn", "dns", "router", "connection", "connect"],
+    steps: [
+      "Check whether other websites or systems are also affected.",
+      "Reconnect Wi-Fi or confirm the network cable is firmly plugged in.",
+      "Restart the device, then try the connection again.",
+    ],
+  },
+  hardware: {
+    title: "Hardware troubleshooting",
+    category: "Hardware",
+    keywords: ["printer", "print", "scanner", "toner", "paper", "keyboard", "mouse", "monitor", "laptop", "desktop", "device"],
+    steps: [
+      "Confirm the device has power and all cables are firmly connected.",
+      "Restart the affected device and check for warning lights or error messages.",
+      "Try another cable, port, cartridge, paper tray, keyboard, mouse, or monitor if available.",
+    ],
+  },
+  security: {
+    title: "Security troubleshooting",
+    category: "Security",
+    keywords: ["virus", "malware", "phishing", "breach", "hack", "compromised", "suspicious", "unauthorized"],
+    steps: [
+      "Disconnect from the network if you suspect malware or account compromise.",
+      "Do not click suspicious links or enter passwords again.",
+      "Capture the alert or email details and report it immediately for security review.",
+    ],
+  },
+  software: {
+    title: "Software troubleshooting",
+    category: "Software",
+    keywords: ["outlook", "email", "app", "application", "software", "system", "login", "password", "error", "slow", "freeze"],
+    steps: [
+      "Close and reopen the affected application.",
+      "Restart the computer and try the action again.",
+      "Note the exact error message, affected app, and when the problem started.",
+    ],
+  },
+} as const
 
 function countVowels(token: string): number {
   let count = 0
@@ -87,6 +129,21 @@ function countVowels(token: string): number {
     }
   }
   return count
+}
+
+function getNormalizedTokens(message: string): string[] {
+  return message
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+}
+
+function isGreetingOnlyMessage(message: string): boolean {
+  const tokens = getNormalizedTokens(message)
+  return tokens.length > 0 && tokens.every((token) => CHATBOT_GREETING_TOKENS.has(token))
 }
 
 function isUnintelligibleMessage(message: string): boolean {
@@ -131,6 +188,26 @@ function isUnintelligibleMessage(message: string): boolean {
   }
 
   return false
+}
+
+function buildGreetingReply(accountName: string): string {
+  return `Hi ${normalizeAccountName(accountName)}. Please describe one IT problem, for example: printer cannot print.`
+}
+
+function buildLocalTroubleshootingReply(message: string): string {
+  const normalizedMessage = message.toLowerCase()
+  const matchedPlaybook =
+    Object.values(CHATBOT_FALLBACK_PLAYBOOK).find((playbook) =>
+      playbook.keywords.some((keyword) => normalizedMessage.includes(keyword))
+    ) ?? CHATBOT_FALLBACK_PLAYBOOK.software
+  const numberedSteps = matchedPlaybook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+
+  return [
+    `${matchedPlaybook.title} (${matchedPlaybook.category})`,
+    "Troubleshooting steps:",
+    numberedSteps,
+    "If unresolved, use Report Fault and include the exact error, branch, department, and business impact.",
+  ].join("\n")
 }
 
 function normalizeAccountName(name: string | undefined): string {
@@ -304,6 +381,21 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
       return
     }
 
+    if (isGreetingOnlyMessage(trimmed)) {
+      if (sessionRef.current !== requestSession) {
+        return
+      }
+      setMessages((current) => [
+        ...current,
+        {
+          id: nextMessageId(),
+          role: "assistant",
+          content: buildGreetingReply(resolvedAccountName),
+        },
+      ])
+      return
+    }
+
     try {
       setLoading(true)
       const response = await sendChatMessage(trimmed)
@@ -329,17 +421,14 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
       if (sessionRef.current !== requestSession) {
         return
       }
+      void error
       setShowManualReportOption(true)
-      const rawMessage = error instanceof Error ? error.message : ""
-      const message = rawMessage
-        ? `${rawMessage} If this continues, start AI service on port 8001 and try again.`
-        : "AI service is unavailable. Start AI service on port 8001, or create a ticket manually."
       setMessages((current) => [
         ...current,
         {
           id: nextMessageId(),
           role: "assistant",
-          content: message,
+          content: buildLocalTroubleshootingReply(trimmed),
         },
       ])
     } finally {

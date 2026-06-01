@@ -729,9 +729,11 @@ export class ApiError extends Error {
 
 const AUTH_SESSION_STORAGE_KEY = "lec_intellisupport_user"
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+const CHATBOT_REQUEST_TIMEOUT_MS = 60_000
 const MAX_ERROR_MESSAGE_LENGTH = 240
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
 const BACKEND_BROWSER_PROXY_PREFIX = "/api/backend"
+const HAS_CONFIGURED_AI_SERVICE_URL = Boolean(process.env.NEXT_PUBLIC_AI_SERVICE_URL?.trim())
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -821,6 +823,14 @@ function resolveServiceBaseUrl(envUrl: string | undefined, fallbackPort: number)
 
 function toIpv4Localhost(baseUrl: string): string {
   return baseUrl.replace("://localhost", "://127.0.0.1")
+}
+
+function shouldTryDirectAiService(): boolean {
+  if (HAS_CONFIGURED_AI_SERVICE_URL) {
+    return true
+  }
+
+  return typeof window !== "undefined" && isLoopbackHostname(window.location.hostname)
 }
 
 const BACKEND_BASE_URL = resolveServiceBaseUrl(process.env.NEXT_PUBLIC_BACKEND_URL, 8000)
@@ -1600,20 +1610,26 @@ export async function adjustConsumableQuantity(id: number, delta: number): Promi
 
 export async function sendChatMessage(message: string): Promise<ChatbotResponse> {
   try {
-    return await requestJson<ChatbotResponse>(AI_BASE_URL, "/ai-service/chat", {
+    return await requestJson<ChatbotResponse>(BACKEND_BASE_URL, "/api/ai-service/chat", {
+      method: "POST",
+      body: { message },
+      service: "backend",
+      timeoutMs: CHATBOT_REQUEST_TIMEOUT_MS,
+    })
+  } catch (error) {
+    const canRetryDirectAi =
+      error instanceof ApiError &&
+      ["NETWORK_ERROR", "TIMEOUT", "SERVER_ERROR"].includes(error.code) &&
+      shouldTryDirectAiService()
+    if (!canRetryDirectAi) {
+      throw error
+    }
+    return requestJson<ChatbotResponse>(AI_BASE_URL, "/ai-service/chat", {
       method: "POST",
       body: { message },
       authMode: "none",
       service: "ai",
-    })
-  } catch (error) {
-    if (error instanceof ApiError && error.code !== "NETWORK_ERROR" && error.code !== "TIMEOUT") {
-      throw error
-    }
-    return requestJson<ChatbotResponse>(BACKEND_BASE_URL, "/api/ai-service/chat", {
-      method: "POST",
-      body: { message },
-      service: "backend",
+      timeoutMs: CHATBOT_REQUEST_TIMEOUT_MS,
     })
   }
 }
