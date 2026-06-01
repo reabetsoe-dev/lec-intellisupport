@@ -95,6 +95,80 @@ class Command(BaseCommand):
                 "email": "employee@lec.com",
                 "password": "Employee@123",
                 "role": User.ROLE_EMPLOYEE,
+                "branch": "Maseru",
+                "department": "ICT",
+            },
+            {
+                "name": "Lets'eka Sello",
+                "email": "letseka.sello@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Maseru",
+                "department": "Admin",
+            },
+            {
+                "name": "Anna Motumi",
+                "email": "anna.motumi@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Mafeteng",
+                "department": "Finance",
+            },
+            {
+                "name": "Nthabeleng Ramahali",
+                "email": "nthabeleng.ramahali@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Mohale's Hoek",
+                "department": "Human Resources",
+            },
+            {
+                "name": "Tefo Matela",
+                "email": "tefo.matela@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Quthing",
+                "department": "Engineering",
+            },
+            {
+                "name": "Nthatuoa Ramapepe",
+                "email": "nthatuoa.ramapepe@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Qacha's Nek",
+                "department": "Customer Service",
+            },
+            {
+                "name": "Selloane Sello",
+                "email": "selloane.sello@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Leribe (Hlotse)",
+                "department": "Operations",
+            },
+            {
+                "name": "Leseli Koto",
+                "email": "leseli.koto@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Butha-Buthe",
+                "department": "Procurement",
+            },
+            {
+                "name": "Khalala Khalala",
+                "email": "khalala.khalala@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Berea (Teyateyaneng)",
+                "department": "Projects",
+            },
+            {
+                "name": "Lineo ts'iu",
+                "email": "lineo.tsiu@gmail.com",
+                "password": "Employee@123",
+                "role": User.ROLE_EMPLOYEE,
+                "branch": "Thaba-Tseka",
+                "department": "Contact Center",
             },
             {
                 "name": "Palesa R.",
@@ -131,7 +205,7 @@ class Command(BaseCommand):
         current_seed_technician_emails = {payload["email"] for payload in technician_users}
 
         for payload in demo_users:
-            branch = "Maseru HQ" if payload["role"] == User.ROLE_TECHNICIAN else ""
+            branch = payload.get("branch", "Maseru HQ" if payload["role"] == User.ROLE_TECHNICIAN else "")
             defaults = {
                 "name": payload["name"],
                 "role": payload["role"],
