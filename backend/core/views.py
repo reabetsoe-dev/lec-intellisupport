@@ -2655,6 +2655,10 @@ def _send_password_setup_invite_email(
     )
 
 
+def _email_service_is_configured() -> bool:
+    return bool(settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD)
+
+
 def _send_password_reset_email(
     *,
     recipient_name: str,
@@ -2709,6 +2713,13 @@ def _create_password_setup_invite(user: User, role_label: str) -> dict:
         "setup_invite_email_sent": False,
     }
 
+    if not _email_service_is_configured():
+        logger.warning(
+            "Password setup invite email was not sent for user_id=%s because the email service is not configured.",
+            user.id,
+        )
+        return payload
+
     try:
         _send_password_setup_invite_email(
             recipient_name=user.name,
@@ -2718,12 +2729,14 @@ def _create_password_setup_invite(user: User, role_label: str) -> dict:
             expires_in_hours=invite_ttl_hours,
         )
         payload["setup_invite_email_sent"] = True
-    except (RuntimeError, SMTPException, OSError) as error:
+    except (SMTPException, OSError) as error:
         logger.warning(
-            "Password setup invite email was not sent for user_id=%s; returning setup link to admin: %s",
+            "Password setup invite email failed for user_id=%s recipient=%s: %s",
             user.id,
+            user.email,
             error,
         )
+        raise
 
     return payload
 
@@ -4196,6 +4209,16 @@ def technicians_collection_view(request):
             invite_payload = _create_password_setup_invite(user, "Technician")
     except IntegrityError:
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
+    except (SMTPException, OSError):
+        return Response(
+            {
+                "message": (
+                    f"Technician account was not created because the setup invite email could not be sent to {email}. "
+                    "Verify EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, and SMTP access on Render."
+                )
+            },
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     payload = _technician_to_dict(technician)
     payload.update(invite_payload)
@@ -4328,6 +4351,16 @@ def employees_collection_view(request):
             invite_payload = _create_password_setup_invite(user, "Employee")
     except IntegrityError:
         return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
+    except (SMTPException, OSError):
+        return Response(
+            {
+                "message": (
+                    f"Employee account was not created because the setup invite email could not be sent to {email}. "
+                    "Verify EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, and SMTP access on Render."
+                )
+            },
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     payload = _user_to_dict(user)
     payload.update(invite_payload)

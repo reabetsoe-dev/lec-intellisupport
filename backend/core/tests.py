@@ -1,3 +1,4 @@
+from smtplib import SMTPException
 from unittest.mock import patch
 
 from django.contrib.auth.hashers import make_password
@@ -746,6 +747,34 @@ class AccountInviteCreationTests(TestCase):
         self.assertFalse(response.data["setup_invite_email_sent"])
         self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        EMAIL_HOST_USER="noreply@example.com",
+        EMAIL_HOST_PASSWORD="app-password",
+        DEFAULT_FROM_EMAIL="noreply@example.com",
+    )
+    @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
+    def test_employee_creation_sends_setup_email_to_created_employee_email(self):
+        response = self.client.post(
+            "/api/employees",
+            {
+                "name": "Emailed Employee",
+                "email": "emailed.employee@example.com",
+                "phone_number": "+266 5888 0001",
+                "branch": "Mafeteng",
+                "department": "Finance",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["setup_invite_email_sent"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["emailed.employee@example.com"])
+        self.assertIn(response.data["setup_invite_url"], mail.outbox[0].body)
+        self.assertIn("Account email: emailed.employee@example.com", mail.outbox[0].body)
+
     @override_settings(EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="")
     @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
     def test_technician_creation_returns_setup_link_when_email_is_not_configured(self):
@@ -765,6 +794,54 @@ class AccountInviteCreationTests(TestCase):
         self.assertTrue(UserInvite.objects.filter(user=user, used_at__isnull=True).exists())
         self.assertFalse(response.data["setup_invite_email_sent"])
         self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        EMAIL_HOST_USER="noreply@example.com",
+        EMAIL_HOST_PASSWORD="app-password",
+        DEFAULT_FROM_EMAIL="noreply@example.com",
+    )
+    @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
+    def test_technician_creation_sends_setup_email_to_created_technician_email(self):
+        response = self.client.post(
+            "/api/technicians",
+            {
+                "name": "Emailed Technician",
+                "email": "emailed.technician@example.com",
+                "skillset": Technician.SKILL_NETWORK,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["setup_invite_email_sent"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["emailed.technician@example.com"])
+        self.assertIn(response.data["setup_invite_url"], mail.outbox[0].body)
+        self.assertIn("Account email: emailed.technician@example.com", mail.outbox[0].body)
+
+    @override_settings(
+        EMAIL_HOST_USER="noreply@example.com",
+        EMAIL_HOST_PASSWORD="app-password",
+        DEFAULT_FROM_EMAIL="noreply@example.com",
+    )
+    @patch("core.views.send_mail", side_effect=SMTPException("SMTP is unreachable"))
+    def test_employee_creation_fails_when_configured_email_cannot_be_sent(self, _mock_send_mail):
+        response = self.client.post(
+            "/api/employees",
+            {
+                "name": "Failed Email Employee",
+                "email": "failed.email.employee@example.com",
+                "phone_number": "+266 5888 0002",
+                "branch": "Mafeteng",
+                "department": "Finance",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertFalse(User.objects.filter(email="failed.email.employee@example.com").exists())
 
 
 class AiIntakeDraftTests(TestCase):

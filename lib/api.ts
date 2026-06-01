@@ -1391,6 +1391,7 @@ export async function createTechnician(payload: {
   return requestJson<Technician>(BACKEND_BASE_URL, "/api/technicians", {
     method: "POST",
     body: payload,
+    timeoutMs: 45_000,
   })
 }
 
@@ -1437,6 +1438,7 @@ export async function createEmployee(payload: {
   return requestJson<Employee>(BACKEND_BASE_URL, "/api/employees", {
     method: "POST",
     body: payload,
+    timeoutMs: 45_000,
   })
 }
 
