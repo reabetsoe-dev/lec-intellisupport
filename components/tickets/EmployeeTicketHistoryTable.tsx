@@ -434,32 +434,42 @@ export function EmployeeTicketHistoryTable() {
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
+        <div className="overflow-hidden">
+          <Table className="table-fixed text-[11px] xl:text-xs" containerClassName="overflow-x-hidden">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[29%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+            </colgroup>
             <TableHeader>
               <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-3 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Tracking ID
                 </TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Updated
                 </TableHead>
-                <TableHead className="min-w-[250px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Subject
                 </TableHead>
-                <TableHead className="w-[150px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Branch
                 </TableHead>
-                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Status
                 </TableHead>
-                <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Assigned To
                 </TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Priority
                 </TableHead>
-                <TableHead className="w-[110px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                <TableHead className="px-2 py-3 text-[11px] leading-4 font-semibold tracking-wide whitespace-normal text-white uppercase">
                   Actions
                 </TableHead>
               </TableRow>
@@ -486,28 +496,28 @@ export function EmployeeTicketHistoryTable() {
               ) : (
                 filteredRows.map((ticket) => (
                   <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                    <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
+                    <TableCell className="px-3 py-3 text-xs font-semibold whitespace-normal text-[#2A5D8D] underline underline-offset-2">
                       {ticket.trackingId}
                     </TableCell>
-                    <TableCell className="py-3 text-xs text-[#234A71]">
+                    <TableCell className="px-2 py-3 text-[11px] leading-5 whitespace-normal text-[#234A71]">
                       {formatDateLabel(ticket.updatedAt)}
                     </TableCell>
-                    <TableCell className="py-3">
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-[#1F4469]">{ticket.title}</p>
+                    <TableCell className="px-2 py-3 whitespace-normal">
+                      <div className="min-w-0 space-y-1">
+                        <p className="break-words text-xs leading-5 font-semibold text-[#1F4469]">{ticket.title}</p>
                         <p className="text-[11px] text-[#5E7FA6]">{ticket.category}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="py-3 text-xs text-[#1F4469]">
+                    <TableCell className="px-2 py-3 text-xs leading-5 break-words whitespace-normal text-[#1F4469]">
                       {ticket.location || "N/A"}
                     </TableCell>
-                    <TableCell className={cn("py-3 text-xs font-semibold", statusTextStyles[ticket.status] ?? "text-[#345F85]")}>
+                    <TableCell className={cn("px-2 py-3 text-[11px] leading-5 font-semibold whitespace-normal", statusTextStyles[ticket.status] ?? "text-[#345F85]")}>
                       {ticket.status}
                     </TableCell>
-                    <TableCell className="py-3 text-xs text-[#1F4469]">
+                    <TableCell className="px-2 py-3 text-xs leading-5 break-words whitespace-normal text-[#1F4469]">
                       {ticket.technician}
                     </TableCell>
-                    <TableCell className="py-3">
+                    <TableCell className="px-2 py-3 whitespace-normal">
                       <Badge
                         className={cn(
                           "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
@@ -517,8 +527,13 @@ export function EmployeeTicketHistoryTable() {
                         {ticket.priority}
                       </Badge>
                     </TableCell>
-                    <TableCell className="py-2">
-                      <Button size="sm" variant="outline" onClick={() => void openTicketDetails(ticket)}>
+                    <TableCell className="px-2 py-2 whitespace-normal">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-full max-w-[4.5rem] px-2 text-xs"
+                        onClick={() => void openTicketDetails(ticket)}
+                      >
                         View
                       </Button>
                     </TableCell>
