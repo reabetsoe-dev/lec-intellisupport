@@ -10,6 +10,7 @@ import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { createAiIntakeDraft, createTicket, type TicketIntakeDraft, type TicketIntakeDraftResponse } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 
@@ -42,6 +43,7 @@ export default function EmployeeReportPage() {
   const [message, setMessage] = useState("")
   const [conversation, setConversation] = useState<IntakeMessage[]>([])
   const [draftResponse, setDraftResponse] = useState<TicketIntakeDraftResponse | null>(null)
+  const [draftDialogOpen, setDraftDialogOpen] = useState(false)
   const [draft, setDraft] = useState<TicketIntakeDraft>(emptyDraft)
   const [analyzing, setAnalyzing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -137,6 +139,7 @@ export default function EmployeeReportPage() {
       ])
       setDraftResponse(payload)
       setDraft(payload.draft)
+      setDraftDialogOpen(true)
       setMessage("")
     } catch (draftError) {
       showResultDialog(
@@ -189,6 +192,7 @@ export default function EmployeeReportPage() {
         ticket.routing_note ?? `Ticket #${ticket.id} created and auto-routed.`,
         true
       )
+      setDraftDialogOpen(false)
       setDraftResponse(null)
       setDraft(emptyDraft)
       setConversation([])
@@ -271,18 +275,36 @@ export default function EmployeeReportPage() {
               ))}
             </div>
           ) : null}
+
+          {draftResponse && !draftDialogOpen ? (
+            <div className="flex justify-center rounded-xl border border-[#DCE8F5] bg-[#FAFCFF] px-4 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDraftDialogOpen(true)}
+                className="h-10 rounded-lg border-[#0072CE]/30 px-5 text-sm font-semibold text-[#0B1F3A] hover:bg-[#F0F7FF]"
+              >
+                Review Draft
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
       {draftResponse ? (
-        <AiIntakeDraftEditor
-          draft={draft}
-          followUpQuestions={draftResponse.follow_up_questions}
-          submitting={submitting}
-          submitLabel="Confirm and Submit Ticket"
-          onChange={setDraft}
-          onSubmit={() => void handleSubmit()}
-        />
+        <Dialog open={draftDialogOpen} onOpenChange={setDraftDialogOpen}>
+          <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-5xl overflow-y-auto border-[#0072CE]/25 bg-transparent p-0 shadow-2xl">
+            <DialogTitle className="sr-only">Ticket Draft Preview</DialogTitle>
+            <AiIntakeDraftEditor
+              draft={draft}
+              followUpQuestions={draftResponse.follow_up_questions}
+              submitting={submitting}
+              submitLabel="Confirm and Submit Ticket"
+              onChange={setDraft}
+              onSubmit={() => void handleSubmit()}
+            />
+          </DialogContent>
+        </Dialog>
       ) : null}
 
       <AssetFaultQrScanner />
