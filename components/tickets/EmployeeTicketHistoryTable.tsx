@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getTicketById, getUserTickets, submitTicketProblemReview, type Ticket, type TicketDetail } from "@/lib/api"
+import { ApiError, getTicketById, getUserTickets, submitTicketProblemReview, type Ticket, type TicketDetail } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
@@ -63,6 +63,15 @@ const statusTextStyles: Record<string, string> = {
   "In Progress": "text-[#6D3CC4]",
   "Pending Review": "text-[#B26B00]",
   Solved: "text-[#1E7A45]",
+}
+
+const sessionExpiredDetailMessage = "Your session has expired. Please log out and sign in again, then reopen this ticket."
+
+function getTicketDetailErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === "UNAUTHORIZED") {
+    return sessionExpiredDetailMessage
+  }
+  return error instanceof Error ? error.message : "Failed to load ticket details."
 }
 
 function normalizeEmployeeStatus(status: string): string {
@@ -242,7 +251,7 @@ export function EmployeeTicketHistoryTable() {
       setTicketDetail(detail)
       setDetailError("")
     } catch (loadError) {
-      setDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+      setDetailError(getTicketDetailErrorMessage(loadError))
     }
   }, [selectedRow])
 
@@ -277,7 +286,7 @@ export function EmployeeTicketHistoryTable() {
       const detail = await getTicketById(ticket.id)
       setTicketDetail(detail)
     } catch (loadError) {
-      setDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+      setDetailError(getTicketDetailErrorMessage(loadError))
     } finally {
       setDetailLoading(false)
     }
