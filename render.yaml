@@ -46,6 +46,22 @@ services:
         value: "1"
       - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
         value: lec-whatsapp-verify-token
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USE_TLS
+        value: "1"
+      - key: EMAIL_USE_SSL
+        value: "0"
+      - key: EMAIL_TIMEOUT
+        value: "10"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
       - key: INITIAL_ADMIN_EMAIL
         sync: false
       - key: INITIAL_ADMIN_PASSWORD

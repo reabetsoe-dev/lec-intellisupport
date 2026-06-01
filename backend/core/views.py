@@ -64,6 +64,11 @@ from .sla_config import (
 
 logger = logging.getLogger(__name__)
 
+
+class PasswordSetupInviteEmailError(RuntimeError):
+    """Raised when account creation requires an invite email but delivery is unavailable."""
+
+
 AI_INTAKE_CONFIDENCE_DIRECT = 0.8
 AI_INTAKE_CONFIDENCE_FOLLOW_UP = 0.5
 DEPARTMENT_LINE_PATTERN = re.compile(r"(?:^|\n)\s*Department:\s*([^\n\r]+)", re.IGNORECASE)
@@ -2691,7 +2696,7 @@ def _send_password_reset_email(
     )
 
 
-def _create_password_setup_invite(user: User, role_label: str) -> dict:
+def _create_password_setup_invite(user: User, role_label: str, *, require_email_delivery: bool = False) -> dict:
     now = timezone.now()
     invite_ttl_hours = _env_int("PASSWORD_SETUP_INVITE_TTL_HOURS", 24, minimum=1)
     raw_token = secrets.token_urlsafe(32)
@@ -2714,10 +2719,16 @@ def _create_password_setup_invite(user: User, role_label: str) -> dict:
     }
 
     if not _email_service_is_configured():
+        message = (
+            "Email service is not configured. Set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD "
+            "to send setup invites."
+        )
         logger.warning(
             "Password setup invite email was not sent for user_id=%s because the email service is not configured.",
             user.id,
         )
+        if require_email_delivery:
+            raise PasswordSetupInviteEmailError(message)
         return payload
 
     try:
@@ -4206,10 +4217,10 @@ def technicians_collection_view(request):
                 notification_email=notification_email,
                 is_available=is_available,
             )
-            invite_payload = _create_password_setup_invite(user, "Technician")
+            invite_payload = _create_password_setup_invite(user, "Technician", require_email_delivery=True)
     except IntegrityError:
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
-    except (SMTPException, OSError):
+    except (PasswordSetupInviteEmailError, SMTPException, OSError):
         return Response(
             {
                 "message": (
@@ -4348,10 +4359,10 @@ def employees_collection_view(request):
                 role=User.ROLE_EMPLOYEE,
                 is_active=is_active,
             )
-            invite_payload = _create_password_setup_invite(user, "Employee")
+            invite_payload = _create_password_setup_invite(user, "Employee", require_email_delivery=True)
     except IntegrityError:
         return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
-    except (SMTPException, OSError):
+    except (PasswordSetupInviteEmailError, SMTPException, OSError):
         return Response(
             {
                 "message": (

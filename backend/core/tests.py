@@ -18,7 +18,6 @@ from .models import (
     Ticket,
     TicketAssignmentHistory,
     User,
-    UserInvite,
     WhatsAppInboundMessage,
 )
 
@@ -726,7 +725,7 @@ class AccountInviteCreationTests(TestCase):
 
     @override_settings(EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="")
     @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
-    def test_employee_creation_returns_setup_link_when_email_is_not_configured(self):
+    def test_employee_creation_fails_when_email_is_not_configured(self):
         response = self.client.post(
             "/api/employees",
             {
@@ -740,12 +739,9 @@ class AccountInviteCreationTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201)
-        user = User.objects.get(email="invite.employee@example.com")
-        self.assertTrue(user.must_change_password)
-        self.assertTrue(UserInvite.objects.filter(user=user, used_at__isnull=True).exists())
-        self.assertFalse(response.data["setup_invite_email_sent"])
-        self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("setup invite email could not be sent", response.data["message"])
+        self.assertFalse(User.objects.filter(email="invite.employee@example.com").exists())
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -777,7 +773,7 @@ class AccountInviteCreationTests(TestCase):
 
     @override_settings(EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="")
     @patch.dict("os.environ", {"FRONTEND_APP_URL": "https://frontend.example.com"})
-    def test_technician_creation_returns_setup_link_when_email_is_not_configured(self):
+    def test_technician_creation_fails_when_email_is_not_configured(self):
         response = self.client.post(
             "/api/technicians",
             {
@@ -788,12 +784,9 @@ class AccountInviteCreationTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201)
-        user = User.objects.get(email="invite.technician@example.com")
-        self.assertEqual(user.role, User.ROLE_TECHNICIAN)
-        self.assertTrue(UserInvite.objects.filter(user=user, used_at__isnull=True).exists())
-        self.assertFalse(response.data["setup_invite_email_sent"])
-        self.assertTrue(response.data["setup_invite_url"].startswith("https://frontend.example.com/set-password?token="))
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("setup invite email could not be sent", response.data["message"])
+        self.assertFalse(User.objects.filter(email="invite.technician@example.com").exists())
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
