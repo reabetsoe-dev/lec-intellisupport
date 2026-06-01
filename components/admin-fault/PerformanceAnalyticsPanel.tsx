@@ -7,16 +7,20 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleUserRound,
   ClipboardList,
   Clock3,
   Download,
   FileImage,
   Filter,
+  Flag,
   LogIn,
   LogOut,
   PieChart as PieChartIcon,
   QrCode,
+  TrendingUp,
   UserRound,
   Wrench,
   XCircle,
@@ -293,6 +297,97 @@ function getInitials(name: string): string {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
 }
 
+function downloadTechnicianActivityPng(filename: string, rows: TechnicianActivitySummaryDatum[]) {
+  const width = 1600
+  const rowHeight = 82
+  const headerHeight = 120
+  const footerHeight = 36
+  const height = headerHeight + Math.max(rows.length, 1) * rowHeight + footerHeight
+  const canvas = document.createElement("canvas")
+  canvas.width = width * 2
+  canvas.height = height * 2
+  const context = canvas.getContext("2d")
+  if (!context) {
+    return
+  }
+
+  context.scale(2, 2)
+  context.fillStyle = "#FFFFFF"
+  context.fillRect(0, 0, width, height)
+  context.fillStyle = "#071A38"
+  context.font = "700 30px Arial"
+  context.fillText("Technician Activity Summary", 42, 54)
+  context.fillStyle = "#466187"
+  context.font = "400 17px Arial"
+  context.fillText("Overview of technician performance and activity metrics", 42, 84)
+
+  const columns = [
+    ["Technician", 42],
+    ["Check In", 300],
+    ["Check Out", 430],
+    ["Accepted", 570],
+    ["Solved", 710],
+    ["Escalated", 850],
+    ["Asset Requests", 995],
+    ["Checked-In Hours", 1165],
+    ["Work Hours", 1320],
+    ["Avg Work", 1450],
+  ] as const
+
+  context.fillStyle = "#F8FBFF"
+  context.fillRect(24, 110, width - 48, 44)
+  context.fillStyle = "#365173"
+  context.font = "700 13px Arial"
+  columns.forEach(([label, x]) => context.fillText(label, x, 138))
+
+  rows.forEach((item, index) => {
+    const y = 154 + index * rowHeight
+    context.strokeStyle = "#E2EAF5"
+    context.beginPath()
+    context.moveTo(24, y)
+    context.lineTo(width - 24, y)
+    context.stroke()
+
+    context.fillStyle = "#EEF5FF"
+    context.beginPath()
+    context.arc(62, y + 40, 24, 0, Math.PI * 2)
+    context.fill()
+    context.fillStyle = "#2563EB"
+    context.font = "700 17px Arial"
+    context.fillText(getInitials(item.name), 50, y + 46)
+
+    context.fillStyle = "#071A38"
+    context.font = "700 15px Arial"
+    context.fillText(item.name, 100, y + 34)
+    context.fillStyle = "#557094"
+    context.font = "400 13px Arial"
+    context.fillText(item.skillset, 100, y + 55)
+
+    const values = [
+      item.check_ins,
+      item.check_outs,
+      item.tickets_accepted,
+      item.tickets_solved,
+      item.tickets_escalated,
+      item.asset_requests_submitted,
+      formatHours(item.total_session_hours),
+      formatHours(item.total_ticket_work_hours),
+      formatHours(item.avg_ticket_work_hours),
+    ]
+    const valueXs = [315, 445, 595, 735, 875, 1035, 1200, 1350, 1480]
+    values.forEach((value, valueIndex) => {
+      context.fillStyle = valueIndex < 2 ? "#0B63F6" : valueIndex < 4 ? "#00A85A" : valueIndex === 4 ? "#DC2626" : valueIndex === 5 ? "#6D28D9" : "#071A38"
+      context.font = "500 16px Arial"
+      context.fillText(String(value), valueXs[valueIndex], y + 46)
+    })
+  })
+
+  const link = document.createElement("a")
+  link.href = canvas.toDataURL("image/png")
+  link.download = filename
+  link.click()
+}
+
 function calculateTrendPercent(current: number, comparison: number | undefined): number {
   if (typeof comparison !== "number" || !Number.isFinite(comparison)) {
     return 0
@@ -381,6 +476,7 @@ export function PerformanceAnalyticsPanel() {
   const [selectedRange, setSelectedRange] = useState<PerformanceRange>("30d")
   const [customStart, setCustomStart] = useState("")
   const [customEnd, setCustomEnd] = useState("")
+  const [activityPage, setActivityPage] = useState(1)
 
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const statusChartRef = useRef<HTMLDivElement>(null)
@@ -428,6 +524,34 @@ export function PerformanceAnalyticsPanel() {
     () => (metrics?.technician_activity_summary ?? []).slice(),
     [metrics]
   )
+  const activityPageSize = 4
+  const activityTotalPages = Math.max(1, Math.ceil(technicianActivitySummary.length / activityPageSize))
+  const activityStartIndex = technicianActivitySummary.length > 0 ? (activityPage - 1) * activityPageSize : 0
+  const visibleTechnicianActivitySummary = technicianActivitySummary.slice(
+    activityStartIndex,
+    activityStartIndex + activityPageSize
+  )
+  const activityDisplayStart = technicianActivitySummary.length > 0 ? activityStartIndex + 1 : 0
+  const activityDisplayEnd = Math.min(activityStartIndex + activityPageSize, technicianActivitySummary.length)
+  const technicianActivityCsvRows = technicianActivitySummary.map((item) => ({
+    technician: item.name,
+    skillset: item.skillset,
+    check_ins: item.check_ins,
+    check_outs: item.check_outs,
+    accepted: item.tickets_accepted,
+    solved: item.tickets_solved,
+    escalated: item.tickets_escalated,
+    asset_requests: item.asset_requests_submitted,
+    checked_in_hours: item.total_session_hours,
+    work_hours: item.total_ticket_work_hours,
+    avg_work_hours: item.avg_ticket_work_hours,
+    current_status: item.is_currently_available ? "Checked In" : "Checked Out",
+  }))
+
+  useEffect(() => {
+    setActivityPage((currentPage) => Math.min(currentPage, activityTotalPages))
+  }, [activityTotalPages])
+
   const technicianRecentActivity = metrics?.technician_recent_activity ?? []
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
   const technicianCheckIns = metrics?.kpis.technician_check_ins ?? 0
@@ -1015,61 +1139,227 @@ export function PerformanceAnalyticsPanel() {
         </Card>
       </div>
 
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Technician Activity Summary</CardTitle>
+      <Card className="overflow-hidden rounded-[22px] border-[#DDE8F6] bg-white py-0 shadow-[0_22px_55px_-40px_rgba(37,99,235,0.65)]">
+        <CardHeader className="flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F7FBFF] text-[#2563EB] shadow-[0_12px_28px_-24px_rgba(37,99,235,0.8)]">
+              <TrendingUp className="h-7 w-7" />
+            </span>
+            <div>
+              <CardTitle className="text-2xl font-bold tracking-normal text-[#071A38]">Technician Activity Summary</CardTitle>
+              <p className="mt-2 text-sm text-[#496487]">Overview of technician performance and activity metrics</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-lg border-[#DDE8F6] bg-white px-5 text-sm font-semibold text-[#071A38] shadow-sm hover:bg-[#F7FBFF]"
+              disabled={technicianActivityCsvRows.length === 0}
+              onClick={() => downloadCsv("technician_activity_summary.csv", technicianActivityCsvRows)}
+            >
+              <Download className="h-5 w-5 text-[#2D5485]" />
+              CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-lg border-[#DDE8F6] bg-white px-5 text-sm font-semibold text-[#071A38] shadow-sm hover:bg-[#F7FBFF]"
+              disabled={technicianActivitySummary.length === 0}
+              onClick={() => downloadTechnicianActivityPng("technician_activity_summary.png", technicianActivitySummary)}
+            >
+              <FileImage className="h-5 w-5 text-[#2D5485]" />
+              PNG
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto px-6 pb-6">
+        <CardContent className="px-6 pb-6">
           {technicianActivitySummary.length === 0 ? (
-            <p className="text-sm text-slate-500">No technician activity recorded in this range yet.</p>
+            <div className="rounded-2xl border border-[#DDE8F6] px-5 py-8 text-center text-sm text-[#496487]">
+              No technician activity recorded in this range yet.
+            </div>
           ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
-                  <th className="px-3 py-3">Technician</th>
-                  <th className="px-3 py-3">Check In</th>
-                  <th className="px-3 py-3">Check Out</th>
-                  <th className="px-3 py-3">Accepted</th>
-                  <th className="px-3 py-3">Solved</th>
-                  <th className="px-3 py-3">Escalated</th>
-                  <th className="px-3 py-3">Asset Requests</th>
-                  <th className="px-3 py-3">Checked-In Hours</th>
-                  <th className="px-3 py-3">Work Hours</th>
-                  <th className="px-3 py-3">Avg Work</th>
-                  <th className="px-3 py-3">Current Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {technicianActivitySummary.map((item: TechnicianActivitySummaryDatum) => (
-                  <tr key={item.technician_id} className="border-b border-slate-100 text-slate-700">
-                    <td className="px-3 py-3">
-                      <p className="font-semibold text-slate-900">{item.name}</p>
-                      <p className="text-xs text-slate-500">{item.skillset}</p>
-                    </td>
-                    <td className="px-3 py-3">{item.check_ins}</td>
-                    <td className="px-3 py-3">{item.check_outs}</td>
-                    <td className="px-3 py-3">{item.tickets_accepted}</td>
-                    <td className="px-3 py-3">{item.tickets_solved}</td>
-                    <td className="px-3 py-3">{item.tickets_escalated}</td>
-                    <td className="px-3 py-3">{item.asset_requests_submitted}</td>
-                    <td className="px-3 py-3">{formatHours(item.total_session_hours)}</td>
-                    <td className="px-3 py-3">{formatHours(item.total_ticket_work_hours)}</td>
-                    <td className="px-3 py-3">{formatHours(item.avg_ticket_work_hours)}</td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={
-                          item.is_currently_available
-                            ? "rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700"
-                            : "rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800"
-                        }
-                      >
-                        {item.is_currently_available ? "Checked In" : "Checked Out"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-hidden rounded-2xl border border-[#DDE8F6] bg-white">
+              <div className="overflow-x-auto">
+                <table className="min-w-[1260px] w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#DDE8F6] bg-[#FBFDFF] text-center text-xs uppercase tracking-[0.04em] text-[#365173]">
+                      <th className="w-[220px] px-5 py-5 text-left">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <UserRound className="h-5 w-5" />
+                          </span>
+                          <span>Technician</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <LogIn className="h-5 w-5" />
+                          </span>
+                          <span>Check In</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <LogOut className="h-5 w-5" />
+                          </span>
+                          <span>Check Out</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#CBEFDD] bg-[#EFFFF6] text-[#00A85A]">
+                            <CheckCircle2 className="h-5 w-5" />
+                          </span>
+                          <span>Accepted</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#CBEFDD] bg-[#EFFFF6] text-[#00A85A]">
+                            <CheckCircle2 className="h-5 w-5" />
+                          </span>
+                          <span>Solved</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#FBD1D1] bg-[#FFF1F1] text-[#DC2626]">
+                            <ArrowUp className="h-5 w-5" />
+                          </span>
+                          <span>Escalated</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#DDD2FF] bg-[#F6F1FF] text-[#6D28D9]">
+                            <ClipboardList className="h-5 w-5" />
+                          </span>
+                          <span>Asset Requests</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <Clock3 className="h-5 w-5" />
+                          </span>
+                          <span>Checked-In Hours</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <Wrench className="h-5 w-5" />
+                          </span>
+                          <span>Work Hours</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <TrendingUp className="h-5 w-5" />
+                          </span>
+                          <span>Avg Work</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-5">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9E7FF] bg-[#F2F7FF] text-[#0B63F6]">
+                            <Flag className="h-5 w-5" />
+                          </span>
+                          <span>Current Status</span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleTechnicianActivitySummary.map((item: TechnicianActivitySummaryDatum) => (
+                      <tr key={item.technician_id} className="border-b border-[#E6EEF8] text-center last:border-b-0">
+                        <td className="px-5 py-6 text-left">
+                          <div className="flex items-center gap-4">
+                            <div className="relative shrink-0">
+                              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EDF5FF] text-lg font-bold text-[#2563EB]">
+                                {getInitials(item.name)}
+                              </span>
+                              <span
+                                className={cn(
+                                  "absolute -right-0.5 bottom-2 h-3 w-3 rounded-full border-2 border-white",
+                                  item.is_currently_available ? "bg-[#16A34A]" : "bg-[#94A3B8]"
+                                )}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold leading-6 text-[#071A38]">{item.name}</p>
+                              <p className="text-sm text-[#5B7192]">{item.skillset}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#0B63F6]">{item.check_ins}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#0B63F6]">{item.check_outs}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#00A85A]">{item.tickets_accepted}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#00A85A]">{item.tickets_solved}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#DC2626]">{item.tickets_escalated}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#6D28D9]">{item.asset_requests_submitted}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#071A38]">{formatHours(item.total_session_hours)}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#071A38]">{formatHours(item.total_ticket_work_hours)}</td>
+                        <td className="px-4 py-6 text-lg font-medium text-[#071A38]">{formatHours(item.avg_ticket_work_hours)}</td>
+                        <td className="px-4 py-6">
+                          <span
+                            className={cn(
+                              "inline-flex min-w-[108px] items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold",
+                              item.is_currently_available
+                                ? "bg-[#EFFFF6] text-[#047847]"
+                                : "bg-[#FFF4E3] text-[#9A4C00]"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "h-2.5 w-2.5 rounded-full",
+                                item.is_currently_available ? "bg-[#16A34A]" : "bg-[#F59E0B]"
+                              )}
+                            />
+                            {item.is_currently_available ? "Checked In" : "Checked Out"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-[#DDE8F6] px-5 py-4 text-sm text-[#496487] sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Showing {activityDisplayStart} to {activityDisplayEnd} of {technicianActivitySummary.length} technicians
+                </span>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={activityPage <= 1}
+                    onClick={() => setActivityPage((current) => Math.max(1, current - 1))}
+                    className="h-10 w-10 rounded-lg border-[#DDE8F6] bg-white text-[#6B84A6] disabled:opacity-45"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <span className="flex h-10 min-w-10 items-center justify-center rounded-lg bg-[#2563EB] px-3 text-sm font-bold text-white shadow-sm">
+                    {activityPage}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={activityPage >= activityTotalPages}
+                    onClick={() => setActivityPage((current) => Math.min(activityTotalPages, current + 1))}
+                    className="h-10 w-10 rounded-lg border-[#DDE8F6] bg-white text-[#6B84A6] disabled:opacity-45"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
