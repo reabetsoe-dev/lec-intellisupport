@@ -25,9 +25,59 @@ const emptyDraft: TicketIntakeDraft = {
   department: "",
 }
 
+const MIN_FAULT_DESCRIPTION_LENGTH = 8
+const MIN_FAULT_WORD_COUNT = 2
+const repeatedCharacterPattern = /(.)\1{5,}/i
+const technicalObjectPattern =
+  /\b(printer|print|printing|laptop|desktop|computer|pc|keyboard|mouse|screen|monitor|internet|network|wifi|wi-fi|router|server|email|outlook|mailbox|password|login|system|software|application|app|power|battery|charger|scanner|access)\b/i
+const faultSignalPattern =
+  /\b(error|fault|issue|problem|cannot|can't|not|no|down|offline|slow|freeze|frozen|crash|crashed|disconnect|disconnected|broken|blocked|failed|failing|stopped|stuck|jam|reset|forgot|missing|damaged|unable|denied|locked)\b/i
+
 type EmployeeIntakeContext = {
   branch: string
   department: string
+}
+
+function normalizeFaultInput(value: string): string {
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function getFaultInputValidationMessage(value: string): string | null {
+  const normalized = normalizeFaultInput(value)
+  const letters = normalized.match(/[a-z]/gi) ?? []
+  const digits = normalized.match(/\d/g) ?? []
+  const words = normalized.match(/[a-z][a-z'-]*/gi) ?? []
+  const uniqueLetters = new Set(letters.map((letter) => letter.toLowerCase()))
+  const meaningfulWords = words.filter((word) => word.length >= 2)
+  const longWords = words.filter((word) => word.length >= 12)
+  const nonSpaceCharacters = normalized.replace(/\s/g, "")
+  const symbolCount = (normalized.match(/[^a-z0-9\s'-]/gi) ?? []).length
+  const vowelCount = (normalized.match(/[aeiou]/gi) ?? []).length
+  const letterCount = letters.length
+
+  if (!normalized) {
+    return "Describe the issue before sending."
+  }
+  if (normalized.length < MIN_FAULT_DESCRIPTION_LENGTH || meaningfulWords.length < MIN_FAULT_WORD_COUNT) {
+    return "Please enter a clear fault description, for example: printer cannot print."
+  }
+  if (digits.length > letterCount || symbolCount > Math.max(2, nonSpaceCharacters.length * 0.25)) {
+    return "Please use normal words to describe the IT fault."
+  }
+  if (repeatedCharacterPattern.test(normalized)) {
+    return "Please remove repeated random characters and describe the actual fault."
+  }
+  if (uniqueLetters.size < 5 || vowelCount === 0) {
+    return "Please enter a meaningful fault description, not random text."
+  }
+  if (longWords.length > 0 && (!technicalObjectPattern.test(normalized) || !faultSignalPattern.test(normalized))) {
+    return "Please describe the actual IT issue in simple words, for example: keyboard keys are not working."
+  }
+  if (!technicalObjectPattern.test(normalized) || !faultSignalPattern.test(normalized)) {
+    return "Please describe a valid IT fault, for example: laptop is slow or mouse cannot scroll."
+  }
+
+  return null
 }
 
 async function getEmployeeIntakeContext(user: AuthUser): Promise<EmployeeIntakeContext> {
@@ -150,8 +200,9 @@ export default function EmployeeReportPage() {
     }
 
     const trimmedMessage = message.trim()
-    if (!trimmedMessage) {
-      showResultDialog("error", "Describe the issue before sending.")
+    const validationMessage = getFaultInputValidationMessage(trimmedMessage)
+    if (validationMessage) {
+      showResultDialog("error", validationMessage)
       return
     }
 
