@@ -25,12 +25,75 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const REFRESH_INTERVAL_MS = 15_000
 const DEFAULT_REQUEST_QUANTITY = 1
+const REQUEST_ITEM_OPTIONS = ["Laptop", "Desktop", "Mouse", "Keyboard", "Gadget"] as const
+
+type RequestItemOption = (typeof REQUEST_ITEM_OPTIONS)[number]
+type SelectableRequestItem = {
+  label: RequestItemOption
+  itemName: string
+}
 
 function toDisplayItemName(value: string): string {
   return value
     .split(" ")
     .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join(" ")
+}
+
+function normalizeLookupText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+function normalizeOptionValue(value: string, options: readonly string[]): string {
+  const normalizedValue = normalizeLookupText(value)
+  const matchedOption = options.find((option) => normalizeLookupText(option) === normalizedValue)
+  return matchedOption ?? value.trim()
+}
+
+function withSessionOption(value: string, options: readonly string[]): string[] {
+  const cleanValue = value.trim()
+  if (!cleanValue) {
+    return [...options]
+  }
+  const normalizedValue = normalizeLookupText(cleanValue)
+  const exists = options.some((option) => normalizeLookupText(option) === normalizedValue)
+  return exists ? [...options] : [cleanValue, ...options]
+}
+
+function classifyRequestItem(item: Consumable): RequestItemOption | null {
+  const searchable = normalizeLookupText(
+    [
+      item.item_name,
+      item.category,
+      item.subcategory,
+      item.device_type,
+      item.brand,
+      item.brand_model,
+      item.model_number,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  )
+
+  if (!searchable || /\b(paper|ream|cartridge|toner|ink|printer)\b/.test(searchable)) {
+    return null
+  }
+  if (/\b(keyboards?|kbd)\b/.test(searchable)) {
+    return "Keyboard"
+  }
+  if (/\b(mouse|mice|mouses?)\b/.test(searchable)) {
+    return "Mouse"
+  }
+  if (/\b(laptops?|notebooks?)\b/.test(searchable)) {
+    return "Laptop"
+  }
+  if (/\b(desktops?|workstations?|tower|pc|computers?)\b/.test(searchable)) {
+    return "Desktop"
+  }
+  if (/\b(gadgets?|tablets?|phones?|smartphones?|scanners?|cameras?|headsets?|devices?)\b/.test(searchable)) {
+    return "Gadget"
+  }
+  return null
 }
 
 export function EmployeeConsumableRequestPanel() {
@@ -55,14 +118,26 @@ export function EmployeeConsumableRequestPanel() {
   const router = useRouter()
 
   const user = getStoredUserSession()
-  const isTechnician = user?.role === "technician"
+  const sessionBranch = normalizeOptionValue(user?.branch ?? "", BRANCH_OPTIONS)
+  const sessionDepartment = normalizeOptionValue(user?.department ?? "", DEPARTMENT_OPTIONS)
+  const branchOptions = useMemo(() => withSessionOption(sessionBranch, BRANCH_OPTIONS), [sessionBranch])
+  const departmentOptions = useMemo(() => withSessionOption(sessionDepartment, DEPARTMENT_OPTIONS), [sessionDepartment])
 
-  const selectableConsumables = useMemo(() => {
-    if (!isTechnician) {
-      return consumables
+  const selectableRequestItems = useMemo<SelectableRequestItem[]>(() => {
+    const byLabel = new Map<RequestItemOption, string>()
+
+    for (const item of consumables) {
+      const label = classifyRequestItem(item)
+      if (label && !byLabel.has(label)) {
+        byLabel.set(label, item.item_name)
+      }
     }
-    return consumables.filter((item) => !item.item_name.toLowerCase().includes("paper"))
-  }, [consumables, isTechnician])
+
+    return REQUEST_ITEM_OPTIONS.flatMap((label) => {
+      const mappedItemName = byLabel.get(label)
+      return mappedItemName ? [{ label, itemName: mappedItemName }] : []
+    })
+  }, [consumables])
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
     setResultDialog({
@@ -81,6 +156,11 @@ export function EmployeeConsumableRequestPanel() {
   const handleRequestAgain = () => {
     setResultDialog((current) => ({ ...current, open: false }))
   }
+
+  useEffect(() => {
+    setBranch((current) => current || sessionBranch)
+    setDepartment((current) => current || sessionDepartment)
+  }, [sessionBranch, sessionDepartment])
 
   useEffect(() => {
     const run = async (silent = false) => {
@@ -173,8 +253,8 @@ export function EmployeeConsumableRequestPanel() {
       })
       setItemName("")
       setAssignmentType("")
-      setBranch("")
-      setDepartment("")
+      setBranch(sessionBranch)
+      setDepartment(sessionDepartment)
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
@@ -230,7 +310,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select department</option>
-                    {DEPARTMENT_OPTIONS.map((option) => (
+                    {departmentOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -247,14 +327,14 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                     value={itemName}
                     onChange={(event) => setItemName(event.target.value)}
-                    disabled={loadingStock || selectableConsumables.length === 0}
+                    disabled={loadingStock || selectableRequestItems.length === 0}
                   >
                     <option value="" disabled>
                       Select item
                     </option>
-                    {selectableConsumables.map((item) => (
-                      <option key={item.id} value={item.item_name}>
-                        {toDisplayItemName(item.item_name)}
+                    {selectableRequestItems.map((item) => (
+                      <option key={item.label} value={item.itemName}>
+                        {item.label}
                       </option>
                     ))}
                   </select>
@@ -292,7 +372,7 @@ export function EmployeeConsumableRequestPanel() {
                     className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
                   >
                     <option value="">Select branch</option>
-                    {BRANCH_OPTIONS.map((option) => (
+                    {branchOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
