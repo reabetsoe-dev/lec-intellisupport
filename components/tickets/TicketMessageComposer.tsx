@@ -215,7 +215,6 @@ export function TicketMessageComposer({
             placeholder={placeholder}
             disabled={disabled || submitting}
             onKeyDown={(event) => {
-              // WhatsApp-style: Enter sends, Shift+Enter adds a newline.
               if (event.key === "Enter" && !event.shiftKey) {
                 if (disabled || submitting) {
                   return

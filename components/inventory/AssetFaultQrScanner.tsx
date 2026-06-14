@@ -42,7 +42,6 @@ function getFaultReportPathFromScan(value: string): string | null {
       }
     }
   } catch {
-    // Continue with non-URL parsing paths below.
   }
 
   const tokenPayload = parseAssetScanToken(trimmedValue)

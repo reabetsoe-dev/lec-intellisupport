@@ -354,7 +354,6 @@ export function Topbar({ user }: TopbarProps) {
       oscillator.stop(audioContext.currentTime + 0.18)
       oscillator.onended = () => void audioContext.close()
     } catch {
-      // Optional sound fallback should never break UI behavior.
     }
   }, [soundEnabled])
 
@@ -412,7 +411,6 @@ export function Topbar({ user }: TopbarProps) {
       newUnreadNotifications.forEach((item) => enqueueToast(item))
       knownNotificationIdsRef.current = incomingIds
     } catch {
-      // Keep topbar resilient if notifications API is temporarily unavailable.
     }
   }, [enqueueToast, supportsNotifications])
 

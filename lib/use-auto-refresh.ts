@@ -44,7 +44,6 @@ export function useAutoRefresh(
       try {
         await refreshRef.current()
       } catch {
-        // Component-level loaders already handle their own error state.
       } finally {
         inFlightRef.current = false
       }

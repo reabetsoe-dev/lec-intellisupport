@@ -181,7 +181,6 @@ export async function resolveQrBaseOrigin(): Promise<string> {
       return normalizeOrigin(payload.fallbackOrigin)
     }
   } catch {
-    // Fall back to the browser origin when the helper route is unavailable.
   }
 
   return getQrBaseOrigin()

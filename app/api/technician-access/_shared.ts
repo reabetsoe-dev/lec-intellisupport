@@ -61,7 +61,6 @@ export async function forwardToBackend(path: string, init?: RequestInit): Promis
       try {
         return await fetchBackendResponse(fallbackBaseUrl, path, init)
       } catch {
-        // Fall through to the deployed backend fallback below.
       }
     }
   }

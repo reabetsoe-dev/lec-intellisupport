@@ -59,7 +59,6 @@ try {
   console.log("Removed stale Next.js dev lock file.");
 } catch (error) {
   if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-    // Continue into cache cleanup even if the lock file is already gone.
   } else {
     console.warn("Unable to remove Next.js lock file:", error);
   }

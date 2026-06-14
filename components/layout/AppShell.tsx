@@ -45,7 +45,6 @@ function AppShellContent({ children }: AppShellProps) {
 
   useEffect(() => {
     const refreshSession = () => setUser(getStoredUserSession())
-    // Keep local state in sync if session changes in this or another tab.
     refreshSession()
     window.addEventListener("storage", refreshSession)
     window.addEventListener("lec-auth-session-change", refreshSession)

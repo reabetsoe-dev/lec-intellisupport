@@ -10,7 +10,7 @@ type QrCodeSvgProps = {
   className?: string
 }
 
-export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) { // Generation of QR code
+export function QrCodeSvg({ value, size = 256, className }: QrCodeSvgProps) {
   const [qrCode, setQrCode] = useState({
     value: "",
     size: 0,

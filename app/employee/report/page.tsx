@@ -95,7 +95,6 @@ async function getEmployeeIntakeContext(user: AuthUser): Promise<EmployeeIntakeC
         department: department || user.department,
       })
     } catch {
-      // Keep the draft usable even if the profile refresh cannot complete.
     }
   }
 
@@ -168,7 +167,6 @@ export default function EmployeeReportPage() {
         nextUrl.hash = window.location.hash
         window.location.replace(nextUrl.toString())
       } catch {
-        // Stay on the local page if the dev tunnel is not running.
       }
     }
 

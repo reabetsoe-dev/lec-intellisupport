@@ -56,7 +56,6 @@ function flattenMessages(
   const visit = (node: (typeof nodes)[number]) => {
     out.push(node)
     for (const child of node.children) {
-      // children come from backend as TicketMessage; we treat them as chat messages for rendering
       visit(child as (typeof nodes)[number])
     }
   }
@@ -79,7 +78,6 @@ function systemBlockClassName() {
 }
 
 function noteBlockClassName(isCurrentUser: boolean) {
-  // Notes should not look like chat bubbles; keep them distinct and softer.
   return isCurrentUser ? "bg-[#fff6d9] border-[#E3D4A0]" : "bg-[#f8fafc] border-[#E3D4A0]"
 }
 
@@ -127,7 +125,6 @@ export function TicketConversationThread({
 
     flat.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-    // Deduplicate by backend id once local optimistic messages get replaced with server messages.
     const byKey = new Map<string, TicketConversationThreadProps["messages"][number]>()
     for (const msg of flat) {
       const key = `${msg.message_type}:${msg.id}`
@@ -137,7 +134,6 @@ export function TicketConversationThread({
         continue
       }
 
-      // Prefer messages carrying clientStatus (so sending/failed UI remains visible).
       if (!existing.clientStatus && msg.clientStatus) {
         byKey.set(key, msg)
       }

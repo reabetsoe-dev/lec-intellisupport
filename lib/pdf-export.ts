@@ -248,7 +248,6 @@ function parseReportBlocks(html: string): ReportBlock[] {
       return blocks
     }
   } catch {
-    // fall through to plain-text fallback
   }
 
   const fallbackText = sanitizePdfText(html.replace(/<[^>]+>/g, " "))

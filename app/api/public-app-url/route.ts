@@ -93,7 +93,6 @@ async function findCloudflaredLogOrigin(): Promise<string | null> {
         return normalizeOrigin(latestMatch)
       }
     } catch {
-      // The tunnel log is optional.
     }
   }
 

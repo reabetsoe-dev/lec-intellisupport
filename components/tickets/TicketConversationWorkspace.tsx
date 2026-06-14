@@ -522,7 +522,6 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
   }
 
   const generateClientId = () => {
-    // Browser runtime (Next.js) should support crypto.randomUUID, but keep a safe fallback.
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
       return crypto.randomUUID()
     }
@@ -571,7 +570,6 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
         }
       } catch (error) {
         console.warn("[workflow] auto-start failed; manual Start Work remains available", error)
-        // Keep the manual Open Ticket action available if this races or fails.
       } finally {
         if (!isCurrent) {
           return
@@ -1080,7 +1078,6 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
       return
     }
 
-    // Only auto-scroll when user is near the bottom to avoid interrupting scrolling up.
     const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight
     const nearBottom = distanceFromBottom <= 100
     if (!paneChanged && !nearBottom) {
@@ -1093,7 +1090,6 @@ export function TicketConversationWorkspace({ ticketId, viewerRole }: TicketConv
     showInternalConversation,
     hasConversation,
     internalComposerMode,
-    // Use lengths to avoid re-triggering auto-scroll on status-only updates.
     mainRenderMessages.length,
     discussionRenderMessages.length,
     internalNoteRenderMessages.length,

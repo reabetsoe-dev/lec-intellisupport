@@ -111,7 +111,6 @@ export default function AdminFaultTechnicianAccessPage() {
           }
         }
       } catch {
-        // Keep the current host URL if network detection fails.
       } finally {
         if (isMounted) {
           setPhoneUrl(resolvedPhoneUrl)
