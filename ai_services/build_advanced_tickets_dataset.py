@@ -129,7 +129,6 @@ def main() -> None:
         subset=["text", "category", "severity", "service_type"]
     ).reset_index(drop=True)
 
-    # If de-duplication dropped the row count below target, top up with sampled copies.
     if len(advanced_df) < TARGET_ROWS:
         need = TARGET_ROWS - len(advanced_df)
         extra = advanced_df.sample(n=need, replace=True, random_state=SEED).copy()
