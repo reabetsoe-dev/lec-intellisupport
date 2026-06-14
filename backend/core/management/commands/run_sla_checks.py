@@ -67,7 +67,7 @@ class Command(BaseCommand):
         for ticket in tickets:
             try:
                 result = check_ticket_sla(ticket)
-            except Exception as error:  # pragma: no cover - keep the worker resilient
+            except Exception as error:
                 counters["error"] += 1
                 self.stderr.write(
                     self.style.ERROR(f"Ticket #{ticket.id}: SLA evaluation failed with error: {error}")

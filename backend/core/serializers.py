@@ -69,10 +69,6 @@ class TicketMessageTreeSerializer(serializers.ModelSerializer):
 
 
 class TicketMessageCreateSerializer(serializers.Serializer):
-    # Compatibility:
-    # - allow missing message_type (defaults to REPLY)
-    # - allow legacy/alias strings (normalized in validate)
-    # - never raise server errors for unexpected values
     message_type = serializers.CharField(required=False, allow_blank=True)
     content = serializers.CharField()
     parent_message_id = serializers.IntegerField(required=False, allow_null=True)
@@ -242,7 +238,6 @@ class AppNotificationSerializer(serializers.ModelSerializer):
     def get_is_new(self, obj: Notification) -> bool:
         if obj.is_read:
             return False
-        # Highlight as "new" for the first 10 minutes.
         return (timezone.now() - obj.created_at).total_seconds() <= 600
 
     class Meta:

@@ -113,7 +113,6 @@ def ticket_messages_view(request, ticket_id: int):
                 "payload_keys": sorted(list(getattr(request, "data", {}).keys())) if hasattr(request, "data") else None,
             },
         )
-        # Safe, stable error response shape for clients.
         return Response(
             {"message": "Invalid message payload.", "errors": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,

@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 class PasswordSetupInviteEmailError(RuntimeError):
-    """Raised when account creation requires an invite email but delivery is unavailable."""
+    pass
 
 
 AI_INTAKE_CONFIDENCE_DIRECT = 0.8
@@ -514,10 +514,8 @@ def _resolve_performance_window(request):
             if start_date > end_date:
                 start_date, end_date = end_date, start_date
             return "custom", start_date, end_date
-        # Fall back to default rolling window when custom is incomplete.
         return "30d", today - timedelta(days=29), today
 
-    # Default range.
     return "30d", today - timedelta(days=29), today
 
 
@@ -565,7 +563,6 @@ SEASON_ORDER = ["Summer", "Autumn", "Winter", "Spring"]
 
 
 def _season_for_month(month: int) -> str:
-    # Southern hemisphere season mapping (Lesotho/South Africa context).
     if month in (12, 1, 2):
         return "Summer"
     if month in (3, 4, 5):
@@ -839,12 +836,6 @@ def _normalize_business_leaves(raw_leaves, *, business_hours: BusinessHours) -> 
 
 
 def _ensure_default_business_hours() -> BusinessHours | None:
-    """
-    Returns the default BusinessHours row, creating it if needed.
-
-    Safety: if migrations haven't been applied yet (missing table), we return None
-    so ticket submission doesn't hard-crash with a 500 in dev environments.
-    """
     try:
         existing = BusinessHours.objects.filter(is_default=True).order_by("id").first()
         if existing:
@@ -1046,7 +1037,6 @@ ALLOWED_TECHNICIAN_SKILLSETS = {
 TECHNICIAN_FIXED_BRANCH = "Maseru HQ"
 TECHNICIAN_FIXED_DEPARTMENT = Technician.DEPARTMENT_IT
 
-# These categories should route by lowest workload across all technician profiles.
 WORKLOAD_ONLY_ROUTING_KEYWORDS = {"account", "email", "printer"}
 
 SKILL_DOMAIN_KEYWORDS = {
@@ -1276,7 +1266,6 @@ def _normalize_technician_skill_domain(skillset: str) -> str | None:
     if searchable_skillset == Technician.SKILL_SECURITY.lower():
         return SKILL_DOMAIN_SECURITY
 
-    # Backward compatibility for legacy records before strict choices.
     for domain, keywords in SKILL_DOMAIN_KEYWORDS.items():
         if any(keyword in searchable_skillset for keyword in keywords):
             return domain
@@ -1545,7 +1534,6 @@ def _rank_technicians_for_ticket(
     business_hours = _ensure_default_business_hours()
     technicians_on_leave: set[int] = set()
     if business_hours is None:
-        # If business-hours tables don't exist yet (unmigrated dev DB), don't block routing.
         technicians_within_business_hours = list(all_active_technicians)
     else:
         business_hours_open_now = _is_business_hours_open_now(business_hours)
@@ -1595,8 +1583,6 @@ def _rank_technicians_for_ticket(
     fallback_active_technicians = [item for item in candidate_pool if not _technician_has_active_ticket(item)]
     technicians = checked_in_technicians if checked_in_technicians else fallback_active_technicians
     if not technicians and allow_unavailable_fallback:
-        # Last-resort fallback: if everyone currently has active tickets, still route to the
-        # least-loaded active technician rather than leaving the ticket unassigned.
         technicians = list(candidate_pool)
 
     logger.info(
@@ -2991,7 +2977,6 @@ def forgot_password_view(request):
             try:
                 _create_password_reset_token(user, request)
             except (RuntimeError, SMTPException):
-                # Never expose delivery failures to avoid leaking account state.
                 pass
 
     return Response({"message": FORGOT_PASSWORD_GENERIC_MESSAGE}, status=status.HTTP_200_OK)
@@ -4090,7 +4075,6 @@ def escalate_ticket_view(request, ticket_id: int):
 
     authenticated_user = request.user if isinstance(getattr(request, "user", None), User) else None
 
-    # Admin Fault escalation path: admin reviews and escalates ticket to technician.
     if from_admin_fault_user_id not in (None, "", "null"):
         return _workflow_permission_denied(ticket, authenticated_user, "transfer this ticket")
 
@@ -4519,7 +4503,6 @@ def employee_detail_view(request, employee_id: int):
 
     try:
         with transaction.atomic():
-            # Hard-delete dependent records so employee deletion is not blocked by PROTECT FKs.
             TicketComment.objects.filter(author=employee).delete()
             TicketMaterialRequest.objects.filter(requested_by=employee).delete()
             InventoryAssignment.objects.filter(employee=employee).delete()
@@ -4653,7 +4636,6 @@ def ticket_status_view(request, ticket_id: int):
 
         requested_status = status_value
         if requested_status == Ticket.STATUS_SOLVED:
-            # Technician "Solved" action routes to final reporter review stage.
             requested_status = Ticket.STATUS_PENDING_REVIEW
 
         if previous_status == Ticket.STATUS_IN_PROCESS and requested_status == Ticket.STATUS_IN_PROCESS:
@@ -5597,7 +5579,6 @@ def _consumable_to_dict(consumable: Consumable) -> dict:
         "id": consumable.id,
         "asset_tag": consumable.asset_tag,
         "item_name": consumable.item_name,
-        # Backward-compatible aliases used by admin consumables UI.
         "type": asset_type,
         "brand_model": brand_model,
         "manufacturer": consumable.manufacturer,

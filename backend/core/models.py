@@ -257,7 +257,6 @@ class Ticket(models.Model):
     STATUS_PENDING_REVIEW = "Pending Review"
     STATUS_SOLVED = "Solved"
 
-    # Legacy values kept for backward compatibility with existing records.
     LEGACY_STATUS_OPEN = "Open"
     LEGACY_STATUS_IN_PROGRESS = "In Progress"
     LEGACY_STATUS_PENDING_VENDOR = "Pending Vendor"
